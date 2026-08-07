@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CompanionCommons - Independent Pet Health Intelligence</title>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Source Sans 3', sans-serif;
+            background-color: #FAF9F6;
+            color: #666666;
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+            font-family: 'Manrope', sans-serif;
+            color: #333333;
+        }
+
+        a {
+            color: #2F6B4F;
+            text-decoration: none;
+        }
+
+        /* Navigation */
+        nav {
+            background: white;
+            border-bottom: 1px solid #A8C3A1;
+            padding: 0 40px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo {
+            font-family: 'Manrope', sans-serif;
+            font-size: 24px;
+            font-weight: 700;
+            color: #2F6B4F;
+            padding: 20px 0;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 30px;
+        }
+
+        .nav-links button {
+            background: none;
+            border: none;
+            font-family: 'Source Sans 3', sans-serif;
+            font-size: 14px;
+            color: #666666;
+            cursor: pointer;
+            padding: 20px 0;
+            transition: all 0.3s ease;
+            border-bottom: 2px solid transparent;
+        }
+
+        .nav-links button.active {
+            color: #2F6B4F;
+            border-bottom-color: #2F6B4F;
+            font-weight: 600;
+        }
+
+        .nav-links button:hover {
+            color: #2F6B4F;
+        }
+
+        /* Main Content */
+        main {
+            min-height: 600px;
+        }
+
+        .page-section {
+            display: none;
+        }
+
+        .page-section.active {
+            display: block;
+        }
+
+        /* Hero Section */
+        .hero {
+            background: linear-gradient(135deg, #2F6B4F 0%, #A8C3A1 100%);
+            color: white;
+            padding: 80px 40px;
+            text-align: center;
+        }
+
+        .hero h1 {
+            font-size: 48px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            color: white;
+            line-height: 1.2;
+        }
+
+        .hero p {
+            font-size: 18px;
+            margin-bottom: 10px;
+            line-height: 1.6;
+            color: rgba(255, 255, 255, 0.95);
+        }
+
+        .cta-button {
+            background-color: #D89B3D;
+            color: white;
+            border: none;
+            padding: 16px 32px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-family: 'Source Sans 3', sans-serif;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 30px;
+            transition: background-color 0.3s ease;
+        }
+
+        .cta-button:hover {
+            background-color: #c87d2c;
+        }
+
+        .hero .trust-statement {
+            margin-top: 30px;
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        /* Content Sections */
+        .content-section {
+            padding: 60px 40px;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .content-section h1 {
+            font-size: 42px;
+            margin-bottom: 30px;
+        }
+
+        .content-section h2 {
+            font-size: 36px;
+            margin-bottom: 30px;
+            color: #2F6B4F;
+        }
+
+        .content-section h3 {
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+
+        .content-section p {
+            font-size: 16px;
+            color: #666666;
+            line-height: 1.8;
+            margin-bottom: 20px;
+        }
+
+        .content-section ul {
+            font-size: 16px;
+            color: #666666;
+            line-height: 1.8;
+            margin-left: 20px;
+            margin-bottom: 20px;
+        }
+
+        .content-section li {
+            margin-bottom: 10px;
+        }
+
+        /* Join Section */
+        .join-section {
+            background-color: #2F6B4F;
+            color: white;
+            padding: 60px 40px;
+            text-align: center;
+        }
+
+        .join-section h2 {
+            font-size: 36px;
+            margin-bottom: 20px;
+            color: white;
+        }
+
+        .join-section p {
+            font-size: 18px;
+            margin-bottom: 30px;
+            line-height: 1.6;
+            color: rgba(255, 255, 255, 0.95);
+        }
+
+        /* Features Grid */
+        .features-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 20px;
+        }
+
+        .feature-card {
+            padding: 20px;
+            border-left: 4px solid #D89B3D;
+            background: white;
+        }
+
+        .feature-card h3 {
+            font-size: 18px;
+            color: #333333;
+            margin-bottom: 10px;
+        }
+
+        .feature-card p {
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        /* Footer */
+        footer {
+            background: #2F6B4F;
+            color: white;
+            text-align: center;
+            padding: 40px;
+        }
+
+        footer .brand {
+            font-family: 'Manrope', sans-serif;
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        footer .tagline {
+            font-size: 14px;
+            opacity: 0.9;
+            font-style: italic;
+        }
+
+        /* Promise Box */
+        .promise-box {
+            background: #E8F5E9;
+            border-left: 4px solid #2F6B4F;
+            padding: 30px;
+            margin: 40px 0;
+            border-radius: 4px;
+        }
+
+        .promise-box p {
+            margin-bottom: 10px;
+        }
+
+        .promise-box p:first-child {
+            font-weight: 600;
+            color: #2F6B4F;
+        }
+
+        .faq-item {
+            margin-bottom: 30px;
+            padding-bottom: 30px;
+            border-bottom: 1px solid #E0E0E0;
+        }
+
+        .faq-item:last-child {
+            border-bottom: none;
+        }
+
+        .faq-item h3 {
+            color: #2F6B4F;
+            margin-bottom: 15px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav>
+        <div class="logo">CompanionCommons™</div>
+        <div class="nav-links">
+            <button class="nav-btn active" data-page="home">Home</button>
+            <button class="nav-btn" data-page="about">About</button>
+            <button class="nav-btn" data-page="independent">Independent</button>
+            <button class="nav-btn" data-page="data">Data</button>
+            <button class="nav-btn" data-page="founding">Founding</button>
+            <button class="nav-btn" data-page="faq">FAQ</button>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main>
+        <!-- HOME PAGE -->
+        <div id="home" class="page-section active">
+            <section class="hero">
+                <h1>Every Pet Has a Story.</h1>
+                <p>Join a movement of pet families working together to better understand the health journeys of the companions they love.</p>
+                <button class="cta-button">Begin My Pet's Health Journey</button>
+                <p class="trust-statement">Takes less than 3 minutes • Free to join • Independent by Design</p>
+            </section>
+
+            <section class="content-section">
+                <h2>Why This Movement Exists</h2>
+                <p>I have spent my career solving complex operational challenges and learning one important lesson: You cannot improve what you do not understand.</p>
+                <p>As a pet parent, I've watched my companions age and wondered: How do I know if they're truly healthy? Are the small changes I'm seeing normal? Would knowing the collective voice of other pet parents help?</p>
+                <p style="font-weight: 600; color: #2F6B4F;">I've decided to build the largest community of pet parents driving the largest INDEPENDENT pet health initiative ever.</p>
+            </section>
+
+            <section class="join-section">
+                <h2>Join the Movement</h2>
+                <p>We're inviting the first 1,500 pet families to become Founding Members and help build the future of pet health.</p>
+                <button class="cta-button">Become a Founding Member</button>
+            </section>
+
+            <section class="content-section">
+                <h2>What You Receive</h2>
+                <div class="features-grid">
+                    <div class="feature-card">
+                        <h3>Personalized Health Journey Profile</h3>
+                        <p>A place to understand your companion's unique story, lifestyle, and health over time.</p>
+                    </div>
+                    <div class="feature-card">
+                        <h3>Simple Health Journey Check-Ins</h3>
+                        <p>A quick and meaningful way to stay connected with changes in your pet's health.</p>
+                    </div>
+                    <div class="feature-card">
+                        <h3>Health Journey Insights</h3>
+                        <p>Future insights designed to help you better understand your companion.</p>
+                    </div>
+                    <div class="feature-card">
+                        <h3>Health Journey Record</h3>
+                        <p>A resource you can save, review, and share with your veterinarian.</p>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- ABOUT PAGE -->
+        <div id="about" class="page-section">
+            <section class="content-section">
+                <h1>Our Mission</h1>
+                <p>CompanionCommons exists because every pet deserves to be better understood.</p>
+                <p>Today, valuable pet health information is scattered across veterinary visits, products, supplements, and individual experiences. We believe pet families deserve an independent way to understand their companion's health journey over time.</p>
+                <p>Our mission is to create the most trusted source of pet health understanding built around transparency, community, and independence.</p>
+            </section>
+        </div>
+
+        <!-- INDEPENDENT PAGE -->
+        <div id="independent" class="page-section">
+            <section class="content-section">
+                <h1>Independent by Design</h1>
+                <p>Trust requires independence. CompanionCommons was designed differently from the beginning.</p>
+                
+                <div style="margin-bottom: 40px;">
+                    <h2 style="font-size: 24px;">We are NOT:</h2>
+                    <ul>
+                        <li>A pet food company</li>
+                        <li>A supplement company</li>
+                        <li>An insurance company</li>
+                        <li>A marketing company</li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h2 style="font-size: 24px;">Our Commitment:</h2>
+                    <ul>
+                        <li>Put pets first</li>
+                        <li>Protect family trust</li>
+                        <li>Be transparent about how information is used</li>
+                        <li>Create meaningful insights that benefit the pet community</li>
+                    </ul>
+                </div>
+            </section>
+        </div>
+
+        <!-- DATA USAGE PAGE -->
+        <div id="data" class="page-section">
+            <section class="content-section">
+                <h1>How Your Data Is Used</h1>
+                <p>Your pet is family. We understand that sharing information requires trust.</p>
+
+                <div style="margin-bottom: 40px;">
+                    <h2 style="font-size: 24px;">Information May Be Used To:</h2>
+                    <ul>
+                        <li>Create your companion's health journey profile</li>
+                        <li>Provide future insights</li>
+                        <li>Understand broader pet health trends</li>
+                        <li>Improve tools and resources for the pet community</li>
+                    </ul>
+                </div>
+
+                <div class="promise-box">
+                    <p>Our Promise:</p>
+                    <p>Your personal information will never be sold for marketing purposes. Your participation helps build knowledge, not marketing lists.</p>
+                </div>
+            </section>
+        </div>
+
+        <!-- FOUNDING MEMBER PAGE -->
+        <div id="founding" class="page-section">
+            <section class="content-section">
+                <h1>Be One of the First</h1>
+                <p>The future of pet health will be shaped by pet families who care enough to participate.</p>
+                <p>Founding Members are helping create the foundation of a trusted, independent pet health movement. Your companion's journey can help future generations of pets.</p>
+                <button class="cta-button">Become a Founding Member</button>
+            </section>
+        </div>
+
+        <!-- FAQ PAGE -->
+        <div id="faq" class="page-section">
+            <section class="content-section">
+                <h1>Frequently Asked Questions</h1>
+                
+                <div class="faq-item">
+                    <h3>Is CompanionCommons a pet product company?</h3>
+                    <p>No. CompanionCommons is an independent pet health intelligence platform.</p>
+                </div>
+
+                <div class="faq-item">
+                    <h3>Will my information be sold?</h3>
+                    <p>No. Your personal information will never be sold for marketing purposes.</p>
+                </div>
+
+                <div class="faq-item">
+                    <h3>How much time does this take?</h3>
+                    <p>Weekly check-ins are designed to take approximately 30 seconds. The initial profile setup takes approximately 2 minutes.</p>
+                </div>
+
+                <div class="faq-item">
+                    <h3>Do I need a senior dog?</h3>
+                    <p>No. We welcome dogs and cats of all ages as part of our community.</p>
+                </div>
+
+                <div class="faq-item">
+                    <h3>Why should I participate?</h3>
+                    <p>Because every pet has a story, and every health journey helps create a better understanding of pet health. Help build the community!</p>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer>
+        <p class="brand">CompanionCommons™ — Independent Pet Health Intelligence</p>
+        <p class="tagline">"Every Pet Has a Story. Every Health Journey Matters."</p>
+    </footer>
+
+    <!-- JavaScript -->
+    <script>
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.page-section').forEach(page => {
+                    page.classList.remove('active');
+                });
+                document.querySelectorAll('.nav-btn').forEach(button => {
+                    button.classList.remove('active');
+                });
+                const pageId = this.getAttribute('data-page');
+                document.getElementById(pageId).classList.add('active');
+                this.classList.add('active');
+            });
+        });
+    </script>
+</body>
+</html>
