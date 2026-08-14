@@ -839,8 +839,18 @@ app.post('/api/signup', async (req, res) => {
                 console.warn(`⚠️ SMS rate limit exceeded for user ${userId}`);
             } else {
                 try {
+                    // Personalized welcome message based on whether they selected a preferred time
+                    let welcomeMessage;
+                    if (sanitizedPreferredSmsTime && sanitizedPreferredSmsTime !== '') {
+                        // Message for users who selected a preferred time
+                        welcomeMessage = `Welcome to CompanionCommons! 🐾 We're excited to follow ${sanitizedCompanionName}'s health journey with you. We see you selected ${sanitizedPreferredSmsTime} for ${sanitizedCompanionName}'s health journey update. You should receive the first update request in 7 days!!`;
+                    } else {
+                        // Message for users who didn't select a time
+                        welcomeMessage = `Welcome to CompanionCommons! 🐾 We're excited to follow ${sanitizedCompanionName}'s health journey with you. ${sanitizedCompanionName}'s first health journey reminder should arrive in 7 days. After ${sanitizedCompanionName}'s first update, we personalize the timing to fit your schedule.`;
+                    }
+
                     await twilioClient.messages.create({
-                        body: `Welcome to CompanionCommons! 🐾 We're excited to follow ${sanitizedCompanionName}'s health journey with you. Check-in reminders arrive soon—and after your first update, we personalize the timing to fit your schedule.`,
+                        body: welcomeMessage,
                         from: TWILIO_PHONE_NUMBER,
                         to: sanitizedPhone
                     });
@@ -1889,7 +1899,12 @@ app.get('/dashboard/:dog_id', async (req, res) => {
               }
             </div>
             <div class="baseline-info">
-              <h2>📋 Baseline Profile</h2>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h2 style="margin: 0; font-size: 20px; font-weight: 700; color: #333;">📋 Baseline Profile</h2>
+                <button id="openCheckInBtn" style="background: #007AFF; color: white; padding: 10px 20px; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap;">
+                  Complete this Week's Health Survey
+                </button>
+              </div>
               <div class="baseline-info-grid">
                 <div class="baseline-info-item">
                   <div class="baseline-info-label">Breed</div>
@@ -1968,7 +1983,92 @@ app.get('/dashboard/:dog_id', async (req, res) => {
           </div>
         </div>
 
+        <!-- CHECK-IN MODAL -->
+        <div id="checkInModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; overflow-y: auto;">
+          <div style="background: white; margin: 20px auto; border-radius: 12px; padding: 30px; max-width: 500px; position: relative; top: 50px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+              <h2 style="margin: 0; color: #333;">📝 ${dog.dog_name}'s Check-In</h2>
+              <button id="closeCheckInBtn" style="background: none; border: none; font-size: 24px; cursor: pointer;">✕</button>
+            </div>
+
+            <form id="checkInForm">
+              <label style="display: block; margin: 15px 0 5px 0; font-weight: 600; color: #333;">How's ${dog.dog_name}'s mobility this week?</label>
+              <input type="range" id="mobility" name="mobility_score" min="1" max="8" value="4" style="width: 100%; cursor: pointer;">
+              <div id="hint" style="font-size: 12px; color: #666; margin: 5px 0 0 0;">4/10 - Some good days, some bad days</div>
+
+              <label style="display: block; margin: 20px 0 5px 0; font-weight: 600; color: #333;">Any notes? (optional)</label>
+              <textarea id="observation" name="observation" placeholder="E.g., 'Easier on stairs today' or 'Stiff this morning'" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-family: inherit; font-size: 14px; box-sizing: border-box; height: 80px;"></textarea>
+
+              <button type="submit" style="background: #007AFF; color: white; border: none; padding: 15px; border-radius: 8px; font-size: 16px; cursor: pointer; width: 100%; margin-top: 20px; font-weight: 600;">Submit Check-In ✓</button>
+            </form>
+          </div>
+        </div>
+
         <script>
+          // Modal controls
+          const modal = document.getElementById('checkInModal');
+          const openBtn = document.getElementById('openCheckInBtn');
+          const closeBtn = document.getElementById('closeCheckInBtn');
+          const slider = document.getElementById('mobility');
+          const hints = {
+            1: "1/10 - Very stiff/limited movement",
+            2: "2/10 - Mostly struggling",
+            3: "3/10 - Significant issues",
+            4: "4/10 - Some good days, some bad days",
+            5: "5/10 - Moderate improvement",
+            6: "6/10 - Noticeably better",
+            7: "7/10 - Very active",
+            8: "8/10 - Excellent, no mobility issues"
+          };
+
+          openBtn.addEventListener('click', () => {
+            modal.style.display = 'block';
+          });
+
+          closeBtn.addEventListener('click', () => {
+            modal.style.display = 'none';
+          });
+
+          modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+              modal.style.display = 'none';
+            }
+          });
+
+          slider.addEventListener('input', () => {
+            document.getElementById('hint').textContent = hints[slider.value];
+          });
+
+          // Form submission
+          document.getElementById('checkInForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            try {
+              const response = await fetch('/api/checkin-senior', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  dog_id: '${dog_id}',
+                  mobility_score: parseInt(formData.get('mobility_score')),
+                  observation: formData.get('observation') || null
+                })
+              });
+
+              const result = await response.json();
+
+              if (result.success) {
+                modal.style.display = 'none';
+                // Reload dashboard to show updated data
+                location.reload();
+              } else {
+                alert('Error: ' + (result.error || 'Unknown error'));
+              }
+            } catch (error) {
+              console.error('Error:', error);
+              alert('Error submitting check-in. Please try again.');
+            }
+          });
+
           const ctx = document.getElementById('mobilityChart').getContext('2d');
           const chart = new Chart(ctx, {
             type: 'line',
@@ -3126,8 +3226,8 @@ async function sendChurnAlertEmail(ownerEmail, dogName, lastScore, lastCheckInDa
               <strong>Bonus:</strong> Every check-in means we have better data to discuss with your vet next visit. 🐾
             </p>
             <div style="text-align: center; margin-top: 25px;">
-              <a href="http://192.168.1.19:3000/check-in/${dogId}" style="display: inline-block; background: #d96f56; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: 600;">
-                Quick Check-In (30 sec)
+              <a href="http://192.168.1.19:3000/dashboard/${dogId}" style="display: inline-block; background: #d96f56; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+                View Progress & Check-In
               </a>
             </div>
             <p style="color: #999; font-size: 12px; margin-top: 30px; text-align: center;">
