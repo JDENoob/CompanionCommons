@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Start Your Dog's Health Journey | Companion Commons</title>
+    <link rel="stylesheet" href="assets/css/styles.css" />
+    <script src="assets/js/main.js" defer></script>
+  </head>
+  <body>
+    <header class="site-header" data-header>
+      <div class="container nav-shell">
+        <a class="brand" href="index.html" aria-label="Companion Commons home">
+          <span class="brand-mark" aria-hidden="true">C</span>
+          <span class="brand-name">Companion<br />Commons</span>
+        </a>
+        <button
+          class="menu-toggle"
+          type="button"
+          aria-expanded="false"
+          aria-controls="site-nav"
+          data-menu-toggle
+        >
+          <span class="sr-only">Open navigation</span><span></span><span></span
+          ><span></span>
+        </button>
+        <nav
+          class="site-nav"
+          id="site-nav"
+          aria-label="Primary navigation"
+          data-menu
+        >
+          <a href="index.html">Home</a>
+          <a href="how-it-works.html">How It Works</a>
+          <a href="about.html">About</a>
+          <a href="trust-and-data.html">Trust & Privacy</a>
+          <a href="faqs.html">FAQs</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="page-hero">
+        <div class="container inner">
+          <p class="eyebrow">Start your dog's health journey</p>
+          <h1>Let's learn more about your senior dog.</h1>
+          <p>
+            Answer a few quick questions about your companion. This takes about 3 minutes.
+          </p>
+        </div>
+      </section>
+
+      <section class="content-section">
+        <div class="container" style="max-width: 600px;">
+          <form id="baselineSurvey" method="POST" action="/api/send-magic-link">
+            <!-- Dog Info Section -->
+            <fieldset>
+              <legend>About Your Companion</legend>
+
+              <div class="form-group">
+                <label for="dogName">Your dog's name *</label>
+                <input
+                  type="text"
+                  id="dogName"
+                  name="dog_name"
+                  required
+                  placeholder="e.g., Bailey"
+                  maxlength="100"
+                />
+              </div>
+
+              <div class="form-group">
+                <label for="breed">Breed *</label>
+                <input
+                  type="text"
+                  id="breed"
+                  name="breed"
+                  required
+                  placeholder="e.g., Golden Retriever"
+                  maxlength="100"
+                />
+              </div>
+
+              <div class="form-group">
+                <label for="age">Age (in years) *</label>
+                <input
+                  type="number"
+                  id="age"
+                  name="age"
+                  required
+                  min="1"
+                  max="30"
+                  placeholder="e.g., 10"
+                />
+              </div>
+
+              <div class="form-group">
+                <label for="gender">Gender *</label>
+                <select id="gender" name="gender" required>
+                  <option value="">Select...</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="unknown">Prefer not to say</option>
+                </select>
+              </div>
+            </fieldset>
+
+            <!-- Baseline Mobility Section -->
+            <fieldset>
+              <legend>Current Mobility</legend>
+
+              <div class="form-group">
+                <label for="mobilityScore">
+                  How is your dog's overall mobility right now?
+                  <span class="hint">(1 = very stiff, 8 = excellent movement)</span> *
+                </label>
+                <input
+                  type="range"
+                  id="mobilityScore"
+                  name="baseline_mobility_score"
+                  min="1"
+                  max="8"
+                  value="4"
+                  required
+                />
+                <div id="mobilityHint" style="margin-top: 8px; font-size: 14px; color: #666;">
+                  4 — Some good days, some bad days
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="observations">Any observations? (optional)</label>
+                <textarea
+                  id="observations"
+                  name="observations"
+                  placeholder="e.g., stiff in the morning, has trouble with stairs"
+                  maxlength="500"
+                  rows="4"
+                ></textarea>
+              </div>
+            </fieldset>
+
+            <!-- Contact Info Section -->
+            <fieldset>
+              <legend>How to Reach You</legend>
+
+              <div class="form-group">
+                <label for="email">Email *</label>
+                <input
+                  type="email"
+                  id="email"
+                  name="email"
+                  required
+                  placeholder="your@email.com"
+                  maxlength="255"
+                />
+              </div>
+
+              <div class="form-group">
+                <label for="phone">
+                  Phone (for SMS check-ins) *
+                </label>
+                <input
+                  type="tel"
+                  id="phone"
+                  name="phone"
+                  required
+                  placeholder="+1 (555) 123-4567"
+                  maxlength="20"
+                />
+                <small style="color: #666; margin-top: 4px; display: block;">
+                  We'll send you a secure link via SMS to verify and complete your profile.
+                </small>
+              </div>
+            </fieldset>
+
+            <!-- Consent -->
+            <fieldset>
+              <div class="form-group">
+                <label style="display: flex; align-items: flex-start; gap: 8px;">
+                  <input
+                    type="checkbox"
+                    id="consent"
+                    name="consent"
+                    required
+                    style="margin-top: 4px;"
+                  />
+                  <span>
+                    I understand my observations help build a trusted pet health community.
+                    I consent to participate. *
+                  </span>
+                </label>
+              </div>
+
+              <div class="form-group">
+                <label style="display: flex; align-items: flex-start; gap: 8px;">
+                  <input
+                    type="checkbox"
+                    id="smsConsent"
+                    name="sms_consent"
+                    style="margin-top: 4px;"
+                  />
+                  <span>
+                    Yes, I want SMS check-in reminders (approximately 1/week)
+                  </span>
+                </label>
+              </div>
+            </fieldset>
+
+            <button type="submit" class="button" style="width: 100%; margin-top: 30px;">
+              Send Me a Secure Link
+            </button>
+
+            <p style="text-align: center; color: #999; font-size: 12px; margin-top: 20px;">
+              Your data is encrypted and never sold.
+              <a href="trust-and-data.html" style="color: #666;">Learn more.</a>
+            </p>
+          </form>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-grid">
+        <div>
+          <h2>Companion Commons</h2>
+          <p>Pet families. Shared purpose.</p>
+        </div>
+        <a href="index.html">Return to homepage</a>
+      </div>
+      <div class="container veterinary-disclaimer">
+        <p>
+          Companion Commons is not a veterinary service and does not diagnose,
+          treat, prescribe, or provide veterinary advice. Always consult a
+          licensed veterinarian about your companion's health and care.
+        </p>
+      </div>
+    </footer>
+
+    <script>
+      // Mobility score hint
+      const slider = document.getElementById('mobilityScore');
+      const hint = document.getElementById('mobilityHint');
+      const hints = {
+        1: "1 — Very stiff/limited movement",
+        2: "2 — Mostly struggling",
+        3: "3 — Significant issues",
+        4: "4 — Some good days, some bad days",
+        5: "5 — Moderate, improving",
+        6: "6 — Noticeably better",
+        7: "7 — Very active",
+        8: "8 — Excellent, no mobility issues"
+      };
+
+      slider.addEventListener('input', () => {
+        hint.textContent = hints[slider.value];
+      });
+
+      // Form submission
+      document.getElementById('baselineSurvey').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const formData = new FormData(e.target);
+        const data = Object.fromEntries(formData);
+
+        try {
+          const response = await fetch('/api/send-magic-link', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+          });
+
+          const result = await response.json();
+
+          if (result.success) {
+            document.body.innerHTML = `
+              <div style="max-width: 500px; margin: 50px auto; text-align: center; font-family: -apple-system, sans-serif; padding: 20px;">
+                <h1 style="color: #4CAF50; margin-bottom: 10px;">✓ Check Your Phone!</h1>
+                <p style="font-size: 18px; color: #333; margin: 20px 0;">
+                  We've sent a secure link to <strong>${data.phone}</strong>
+                </p>
+                <p style="color: #666; line-height: 1.6;">
+                  Click the link in your SMS to verify your number and complete your profile.
+                  This link expires in 15 minutes.
+                </p>
+                <p style="color: #999; font-size: 14px; margin-top: 30px;">
+                  Didn't get a text? <a href="javascript:location.reload()" style="color: #007AFF;">Try again</a>
+                </p>
+              </div>
+            `;
+          } else {
+            alert('Error: ' + (result.error || 'Unknown error'));
+          }
+        } catch (error) {
+          console.error('Error:', error);
+          alert('Error submitting form. Please try again.');
+        }
+      });
+    </script>
+
+    <style>
+      fieldset {
+        border: none;
+        padding: 0;
+        margin: 0 0 30px 0;
+      }
+
+      legend {
+        font-size: 18px;
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 15px;
+      }
+
+      .form-group {
+        margin-bottom: 20px;
+      }
+
+      label {
+        display: block;
+        font-weight: 500;
+        color: #333;
+        margin-bottom: 6px;
+        font-size: 14px;
+      }
+
+      .hint {
+        font-weight: normal;
+        color: #999;
+        font-size: 12px;
+      }
+
+      input[type="text"],
+      input[type="email"],
+      input[type="tel"],
+      input[type="number"],
+      select,
+      textarea {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        font-family: inherit;
+        font-size: 14px;
+        box-sizing: border-box;
+      }
+
+      input[type="range"] {
+        width: 100%;
+        cursor: pointer;
+      }
+
+      textarea {
+        resize: vertical;
+      }
+
+      input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        cursor: pointer;
+      }
+
+      .button {
+        background: #007AFF;
+        color: white;
+        padding: 12px 24px;
+        border: none;
+        border-radius: 8px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .button:hover {
+        background: #0051D5;
+      }
+    </style>
+  </body>
+</html>

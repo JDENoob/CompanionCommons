@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dashboard | Companion Commons</title>
+    <link rel="stylesheet" href="assets/css/styles.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <script src="assets/js/main.js" defer></script>
+    <style>
+      .dashboard-loading {
+        text-align: center;
+        padding: 60px 20px;
+        font-size: 18px;
+        color: #666;
+      }
+      .dashboard-error {
+        background: #fee;
+        color: #c33;
+        padding: 20px;
+        border-radius: 8px;
+        margin: 20px;
+      }
+      .chart-container {
+        position: relative;
+        height: 300px;
+        margin: 20px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container nav-shell">
+        <a class="brand" href="index.html" aria-label="Companion Commons home">
+          <span class="brand-mark" aria-hidden="true">C</span>
+          <span class="brand-name">Companion<br />Commons</span>
+        </a>
+        <nav class="site-nav">
+          <a href="index.html">Home</a>
+          <a class="button button-small" href="index.html">Back to Home</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main">
+      <div id="loading" class="dashboard-loading">
+        <p>📊 Loading your dashboard...</p>
+      </div>
+
+      <div id="error" class="dashboard-error" style="display: none;"></div>
+
+      <div id="dashboard" style="display: none;">
+        <section class="dashboard-showcase" style="padding: 40px 20px;">
+          <div class="container">
+            <div class="dashboard-window">
+              <div class="window-bar" aria-hidden="true">
+                <i></i><i></i><i></i>
+              </div>
+
+              <!-- Pet Summary -->
+              <div class="pet-summary">
+                <div class="pet-avatar" aria-hidden="true">🐕</div>
+                <div class="pet-identity">
+                  <h3 id="dogName">Dog Name</h3>
+                  <p id="dogInfo">Breed · Age · Gender</p>
+                </div>
+                <a class="button dashboard-update" href="#" id="checkInLink">
+                  Share This Week's 30-Second Update
+                </a>
+              </div>
+
+              <!-- Journey Progress -->
+              <div class="journey-progress" id="journeyProgress" aria-label="Journey progress">
+                <strong id="weekNumber">Week X of 12</strong>
+                <span id="progressStatus">Baseline complete</span>
+                <div class="progress-dots" aria-hidden="true" id="progressDots">
+                  <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+                  <i></i><i></i><i></i><i></i>
+                </div>
+              </div>
+
+              <!-- Mobility Chart -->
+              <div class="dashboard-row">
+                <article class="dashboard-panel mobility-panel">
+                  <h4>Mobility observations over time</h4>
+                  <div class="chart-legend">
+                    <span class="green">Your Dog's Mobility Score</span>
+                  </div>
+                  <div class="chart-container">
+                    <canvas id="mobilityChart"></canvas>
+                  </div>
+                  <p class="chart-note">
+                    ⓘ Your reported observations—not a diagnosis.
+                  </p>
+                </article>
+              </div>
+
+              <!-- Last Check-In Summary -->
+              <article class="dashboard-panel glance-panel">
+                <h4>This week at a glance</h4>
+                <div id="glanceContent">
+                  <p id="lastCheckInDate">Last check-in: —</p>
+                  <p id="lastCheckInScore">Current score: —/10</p>
+                </div>
+              </article>
+
+              <!-- Peer Comparison -->
+              <article class="dashboard-panel comparison-panel">
+                <h4>How <span id="dogNameComparison"></span> compares</h4>
+                <div class="chart-legend">
+                  <span class="green">Your Dog</span>
+                  <span class="comparison">Similar Dogs</span>
+                </div>
+                <div class="chart-container">
+                  <canvas id="comparisonChart"></canvas>
+                </div>
+                <p class="comparison-source">
+                  Based on anonymized, owner-reported observations from similar dogs.
+                </p>
+                <p class="chart-note">
+                  For context only—not a diagnosis or veterinary assessment.
+                </p>
+              </article>
+
+              <!-- Vet Prep -->
+              <article class="vet-prep">
+                <div aria-hidden="true">♡</div>
+                <p>
+                  <strong>Prepare for a veterinarian conversation</strong><br />
+                  Review your observations to help you share what matters most.
+                </p>
+                <a class="button button-secondary" href="#" id="vetPrepLink">
+                  View Journey Summary
+                </a>
+              </article>
+            </div>
+
+            <!-- Benefits Sidebar -->
+            <aside class="dashboard-benefits">
+              <h3>A useful record you build over time</h3>
+              <ul>
+                <li>
+                  <span>≡</span>
+                  <div>
+                    <strong>Remember changes between visits</strong>
+                    <p>Capture the little things that are easy to forget.</p>
+                  </div>
+                </li>
+                <li>
+                  <span>⌁</span>
+                  <div>
+                    <strong>See your own reported patterns</strong>
+                    <p>Spot trends in the ways that matter most to you.</p>
+                  </div>
+                </li>
+                <li>
+                  <span>?</span>
+                  <div>
+                    <strong>Prepare questions for your veterinarian</strong>
+                    <p>Arrive ready with notes and context.</p>
+                  </div>
+                </li>
+                <li>
+                  <span>▣</span>
+                  <div>
+                    <strong>Keep everything in one private place</strong>
+                    <p>Only you decide what to share.</p>
+                  </div>
+                </li>
+              </ul>
+              <a class="button" href="#" id="nextCheckInLink">Record Next Check-In</a>
+            </aside>
+
+            <div class="dashboard-privacy">
+              ▣
+              <span>Your dashboard is private to you. Personal information is never sold for marketing or advertising.</span>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-grid">
+        <div>
+          <h2>Companion Commons</h2>
+          <p>Pet families. Shared purpose.</p>
+        </div>
+        <a href="trust-and-data.html">Trust, Privacy &amp; Independence</a>
+      </div>
+    </footer>
+
+    <script>
+      // Extract dog_id from URL
+      const urlParams = new URLSearchParams(window.location.search);
+      const dogId = urlParams.get('dog_id') || window.location.pathname.split('/').pop();
+
+      if (!dogId) {
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('error').style.display = 'block';
+        document.getElementById('error').textContent = '❌ No dog ID provided. Please use the link from your email or try signing in again.';
+      } else {
+        // Fetch dashboard data
+        fetch(`/api/get-dog-dashboard/${dogId}`)
+          .then(response => response.json())
+          .then(data => {
+            if (data.error) {
+              throw new Error(data.error);
+            }
+
+            // Hide loading
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('dashboard').style.display = 'block';
+
+            // Populate dog info - handle null fields
+            const age = data.dog.age ? `${data.dog.age} years old` : 'age unknown';
+            const gender = data.dog.gender ? `${data.dog.gender}` : 'gender unknown';
+
+            document.getElementById('dogName').textContent = data.dog.dog_name;
+            document.getElementById('dogInfo').textContent =
+              `${data.dog.breed} · ${age} · ${gender}`;
+            document.getElementById('dogNameComparison').textContent = data.dog.dog_name;
+
+            // Update check-in links
+            const checkInLink = `/check-in/${dogId}`;
+            document.getElementById('checkInLink').href = checkInLink;
+            document.getElementById('nextCheckInLink').href = checkInLink;
+            document.getElementById('vetPrepLink').href = checkInLink;
+
+            // Update week number using currentWeek from API
+            const currentWeek = data.currentWeek || 1;
+            document.getElementById('weekNumber').textContent = `Week ${Math.min(currentWeek, 12)} of 12`;
+
+            // Generate progress circles based on actual check-in data
+            const progressDots = document.getElementById('progressDots');
+            progressDots.innerHTML = ''; // Clear hardcoded dots
+
+            // Create a set of weeks that have check-ins
+            const weeksWithCheckIns = new Set();
+            weeksWithCheckIns.add(1); // Always mark baseline (week 1)
+            data.checkins.forEach(checkin => {
+              weeksWithCheckIns.add(checkin.week_number);
+            });
+
+            // Generate 12 circles - add empty class to weeks WITHOUT data
+            for (let week = 1; week <= 12; week++) {
+              const dot = document.createElement('i');
+              if (!weeksWithCheckIns.has(week)) {
+                dot.classList.add('empty');
+              }
+              progressDots.appendChild(dot);
+            }
+
+            // Update last check-in
+            if (data.lastCheckIn) {
+              document.getElementById('lastCheckInDate').innerHTML =
+                `<b>Last check-in:</b> ${data.lastCheckIn}`;
+              document.getElementById('lastCheckInScore').innerHTML =
+                `<b>Current score:</b> ${data.currentScore}/10`;
+            }
+
+            // Render Mobility Chart
+            if (data.chartData && data.chartData.length > 0) {
+              const chartCanvas = document.getElementById('mobilityChart');
+              const labels = data.chartData.map(d => `Week ${d.week}`);
+              const scores = data.chartData.map(d => d.score);
+
+              new Chart(chartCanvas, {
+                type: 'line',
+                data: {
+                  labels: labels,
+                  datasets: [{
+                    label: 'Mobility Score',
+                    data: scores,
+                    borderColor: '#d9534f',
+                    backgroundColor: 'rgba(217, 83, 79, 0.1)',
+                    tension: 0.3,
+                    fill: true,
+                    pointBackgroundColor: '#d9534f',
+                    pointRadius: 4
+                  }]
+                },
+                options: {
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: {
+                    legend: { display: true }
+                  },
+                  scales: {
+                    y: {
+                      beginAtZero: true,
+                      max: 10,
+                      title: { display: true, text: 'Mobility Score' }
+                    }
+                  }
+                }
+              });
+            }
+
+            // Render Comparison Chart
+            if (data.comparisonData && data.comparisonData.length > 0) {
+              const compCanvas = document.getElementById('comparisonChart');
+              const labels = data.comparisonData.map(d => `Week ${d.week}`);
+              const yourScores = data.chartData.map(d => d.score);
+              const similarScores = data.comparisonData.map(d => d.similar);
+
+              new Chart(compCanvas, {
+                type: 'line',
+                data: {
+                  labels: labels,
+                  datasets: [
+                    {
+                      label: data.dog.dog_name,
+                      data: yourScores,
+                      borderColor: '#5cb85c',
+                      pointBackgroundColor: '#5cb85c',
+                      pointRadius: 3,
+                      tension: 0.3
+                    },
+                    {
+                      label: 'Similar Dogs',
+                      data: similarScores,
+                      borderColor: '#999',
+                      borderDash: [5, 5],
+                      pointBackgroundColor: '#999',
+                      pointRadius: 3,
+                      tension: 0.3
+                    }
+                  ]
+                },
+                options: {
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: {
+                    legend: { display: true }
+                  },
+                  scales: {
+                    y: {
+                      beginAtZero: true,
+                      max: 10
+                    }
+                  }
+                }
+              });
+            }
+
+          })
+          .catch(error => {
+            console.error('Error:', error);
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('error').style.display = 'block';
+            document.getElementById('error').innerHTML = `
+              <strong>❌ Error Loading Dashboard</strong><br>
+              ${error.message}<br><br>
+              <a href="index.html" style="color: #c33; text-decoration: underline;">Back to Home</a>
+            `;
+          });
+      }
+    </script>
+  </body>
+</html>

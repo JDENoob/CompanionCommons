@@ -1,470 +1,485 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CompanionCommons - Independent Pet Health Intelligence</title>
-    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Source Sans 3', sans-serif;
-            background-color: #FAF9F6;
-            color: #666666;
-        }
-
-        h1, h2, h3, h4, h5, h6 {
-            font-family: 'Manrope', sans-serif;
-            color: #333333;
-        }
-
-        a {
-            color: #2F6B4F;
-            text-decoration: none;
-        }
-
-        /* Navigation */
-        nav {
-            background: white;
-            border-bottom: 1px solid #A8C3A1;
-            padding: 0 40px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-        }
-
-        .logo {
-            font-family: 'Manrope', sans-serif;
-            font-size: 24px;
-            font-weight: 700;
-            color: #2F6B4F;
-            padding: 20px 0;
-        }
-
-        .nav-links {
-            display: flex;
-            gap: 30px;
-        }
-
-        .nav-links button {
-            background: none;
-            border: none;
-            font-family: 'Source Sans 3', sans-serif;
-            font-size: 14px;
-            color: #666666;
-            cursor: pointer;
-            padding: 20px 0;
-            transition: all 0.3s ease;
-            border-bottom: 2px solid transparent;
-        }
-
-        .nav-links button.active {
-            color: #2F6B4F;
-            border-bottom-color: #2F6B4F;
-            font-weight: 600;
-        }
-
-        .nav-links button:hover {
-            color: #2F6B4F;
-        }
-
-        /* Main Content */
-        main {
-            min-height: 600px;
-        }
-
-        .page-section {
-            display: none;
-        }
-
-        .page-section.active {
-            display: block;
-        }
-
-        /* Hero Section */
-        .hero {
-            background: linear-gradient(135deg, #2F6B4F 0%, #A8C3A1 100%);
-            color: white;
-            padding: 80px 40px;
-            text-align: center;
-        }
-
-        .hero h1 {
-            font-size: 48px;
-            font-weight: 700;
-            margin-bottom: 20px;
-            color: white;
-            line-height: 1.2;
-        }
-
-        .hero p {
-            font-size: 18px;
-            margin-bottom: 10px;
-            line-height: 1.6;
-            color: rgba(255, 255, 255, 0.95);
-        }
-
-        .cta-button {
-            background-color: #D89B3D;
-            color: white;
-            border: none;
-            padding: 16px 32px;
-            border-radius: 8px;
-            font-size: 16px;
-            font-family: 'Source Sans 3', sans-serif;
-            font-weight: 600;
-            cursor: pointer;
-            margin-top: 30px;
-            transition: background-color 0.3s ease;
-        }
-
-        .cta-button:hover {
-            background-color: #c87d2c;
-        }
-
-        .hero .trust-statement {
-            margin-top: 30px;
-            font-size: 14px;
-            opacity: 0.9;
-        }
-
-        /* Content Sections */
-        .content-section {
-            padding: 60px 40px;
-            max-width: 900px;
-            margin: 0 auto;
-        }
-
-        .content-section h1 {
-            font-size: 42px;
-            margin-bottom: 30px;
-        }
-
-        .content-section h2 {
-            font-size: 36px;
-            margin-bottom: 30px;
-            color: #2F6B4F;
-        }
-
-        .content-section h3 {
-            font-size: 18px;
-            margin-bottom: 10px;
-        }
-
-        .content-section p {
-            font-size: 16px;
-            color: #666666;
-            line-height: 1.8;
-            margin-bottom: 20px;
-        }
-
-        .content-section ul {
-            font-size: 16px;
-            color: #666666;
-            line-height: 1.8;
-            margin-left: 20px;
-            margin-bottom: 20px;
-        }
-
-        .content-section li {
-            margin-bottom: 10px;
-        }
-
-        /* Join Section */
-        .join-section {
-            background-color: #2F6B4F;
-            color: white;
-            padding: 60px 40px;
-            text-align: center;
-        }
-
-        .join-section h2 {
-            font-size: 36px;
-            margin-bottom: 20px;
-            color: white;
-        }
-
-        .join-section p {
-            font-size: 18px;
-            margin-bottom: 30px;
-            line-height: 1.6;
-            color: rgba(255, 255, 255, 0.95);
-        }
-
-        /* Features Grid */
-        .features-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 30px;
-            margin-bottom: 20px;
-        }
-
-        .feature-card {
-            padding: 20px;
-            border-left: 4px solid #D89B3D;
-            background: white;
-        }
-
-        .feature-card h3 {
-            font-size: 18px;
-            color: #333333;
-            margin-bottom: 10px;
-        }
-
-        .feature-card p {
-            font-size: 14px;
-            line-height: 1.6;
-        }
-
-        /* Footer */
-        footer {
-            background: #2F6B4F;
-            color: white;
-            text-align: center;
-            padding: 40px;
-        }
-
-        footer .brand {
-            font-family: 'Manrope', sans-serif;
-            font-size: 18px;
-            font-weight: 700;
-            margin-bottom: 10px;
-        }
-
-        footer .tagline {
-            font-size: 14px;
-            opacity: 0.9;
-            font-style: italic;
-        }
-
-        /* Promise Box */
-        .promise-box {
-            background: #E8F5E9;
-            border-left: 4px solid #2F6B4F;
-            padding: 30px;
-            margin: 40px 0;
-            border-radius: 4px;
-        }
-
-        .promise-box p {
-            margin-bottom: 10px;
-        }
-
-        .promise-box p:first-child {
-            font-weight: 600;
-            color: #2F6B4F;
-        }
-
-        .faq-item {
-            margin-bottom: 30px;
-            padding-bottom: 30px;
-            border-bottom: 1px solid #E0E0E0;
-        }
-
-        .faq-item:last-child {
-            border-bottom: none;
-        }
-
-        .faq-item h3 {
-            color: #2F6B4F;
-            margin-bottom: 15px;
-        }
-    </style>
-</head>
-<body>
-    <!-- Navigation -->
-    <nav>
-        <div class="logo">CompanionCommons™</div>
-        <div class="nav-links">
-            <button class="nav-btn active" data-page="home">Home</button>
-            <button class="nav-btn" data-page="about">About</button>
-            <button class="nav-btn" data-page="independent">Independent</button>
-            <button class="nav-btn" data-page="data">Data</button>
-            <button class="nav-btn" data-page="founding">Founding</button>
-            <button class="nav-btn" data-page="faq">FAQ</button>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Companion Commons is building the world's largest independent pet health intelligence network."
+    />
+    <title>Companion Commons | Pet Health Intelligence</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="assets/css/styles.css" />
+    <script src="assets/js/main.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <aside class="copy-editor" aria-label="Website wording editor">
+      <button
+        class="copy-editor-toggle"
+        type="button"
+        data-copy-toggle
+        aria-expanded="false"
+      >
+        <span aria-hidden="true">✎</span> Edit wording
+      </button>
+      <div class="copy-editor-panel" data-copy-panel hidden>
+        <strong>Copy Editor</strong>
+        <p>Click highlighted wording on the page and type your changes.</p>
+        <div class="copy-editor-actions">
+          <button type="button" data-copy-save>Save changes</button>
+          <button type="button" data-copy-export>Export wording</button>
+          <button type="button" data-copy-reset>Reset</button>
         </div>
-    </nav>
+        <small
+          >Changes are saved in this browser. Export the wording file to share
+          them.</small
+        >
+      </div>
+    </aside>
+    <header class="site-header" data-header>
+      <div class="container nav-shell">
+        <a class="brand" href="index.html" aria-label="Companion Commons home">
+          <span class="brand-mark" aria-hidden="true">C</span>
+          <span class="brand-name">Companion<br />Commons</span>
+        </a>
+        <button
+          class="menu-toggle"
+          type="button"
+          aria-expanded="false"
+          aria-controls="site-nav"
+          data-menu-toggle
+        >
+          <span class="sr-only">Open navigation</span><span></span><span></span
+          ><span></span>
+        </button>
+        <nav
+          class="site-nav"
+          id="site-nav"
+          aria-label="Primary navigation"
+          data-menu
+        >
+          <a href="how-it-works.html">How It Works</a>
+          <a href="senior-dog-mobility.html">Pet Health Library</a>
+          <a href="public-insights.html">Our Impact</a>
+          <a href="about.html">About</a>
+          <a href="trust-and-data.html">Trust, Privacy &amp; Independence</a>
+          <a href="faqs.html">FAQs</a>
+          <a class="nav-signin" href="#signin">Sign In</a>
+          <a class="button button-small" href="#join">Join the Community</a>
+        </nav>
+      </div>
+    </header>
 
-    <!-- Main Content -->
-    <main>
-        <!-- HOME PAGE -->
-        <div id="home" class="page-section active">
-            <section class="hero">
-                <h1>Every Pet Has a Story.</h1>
-                <p>Join a movement of pet families working together to better understand the health journeys of the companions they love.</p>
-                <button class="cta-button">Begin My Pet's Health Journey</button>
-                <p class="trust-statement">Takes less than 3 minutes • Free to join • Independent by Design</p>
-            </section>
+    <main id="main">
+      <section class="hero">
+        <div class="container hero-grid">
+          <div class="hero-copy">
+            <p class="eyebrow" data-copy="hero.eyebrow">Building the world's largest pet health intelligence Community</p>
+            <h1 data-copy="hero.headline">Together, We Can Change the Future of Pet Health Understanding</h1>
+            <p class="hero-intro" data-copy="hero.subheading">“Every pet health journey you share helps the community. Real
+              experiences from real pet parents—that's how we get smarter
+              together.”</p>
+            <div class="button-row">
+              <a class="button" href="#join">Begin Your Pet's Health Journey</a>
+              <a class="button button-secondary" href="how-it-works.html"
+                >See How It Works <span aria-hidden="true">→</span></a
+              >
+            </div>
+            <ul class="trust-list" aria-label="Participation promises">
+              <li><span aria-hidden="true">♡</span> Always free</li>
+              <li><span aria-hidden="true">◇</span> One update per week</li>
+              <li><span aria-hidden="true">✓</span> Independent by Design</li>
+            </ul>
+          </div>
+          <div
+            class="hero-visual"
+            role="img"
+            aria-label="A warm community gathering of pet families and senior dogs"
+          >
+            <div class="sun-glow"></div>
+            <div class="portrait-card portrait-main">
+              <span class="dog-icon" aria-hidden="true">🐕</span>
+              <p>Pet families.<br />Shared purpose.</p>
+            </div>
+            <div class="portrait-card portrait-small portrait-one">
+              <span aria-hidden="true">🐶</span>
+            </div>
+            <div class="portrait-card portrait-small portrait-two">
+              <span aria-hidden="true">🐾</span>
+            </div>
+            <div class="founder-badge">
+              <strong>You cannot improve</strong
+              ><span>what you do not understand</span>
+            </div>
+          </div>
+        </div>
+      </section>
 
-            <section class="content-section">
-                <h2>Why This Movement Exists</h2>
-                <p>I have spent my career solving complex operational challenges and learning one important lesson: You cannot improve what you do not understand.</p>
-                <p>As a pet parent, I've watched my companions age and wondered: How do I know if they're truly healthy? Are the small changes I'm seeing normal? Would knowing the collective voice of other pet parents help?</p>
-                <p style="font-weight: 600; color: #2F6B4F;">I've decided to build the largest community of pet parents driving the largest INDEPENDENT pet health initiative ever.</p>
-            </section>
+      <section class="impact-band" aria-labelledby="impact-title">
+        <div class="container impact-grid">
+          <h2 id="impact-title" data-copy="impact.headline">A Growing Community<br>Built by Pet Families</h2>
+          <div class="impact-item">
+            <span class="impact-icon" aria-hidden="true">◎</span>
+            <div>
+              <small>Founding members</small><strong>Growing daily</strong>
+            </div>
+          </div>
+          <div class="impact-item">
+            <span class="impact-icon" aria-hidden="true">✓</span>
+            <div>
+              <small>12-week Pet Health Journeys shared</small
+              ><strong>Growing daily</strong>
+            </div>
+          </div>
+          <div class="impact-item">
+            <span class="impact-icon" aria-hidden="true">♧</span>
+            <div>
+              <small>Pets represented</small><strong>Growing daily</strong>
+            </div>
+          </div>
+        </div>
+      </section>
 
-            <section class="join-section">
-                <h2>Join the Movement</h2>
-                <p>We're inviting the first 1,500 pet families to become Founding Members and help build the future of pet health.</p>
-                <button class="cta-button">Become a Founding Member</button>
-            </section>
-
-            <section class="content-section">
-                <h2>What You Receive</h2>
-                <div class="features-grid">
-                    <div class="feature-card">
-                        <h3>Personalized Health Journey Profile</h3>
-                        <p>A place to understand your companion's unique story, lifestyle, and health over time.</p>
-                    </div>
-                    <div class="feature-card">
-                        <h3>Simple Health Journey Check-Ins</h3>
-                        <p>A quick and meaningful way to stay connected with changes in your pet's health.</p>
-                    </div>
-                    <div class="feature-card">
-                        <h3>Health Journey Insights</h3>
-                        <p>Future insights designed to help you better understand your companion.</p>
-                    </div>
-                    <div class="feature-card">
-                        <h3>Health Journey Record</h3>
-                        <p>A resource you can save, review, and share with your veterinarian.</p>
-                    </div>
+      <section class="section two-lives" aria-labelledby="two-lives-title">
+        <div class="container">
+          <div class="section-heading centered">
+            <p class="eyebrow" data-copy="value.eyebrow">One 3-minute baseline. One 30-second update each week.</p>
+            <h2 id="two-lives-title" data-copy="value.headline">Your check-in helps T<em>wo Lives</em> at once.</em> at once.
+            </h2>
+            <p data-copy="value.intro">Useful guidance for the Companions you love today, and stronger
+              knowledge for the pets who come next.</p>
+          </div>
+          <div class="value-grid">
+            <article class="value-card personal-card">
+              <div class="value-art" aria-hidden="true">
+                <span>♡</span>
+                <div class="art-dog">🐕</div>
+              </div>
+              <div class="value-content">
+                <span class="card-kicker">Personal value</span>
+                <h3 data-copy="value.personalTitle">For Your Companion</h3>
+                <p data-copy="value.personalBody">Notice mobility changes, understand what they may mean,&nbsp;
+                  get practical comparisons to similar dogs and understand more
+                  about your pet's health journey</p>
+                <ul class="check-list">
+                  <li>3-minute Health Journey Baseline</li>
+                  <li>30-second Pet Journey Updates once per week</li>
+                  <li>A guided 12-week health journey</li>
+                  <li>Personalized observations over time</li>
+                  <li>Helpful actions and resources</li>
+                </ul>
+                <a class="text-link" href="senior-dog-mobility.html"
+                  >Explore senior dog mobility
+                  <span aria-hidden="true">→</span></a
+                >
+              </div>
+            </article>
+            <article class="value-card collective-card">
+              <div class="value-art network-art" aria-hidden="true">
+                <span>✦</span>
+                <div class="network-dots">
+                  <i></i><i></i><i></i><i></i><i></i>
                 </div>
-            </section>
-        </div>
-
-        <!-- ABOUT PAGE -->
-        <div id="about" class="page-section">
-            <section class="content-section">
-                <h1>Our Mission</h1>
-                <p>CompanionCommons exists because every pet deserves to be better understood.</p>
-                <p>Today, valuable pet health information is scattered across veterinary visits, products, supplements, and individual experiences. We believe pet families deserve an independent way to understand their companion's health journey over time.</p>
-                <p>Our mission is to create the most trusted source of pet health understanding built around transparency, community, and independence.</p>
-            </section>
-        </div>
-
-        <!-- INDEPENDENT PAGE -->
-        <div id="independent" class="page-section">
-            <section class="content-section">
-                <h1>Independent by Design</h1>
-                <p>Trust requires independence. CompanionCommons was designed differently from the beginning.</p>
-                
-                <div style="margin-bottom: 40px;">
-                    <h2 style="font-size: 24px;">We are NOT:</h2>
+              </div>
+              <div class="value-content">
+                <span class="card-kicker">Collective impact</span>
+                <h3 data-copy="value.collectiveTitle">For Every Companion</h3>
+                <p data-copy="value.collectiveBody">Your Pet health journeys strengthen the collective picture of
+                  pet health—revealing patterns and advancing understanding</p>
+                <ul class="check-list">
+                  <li>Anonymized by design</li>
+                  <li>Independent by Design</li>
+                  <li>Public insights that create change</li>
+                </ul>
+                <a class="text-link" href="trust-and-data.html"
+                  >See how we protect your trust
+                  <span aria-hidden="true">→</span></a
+                >
+              </div>
+            </article>
+          </div>
+          <section class="dashboard-showcase" aria-labelledby="dashboard-title">
+            <div class="dashboard-intro">
+              <p class="eyebrow">What you get</p>
+              <h2 id="dashboard-title">
+                Your observations become a clearer story.
+              </h2>
+              <p>
+                Each weekly update adds to your companion’s private Health
+                Journey Dashboard—helping you notice changes, remember what
+                happened, and prepare for more informed conversations with your
+                veterinarian.
+              </p>
+            </div>
+            <div class="dashboard-layout">
+              <div class="dashboard-window">
+                <div class="window-bar" aria-hidden="true">
+                  <i></i><i></i><i></i>
+                </div>
+                <div class="pet-summary">
+                  <div class="pet-avatar" aria-hidden="true">🐕</div>
+                  <div class="pet-identity">
+                    <h3>Bailey’s Health Journey</h3>
+                    <p>Golden Retriever · 11 years old · Male</p>
+                  </div>
+                  <a class="button dashboard-update" href="#join"
+                    >Share This Week’s 30-Second Update</a
+                  >
+                </div>
+                <div class="journey-progress" aria-label="Week 6 of 12">
+                  <strong>Week 6 of 12</strong><span>Baseline complete</span>
+                  <div class="progress-dots" aria-hidden="true">
+                    <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i
+                    ><i></i><i></i><i></i><i></i>
+                  </div>
+                </div>
+                <div class="dashboard-row">
+                  <article class="dashboard-panel mobility-panel">
+                    <h4>Mobility observations over time</h4>
+                    <div class="chart-legend">
+                      <span class="green">Getting up after rest</span
+                      ><span class="coral">Walking comfort</span
+                      ><span class="gold">Stairs &amp; jumping</span
+                      ><span class="gray">Overall activity</span>
+                    </div>
+                    <p class="chart-swipe-cue" aria-hidden="true">
+                      Swipe to view chart →
+                    </p>
+                    <div
+                      class="chart-scroll"
+                      tabindex="0"
+                      role="region"
+                      aria-label="Scrollable mobility observations chart"
+                    >
+                      <svg
+                        class="line-chart"
+                        viewBox="0 0 600 190"
+                        role="img"
+                        aria-label="Bailey's owner-reported mobility observations from baseline through week six"
+                      >
+                        <g class="grid-lines">
+                          <path
+                            d="M45 25H580M45 65H580M45 105H580M45 145H580"
+                          />
+                        </g>
+                        <g class="axis-labels">
+                          <text x="4" y="31">Easier</text>
+                          <text x="4" y="110">Same</text>
+                          <text x="4" y="150">Harder</text>
+                          <text x="42" y="178">Baseline</text>
+                          <text x="142" y="178">Week 2</text>
+                          <text x="292" y="178">Week 4</text>
+                          <text x="508" y="178">Week 6</text>
+                        </g>
+                        <polyline
+                          class="chart-green"
+                          points="50,48 130,45 215,64 300,68 390,75 480,80 570,91"
+                        />
+                        <polyline
+                          class="chart-coral"
+                          points="50,92 130,105 215,112 300,116 390,126 480,137 570,139"
+                        />
+                        <polyline
+                          class="chart-gold"
+                          points="50,70 130,88 215,96 300,102 390,117 480,121 570,130"
+                        />
+                        <polyline
+                          class="chart-gray"
+                          points="50,110 130,128 215,138 300,139 390,146 480,152 570,154"
+                        />
+                      </svg>
+                    </div>
+                    <p class="chart-note">
+                      ⓘ Your reported observations—not a diagnosis.
+                    </p>
+                  </article>
+                  <article class="dashboard-panel glance-panel">
+                    <h4>This week at a glance</h4>
                     <ul>
-                        <li>A pet food company</li>
-                        <li>A supplement company</li>
-                        <li>An insurance company</li>
-                        <li>A marketing company</li>
+                      <li><b>Walking comfort</b> has remained consistent.</li>
+                      <li>
+                        <b>Getting up after rest</b> has been more difficult for
+                        two weeks.
+                      </li>
+                      <li>You reported <b>fewer active days</b> this week.</li>
                     </ul>
+                  </article>
                 </div>
-
-                <div>
-                    <h2 style="font-size: 24px;">Our Commitment:</h2>
-                    <ul>
-                        <li>Put pets first</li>
-                        <li>Protect family trust</li>
-                        <li>Be transparent about how information is used</li>
-                        <li>Create meaningful insights that benefit the pet community</li>
-                    </ul>
-                </div>
-            </section>
+                <article class="dashboard-panel comparison-panel">
+                  <h4>How Bailey compares with similar Golden Retrievers</h4>
+                  <div class="chart-legend">
+                    <span class="green">Bailey</span
+                    ><span class="comparison">Similar Golden Retrievers</span>
+                  </div>
+                  <p class="chart-swipe-cue" aria-hidden="true">
+                    Swipe to view chart →
+                  </p>
+                  <div
+                    class="chart-scroll"
+                    tabindex="0"
+                    role="region"
+                    aria-label="Scrollable Golden Retriever comparison chart"
+                  >
+                    <svg
+                      class="comparison-chart"
+                      viewBox="0 0 780 145"
+                      role="img"
+                      aria-label="Bailey compared with anonymized owner-reported observations from participating similar-age Golden Retrievers"
+                    >
+                      <g class="grid-lines">
+                        <path d="M55 25H755M55 65H755M55 105H755" />
+                      </g>
+                      <g class="axis-labels">
+                        <text x="3" y="30">Easier</text>
+                        <text x="3" y="70">Same</text>
+                        <text x="3" y="110">Harder</text>
+                        <text x="54" y="137">Week 1</text>
+                        <text x="190" y="137">Week 2</text>
+                        <text x="325" y="137">Week 3</text>
+                        <text x="465" y="137">Week 4</text>
+                        <text x="600" y="137">Week 5</text>
+                        <text x="712" y="137">Week 6</text>
+                      </g>
+                      <polyline
+                        class="chart-green"
+                        points="60,59 195,65 330,68 470,68 605,74 745,80"
+                      />
+                      <polyline
+                        class="chart-comparison"
+                        points="60,82 195,85 330,87 470,86 605,89 745,92"
+                      />
+                    </svg>
+                  </div>
+                  <p class="comparison-source">
+                    Based on anonymized, owner-reported observations from
+                    participating Golden Retrievers of a similar age.
+                  </p>
+                  <p class="chart-note">
+                    For context only—not a diagnosis or veterinary assessment.
+                  </p>
+                </article>
+                <article class="vet-prep">
+                  <div aria-hidden="true">♡</div>
+                  <p>
+                    <strong>Prepare for a veterinarian conversation</strong
+                    ><br />Review recent notes and highlights to help you share
+                    what matters most.
+                  </p>
+                  <a class="button button-secondary" href="#join"
+                    >View Bailey’s Journey Summary</a
+                  >
+                </article>
+              </div>
+              <aside class="dashboard-benefits">
+                <h3>A useful record you build over time</h3>
+                <ul>
+                  <li>
+                    <span>≡</span>
+                    <div>
+                      <strong>Remember changes between visits</strong>
+                      <p>Capture the little things that are easy to forget.</p>
+                    </div>
+                  </li>
+                  <li>
+                    <span>⌁</span>
+                    <div>
+                      <strong>See your own reported patterns</strong>
+                      <p>Spot trends in the ways that matter most to you.</p>
+                    </div>
+                  </li>
+                  <li>
+                    <span>?</span>
+                    <div>
+                      <strong>Prepare questions for your veterinarian</strong>
+                      <p>Arrive ready with notes and context.</p>
+                    </div>
+                  </li>
+                  <li>
+                    <span>▣</span>
+                    <div>
+                      <strong>Keep everything in one private place</strong>
+                      <p>Only you decide what to share.</p>
+                    </div>
+                  </li>
+                </ul>
+                <a class="button" href="#join"
+                  >Begin My Companion’s Health Journey</a
+                >
+              </aside>
+            </div>
+            <div class="dashboard-privacy">
+              ▣
+              <span
+                >Your dashboard is private to you. Personal information is never
+                sold for marketing or advertising.</span
+              >
+            </div>
+            <div class="dashboard-disclaimer">
+              Companion Commons is not a veterinary service and does not
+              diagnose, treat, prescribe, or provide veterinary advice. Always
+              consult a licensed veterinarian about your companion’s health and
+              care. Think this may be an emergency? Contact your veterinarian or
+              the nearest emergency veterinary hospital immediately.
+            </div>
+          </section>
+          <aside
+            class="independence-callout"
+            aria-label="Independent by Design"
+          >
+            <div class="independence-seal" aria-hidden="true">✓</div>
+            <div>
+              <p class="eyebrow">Totally independent</p>
+              <h3>
+                We are not an insurance, pet brand, vet group, marketing, or pet
+                food company.
+              </h3>
+              <p>
+                Companion Commons is <strong>Independent by Design</strong>. Our
+                responsibility is to pet families, better understanding, and the
+                pet health journeys we build together.
+              </p>
+            </div>
+          </aside>
         </div>
+      </section>
 
-        <!-- DATA USAGE PAGE -->
-        <div id="data" class="page-section">
-            <section class="content-section">
-                <h1>How Your Data Is Used</h1>
-                <p>Your pet is family. We understand that sharing information requires trust.</p>
-
-                <div style="margin-bottom: 40px;">
-                    <h2 style="font-size: 24px;">Information May Be Used To:</h2>
-                    <ul>
-                        <li>Create your companion's health journey profile</li>
-                        <li>Provide future insights</li>
-                        <li>Understand broader pet health trends</li>
-                        <li>Improve tools and resources for the pet community</li>
-                    </ul>
-                </div>
-
-                <div class="promise-box">
-                    <p>Our Promise:</p>
-                    <p>Your personal information will never be sold for marketing purposes. Your participation helps build knowledge, not marketing lists.</p>
-                </div>
-            </section>
+      <section
+        class="review-marker"
+        id="join"
+        aria-label="End of first design checkpoint"
+      >
+        <div class="container">
+          <p>Questions about the community?</p>
+          <h2>Learn how journeys, privacy, data, and independence work.</h2>
+          <a class="button" href="faqs.html" style="margin-top: 25px"
+            >Read Frequently Asked Questions</a
+          >
         </div>
-
-        <!-- FOUNDING MEMBER PAGE -->
-        <div id="founding" class="page-section">
-            <section class="content-section">
-                <h1>Be One of the First</h1>
-                <p>The future of pet health will be shaped by pet families who care enough to participate.</p>
-                <p>Founding Members are helping create the foundation of a trusted, independent pet health movement. Your companion's journey can help future generations of pets.</p>
-                <button class="cta-button">Become a Founding Member</button>
-            </section>
-        </div>
-
-        <!-- FAQ PAGE -->
-        <div id="faq" class="page-section">
-            <section class="content-section">
-                <h1>Frequently Asked Questions</h1>
-                
-                <div class="faq-item">
-                    <h3>Is CompanionCommons a pet product company?</h3>
-                    <p>No. CompanionCommons is an independent pet health intelligence platform.</p>
-                </div>
-
-                <div class="faq-item">
-                    <h3>Will my information be sold?</h3>
-                    <p>No. Your personal information will never be sold for marketing purposes.</p>
-                </div>
-
-                <div class="faq-item">
-                    <h3>How much time does this take?</h3>
-                    <p>Weekly check-ins are designed to take approximately 30 seconds. The initial profile setup takes approximately 2 minutes.</p>
-                </div>
-
-                <div class="faq-item">
-                    <h3>Do I need a senior dog?</h3>
-                    <p>No. We welcome dogs and cats of all ages as part of our community.</p>
-                </div>
-
-                <div class="faq-item">
-                    <h3>Why should I participate?</h3>
-                    <p>Because every pet has a story, and every health journey helps create a better understanding of pet health. Help build the community!</p>
-                </div>
-            </section>
-        </div>
+      </section>
     </main>
-
-    <!-- Footer -->
-    <footer>
-        <p class="brand">CompanionCommons™ — Independent Pet Health Intelligence</p>
-        <p class="tagline">"Every Pet Has a Story. Every Health Journey Matters."</p>
+    <footer class="site-footer">
+      <div class="container footer-grid">
+        <div>
+          <h2>Companion Commons</h2>
+          <p>Pet families. Shared purpose.</p>
+        </div>
+        <a href="trust-and-data.html">Trust, Privacy &amp; Independence</a>
+      </div>
+      <div class="container veterinary-disclaimer">
+        <p>
+          Companion Commons is not a veterinary service and does not diagnose,
+          treat, prescribe, or provide veterinary advice. Always consult a
+          licensed veterinarian about your companion’s health and care. Think
+          this may be an emergency? Contact your veterinarian or the nearest
+          emergency veterinary hospital immediately.
+        </p>
+      </div>
     </footer>
-
-    <!-- JavaScript -->
-    <script>
-        document.querySelectorAll('.nav-btn').forEach(btn => {
-            btn.addEventListener('click', function() {
-                document.querySelectorAll('.page-section').forEach(page => {
-                    page.classList.remove('active');
-                });
-                document.querySelectorAll('.nav-btn').forEach(button => {
-                    button.classList.remove('active');
-                });
-                const pageId = this.getAttribute('data-page');
-                document.getElementById(pageId).classList.add('active');
-                this.classList.add('active');
-            });
-        });
-    </script>
-</body>
+  </body>
 </html>
