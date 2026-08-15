@@ -1724,125 +1724,191 @@ app.get('/dashboard/:dog_id', async (req, res) => {
           * { margin: 0; padding: 0; box-sizing: border-box; }
           body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #F5F1E8;
             min-height: 100vh;
             padding: 20px;
+            color: #2C2C2C;
           }
-          .container { max-width: 900px; margin: 0 auto; }
+          .container { max-width: 1200px; margin: 0 auto; }
           .header {
-            text-align: center;
-            color: white;
+            background: #FAFAF8;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+          }
+          .header h1 { font-size: 28px; margin-bottom: 8px; color: #2C2C2C; font-weight: 600; }
+          .header p { font-size: 14px; color: #888; font-weight: 400; }
+          .week-progress {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 12px;
+            font-size: 13px;
+            color: #666;
+          }
+          .week-dots {
+            display: flex;
+            gap: 4px;
+          }
+          .week-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #ddd;
+          }
+          .week-dot.completed {
+            background: #A89968;
+          }
+          .dashboard-layout {
+            display: grid;
+            grid-template-columns: 2.2fr 1.2fr;
+            gap: 20px;
             margin-bottom: 30px;
           }
-          .header h1 { font-size: 32px; margin-bottom: 5px; }
-          .header p { opacity: 0.9; }
+          @media (max-width: 1024px) {
+            .dashboard-layout {
+              grid-template-columns: 1fr;
+            }
+          }
           .metrics-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-bottom: 30px;
+            grid-template-columns: 1fr;
+            gap: 12px;
+            background: #FAFAF8;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
           }
           .metric-card {
-            background: white;
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            background: #FAFAF8;
+            border-radius: 8px;
+            padding: 16px;
             text-align: center;
+            border: 1px solid #E8E4DA;
           }
-          .metric-card h3 { color: #666; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
-          .metric-value { font-size: 28px; font-weight: 700; color: #333; margin-bottom: 8px; }
-          .metric-label { font-size: 14px; color: #999; }
+          .metric-card h3 { color: #999; font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+          .metric-value { font-size: 24px; font-weight: 500; color: #2C2C2C; margin-bottom: 6px; }
+          .metric-label { font-size: 13px; color: #999; }
           .trend-indicator {
             display: inline-block;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 12px;
+            padding: 3px 10px;
+            border-radius: 16px;
+            font-size: 11px;
             font-weight: 600;
             margin-top: 8px;
+            background: #F0F0F0;
+            color: #666;
           }
           .chart-card {
-            background: white;
+            background: #FAFAF8;
             border-radius: 12px;
             padding: 20px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-            margin-bottom: 30px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
           }
-          .chart-card h2 { font-size: 18px; color: #333; margin-bottom: 15px; }
-          #mobilityChart { max-height: 300px; }
+          .chart-card h2 { font-size: 16px; color: #2C2C2C; margin-bottom: 15px; font-weight: 500; }
+          #mobilityChart { max-height: 280px; }
+          .tips-card {
+            background: white;
+            border-radius: 12px;
+            padding: 18px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            margin-bottom: 16px;
+          }
+          .tips-card:last-child { margin-bottom: 0; }
+          .tips-card h2 { font-size: 15px; color: #2C2C2C; margin-bottom: 10px; font-weight: 700; }
+          .tip-item {
+            font-size: 13px;
+            line-height: 1.6;
+            color: #666;
+            margin: 0;
+          }
           .peer-card {
-            background: white;
+            background: #FAFAF8;
             border-radius: 12px;
             padding: 20px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
           }
-          .peer-card h2 { font-size: 18px; color: #333; margin-bottom: 15px; }
+          .peer-card h2 { font-size: 16px; color: #2C2C2C; margin-bottom: 15px; font-weight: 500; }
           .peer-stat {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 12px 0;
-            border-bottom: 1px solid #eee;
+            padding: 10px 0;
+            border-bottom: 1px solid #E8E4DA;
+            font-size: 13px;
           }
           .peer-stat:last-child { border-bottom: none; }
-          .peer-stat-label { color: #666; font-weight: 500; }
-          .peer-stat-value { font-size: 20px; font-weight: 700; color: #333; }
+          .peer-stat-label { color: #999; font-weight: 400; }
+          .peer-stat-value { font-size: 18px; font-weight: 500; color: #2C2C2C; }
           .rank-badge {
             display: inline-block;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #D4AF88;
             color: white;
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-weight: 600;
+            padding: 6px 14px;
+            border-radius: 16px;
+            font-weight: 500;
+            font-size: 12px;
             margin-top: 10px;
           }
           .back-link {
-            color: white;
+            color: #A89968;
             text-decoration: none;
-            font-size: 14px;
+            font-size: 13px;
             display: inline-block;
             margin-bottom: 20px;
-            opacity: 0.9;
+            font-weight: 500;
           }
-          .back-link:hover { opacity: 1; }
+          .back-link:hover { color: #8B7D5B; }
           .baseline-card {
-            background: white;
+            background: #FAFAF8;
             border-radius: 12px;
             padding: 20px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
             margin-bottom: 30px;
-            display: grid;
-            grid-template-columns: 1fr 2fr;
-            gap: 20px;
           }
-          @media (max-width: 600px) {
-            .baseline-card {
-              grid-template-columns: 1fr;
-            }
+          button {
+            font-family: inherit;
+          }
+          button:hover {
+            opacity: 0.9;
           }
           .baseline-photo {
             text-align: center;
+            position: relative;
+            width: 80px;
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
           }
           .baseline-photo img {
-            max-width: 100%;
-            max-height: 250px;
+            width: 80px;
+            height: 80px;
             border-radius: 8px;
             object-fit: cover;
           }
           .baseline-photo-placeholder {
-            width: 100%;
-            height: 200px;
-            background: #f0f0f0;
+            width: 80px;
+            height: 80px;
+            background: #E8E4DA;
             border-radius: 8px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 48px;
-            color: #ccc;
+            font-size: 40px;
+            color: #bbb;
+          }
+          .baseline-info {
+            display: flex;
+            flex-direction: column;
           }
           .baseline-info h2 {
-            font-size: 18px;
-            color: #333;
+            font-size: 24px;
+            color: #2C2C2C;
             margin-bottom: 15px;
+            font-weight: 500;
           }
           .baseline-info-grid {
             display: grid;
@@ -1852,11 +1918,12 @@ app.get('/dashboard/:dog_id', async (req, res) => {
           }
           .baseline-info-item {
             padding: 12px;
-            background: #f5f5f5;
+            background: #FAFAF8;
             border-radius: 8px;
+            border: 1px solid #E8E4DA;
           }
           .baseline-info-label {
-            font-size: 12px;
+            font-size: 11px;
             color: #999;
             text-transform: uppercase;
             letter-spacing: 0.5px;
@@ -1865,20 +1932,49 @@ app.get('/dashboard/:dog_id', async (req, res) => {
           }
           .baseline-info-value {
             font-size: 18px;
-            font-weight: 700;
-            color: #333;
+            font-weight: 500;
+            color: #2C2C2C;
           }
           .baseline-notes {
             padding: 12px;
-            background: #f5f5f5;
+            background: #FAFAF8;
             border-radius: 8px;
             margin-top: 15px;
+            border: 1px solid #E8E4DA;
           }
           .baseline-notes p {
-            font-size: 14px;
-            color: #666;
+            font-size: 13px;
+            color: #555;
             line-height: 1.5;
             margin: 0;
+          }
+          .btn-primary {
+            background: #A89968;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: opacity 0.2s;
+          }
+          .btn-primary:hover {
+            opacity: 0.85;
+          }
+          .btn-secondary {
+            background: #D4AF88;
+            color: white;
+            border: none;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: opacity 0.2s;
+          }
+          .btn-secondary:hover {
+            opacity: 0.85;
           }
         </style>
       </head>
@@ -1888,98 +1984,130 @@ app.get('/dashboard/:dog_id', async (req, res) => {
 
           <div class="header">
             <h1>📊 ${dog.dog_name}'s Mobility Dashboard</h1>
-            <p>Week ${checkins[checkins.length - 1].week_number} Overview</p>
-          </div>
-
-          <div class="baseline-card">
-            <div class="baseline-photo">
-              ${dog.photo_url
-                ? `<img src="${dog.photo_url}" alt="${dog.dog_name}" />`
-                : `<div class="baseline-photo-placeholder">🐕</div>`
-              }
-            </div>
-            <div class="baseline-info">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                <h2 style="margin: 0; font-size: 20px; font-weight: 700; color: #333;">📋 Baseline Profile</h2>
-                <button id="openCheckInBtn" style="background: #007AFF; color: white; padding: 10px 20px; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap;">
-                  Complete this Week's Health Survey
-                </button>
+            <p>${dog.breed || ''} • ${dog.age || 'Age unknown'} years old • ${dog.gender || 'Gender unknown'}</p>
+            <div class="week-progress">
+              <span>Week ${checkins[checkins.length - 1].week_number} of 12</span>
+              <div class="week-dots">
+                ${Array.from({length: 12}, (_, i) => {
+                  const weekNum = i + 1;
+                  const isCompleted = weekNum <= checkins[checkins.length - 1].week_number;
+                  return `<div class="week-dot ${isCompleted ? 'completed' : ''}"></div>`;
+                }).join('')}
               </div>
-              <div class="baseline-info-grid">
-                <div class="baseline-info-item">
-                  <div class="baseline-info-label">Breed</div>
-                  <div class="baseline-info-value">${dog.breed || 'Not specified'}</div>
+            </div>
+          </div>
+
+          <div class="dashboard-layout">
+            <!-- LEFT COLUMN: DOG INFO + CHARTS -->
+            <div>
+              <div class="baseline-card">
+                <div style="display: flex; gap: 15px; align-items: flex-start; margin-bottom: 20px;">
+                  <div class="baseline-photo">
+                    ${dog.photo_url
+                      ? `<img src="${dog.photo_url}" alt="${dog.dog_name}" />`
+                      : `<div class="baseline-photo-placeholder">🐕</div>`
+                    }
+                  </div>
+                  <div style="flex: 1;">
+                    <h2 style="margin: 0 0 8px 0; font-size: 22px; font-weight: 500; color: #2C2C2C;">${dog.dog_name}'s Health Journey</h2>
+                    <p style="margin: 0 0 12px 0; font-size: 13px; color: #999; font-weight: 400;">${dog.breed || 'Breed unknown'} • ${dog.age || 'Age unknown'} years old • ${dog.gender || 'Gender unknown'}</p>
+                    <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                      <form id="quickPhotoUpload" style="display: flex; gap: 4px; align-items: center;">
+                        <input type="file" id="quickPhotoInput" accept="image/*" style="padding: 4px 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px; width: 100px;">
+                        <button type="submit" class="btn-secondary">📷 Update ${dog.dog_name}'s Photo</button>
+                      </form>
+                      <button id="openCheckInBtn" class="btn-primary" style="white-space: nowrap; padding: 8px 16px;">
+                        Share This Week's Update
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                <div class="baseline-info-item">
-                  <div class="baseline-info-label">Age</div>
-                  <div class="baseline-info-value">${dog.age ? dog.age + ' yrs' : 'Not specified'}</div>
-                </div>
-                <div class="baseline-info-item">
-                  <div class="baseline-info-label">Gender</div>
-                  <div class="baseline-info-value">${dog.gender || 'Not specified'}</div>
-                </div>
-                <div class="baseline-info-item">
-                  <div class="baseline-info-label">Baseline Score</div>
-                  <div class="baseline-info-value">${dog.baseline_mobility_score}/8</div>
+                <div class="baseline-info">
+                  <div class="baseline-info-grid">
+                    <div class="baseline-info-item">
+                      <div class="baseline-info-label">Baseline Score</div>
+                      <div class="baseline-info-value">${dog.baseline_mobility_score}/8</div>
+                    </div>
+                    <div class="baseline-info-item">
+                      <div class="baseline-info-label">Weeks Tracked</div>
+                      <div class="baseline-info-value">${streak}w</div>
+                    </div>
+                  </div>
+                  ${dog.baseline_notes ? `
+                  <div class="baseline-notes">
+                    <p><strong>Notes:</strong> ${dog.baseline_notes}</p>
+                  </div>
+                  ` : ''}
                 </div>
               </div>
-              ${dog.baseline_notes ? `
-              <div class="baseline-notes">
-                <p><strong>Notes:</strong> ${dog.baseline_notes}</p>
+
+              <div class="chart-card">
+                <h2>Mobility observations over time</h2>
+                <canvas id="mobilityChart"></canvas>
               </div>
-              ` : ''}
+
+              <div class="peer-card">
+                <h2>How ${dog.dog_name} compares with similar ${dog.breed || 'dogs'}</h2>
+                <div class="peer-stat">
+                  <span class="peer-stat-label">Your dog's rank</span>
+                  <span class="peer-stat-value">#${rank} / ${totalDogs}</span>
+                </div>
+                <div class="peer-stat">
+                  <span class="peer-stat-label">Peer average score</span>
+                  <span class="peer-stat-value">${peerAverage}/8</span>
+                </div>
+                <div class="peer-stat">
+                  <span class="peer-stat-label">Status</span>
+                  <span class="peer-stat-value" style="font-size: 14px; color: #A89968; font-weight: 600;">🎯 ${currentScore > peerAverage ? 'Above average!' : currentScore === parseFloat(peerAverage) ? 'At average' : 'Below average'}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- MIDDLE COLUMN: SUMMARY -->
+            <div>
+              <div class="peer-card">
+                <h2>This week at a glance</h2>
+                <div class="peer-stat">
+                  <span class="peer-stat-label">Walking comfort</span>
+                  <span class="peer-stat-value" style="font-size: 14px; color: #555;">has remained consistent</span>
+                </div>
+                <div class="peer-stat">
+                  <span class="peer-stat-label">Getting up after rest</span>
+                  <span class="peer-stat-value" style="font-size: 14px; color: #555;">has been more difficult for two weeks</span>
+                </div>
+                <div class="peer-stat">
+                  <span class="peer-stat-label">Active days</span>
+                  <span class="peer-stat-value" style="font-size: 14px; color: #555;">fewer this week</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- BOTTOM SECTION: INFO & SUMMARY -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px;">
+            <div style="background: #FAFAF8; border-radius: 12px; padding: 18px; border-left: 4px solid #D4AF88;">
+              <p style="margin: 0; font-size: 13px; color: #2C2C2C; line-height: 1.6;">
+                <strong>Based on anonymized observations</strong> from participating ${dog.breed || 'dogs'} of a similar age.<br>
+                For context only—not a diagnosis or veterinary assessment.
+              </p>
+            </div>
+
+            <div style="background: #FAFAF8; border-radius: 12px; padding: 18px; border-left: 4px solid #D4AF88;">
+              <div style="display: flex; align-items: flex-start; gap: 12px;">
+                <span style="font-size: 20px; flex-shrink: 0;">❓</span>
+                <div>
+                  <p style="margin: 0 0 8px 0; font-size: 14px; font-weight: 500; color: #2C2C2C;">Prepare for a veterinarian conversation</p>
+                  <p style="margin: 0; font-size: 13px; color: #2C2C2C;">Review recent notes and highlights to help you share what matters most.</p>
+                </div>
+              </div>
             </div>
           </div>
 
-          <div class="metrics-grid">
-            <div class="metric-card">
-              <h3>Current Score</h3>
-              <div class="metric-value">${currentScore}/8</div>
-              <div class="metric-label">This week's mobility</div>
-            </div>
-
-            <div class="metric-card">
-              <h3>Trend</h3>
-              <div class="metric-value">${trendEmoji}</div>
-              <div class="trend-indicator" style="background: ${trendColor}; color: white;">${trendText}</div>
-              <div class="metric-label" style="margin-top: 8px;">vs last week</div>
-            </div>
-
-            <div class="metric-card">
-              <h3>Streak</h3>
-              <div class="metric-value">${streak}w</div>
-              <div class="metric-label">weeks tracked</div>
-            </div>
-
-            <div class="metric-card">
-              <h3>Peer Average</h3>
-              <div class="metric-value">${peerAverage}/8</div>
-              <div class="metric-label">across all dogs</div>
-            </div>
-          </div>
-
-          <div class="chart-card">
-            <h2>📈 Mobility Progression</h2>
-            <canvas id="mobilityChart"></canvas>
-          </div>
-
-          <div class="peer-card">
-            <h2>🏆 Peer Comparison</h2>
-            <div class="peer-stat">
-              <span class="peer-stat-label">Your dog's rank</span>
-              <span class="peer-stat-value">#${rank} / ${totalDogs}</span>
-            </div>
-            <div class="peer-stat">
-              <span class="peer-stat-label">Peer average score</span>
-              <span class="peer-stat-value">${peerAverage}/8</span>
-            </div>
-            <div class="peer-stat">
-              <span class="peer-stat-label">Dogs tracked</span>
-              <span class="peer-stat-value">${totalDogs}</span>
-            </div>
-            <div class="rank-badge">
-              🎯 ${currentScore > peerAverage ? 'Above average!' : currentScore === parseFloat(peerAverage) ? 'At average' : 'Below average'}
-            </div>
+          <div style="display: flex; gap: 15px; margin-bottom: 30px;">
+            <button id="viewSummaryBtn" style="flex: 1; background: #A89968; color: white; border: none; padding: 16px 20px; border-radius: 8px; font-size: 15px; font-weight: 500; cursor: pointer;">
+              View ${dog.dog_name}'s Journey Summary
+            </button>
           </div>
         </div>
 
@@ -1992,14 +2120,14 @@ app.get('/dashboard/:dog_id', async (req, res) => {
             </div>
 
             <form id="checkInForm">
-              <label style="display: block; margin: 15px 0 5px 0; font-weight: 600; color: #333;">How's ${dog.dog_name}'s mobility this week?</label>
+              <label style="display: block; margin: 15px 0 5px 0; font-weight: 500; color: #333;">How's ${dog.dog_name}'s mobility this week?</label>
               <input type="range" id="mobility" name="mobility_score" min="1" max="8" value="4" style="width: 100%; cursor: pointer;">
               <div id="hint" style="font-size: 12px; color: #666; margin: 5px 0 0 0;">4/10 - Some good days, some bad days</div>
 
-              <label style="display: block; margin: 20px 0 5px 0; font-weight: 600; color: #333;">Any notes? (optional)</label>
+              <label style="display: block; margin: 20px 0 5px 0; font-weight: 500; color: #333;">Any notes? (optional)</label>
               <textarea id="observation" name="observation" placeholder="E.g., 'Easier on stairs today' or 'Stiff this morning'" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-family: inherit; font-size: 14px; box-sizing: border-box; height: 80px;"></textarea>
 
-              <button type="submit" style="background: #007AFF; color: white; border: none; padding: 15px; border-radius: 8px; font-size: 16px; cursor: pointer; width: 100%; margin-top: 20px; font-weight: 600;">Submit Check-In ✓</button>
+              <button type="submit" style="background: #A89968; color: white; border: none; padding: 15px; border-radius: 8px; font-size: 16px; cursor: pointer; width: 100%; margin-top: 20px; font-weight: 500;">Submit Check-In ✓</button>
             </form>
           </div>
         </div>
@@ -2039,6 +2167,11 @@ app.get('/dashboard/:dog_id', async (req, res) => {
             document.getElementById('hint').textContent = hints[slider.value];
           });
 
+          // Journey summary button - TODO: Build summary page pulling health data/criteria
+          document.getElementById('viewSummaryBtn').addEventListener('click', () => {
+            alert('Journey Summary feature coming soon - will display health trends, patterns, and insights for vet conversation');
+          });
+
           // Form submission
           document.getElementById('checkInForm').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -2066,6 +2199,48 @@ app.get('/dashboard/:dog_id', async (req, res) => {
             } catch (error) {
               console.error('Error:', error);
               alert('Error submitting check-in. Please try again.');
+            }
+          });
+
+          // Quick photo upload
+          document.getElementById('quickPhotoUpload').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const photoInput = document.getElementById('quickPhotoInput');
+
+            if (!photoInput.files.length) {
+              alert('Please select a photo');
+              return;
+            }
+
+            const file = photoInput.files[0];
+            const maxSize = 5 * 1024 * 1024; // 5MB
+
+            if (file.size > maxSize) {
+              alert('Photo must be less than 5MB');
+              return;
+            }
+
+            const formData = new FormData();
+            formData.append('photo', file);
+            formData.append('dog_id', '${dog_id}');
+
+            try {
+              const response = await fetch('/api/upload-dog-photo', {
+                method: 'POST',
+                body: formData
+              });
+
+              const result = await response.json();
+
+              if (result.success) {
+                // Reload dashboard to show updated photo
+                location.reload();
+              } else {
+                alert('Error: ' + (result.error || 'Upload failed'));
+              }
+            } catch (error) {
+              console.error('Error:', error);
+              alert('Error uploading photo. Please try again.');
             }
           });
 
