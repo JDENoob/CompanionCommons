@@ -1,0 +1,367 @@
+/* COMPANION COMMONS HERO COMMUNITY SECTION */
+
+.hero-community {
+  position: relative;
+  width: 100%;
+  overflow: visible;
+}
+
+.community-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4rem;
+  align-items: center;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+/* ===== VISUAL COLUMN (left side) ===== */
+
+.community-visual {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  max-width: 600px;
+  height: auto;
+}
+
+/* Background shapes with warm gradient */
+.community-background {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    135deg,
+    #f7f0e6 0%,
+    #f3d8c8 25%,
+    #f9e8d7 50%,
+    #f2d9c4 75%,
+    #ede6dc 100%
+  );
+  border-radius: 50% 50% 45% 50% / 50% 50% 50% 45%;
+  opacity: 1;
+  z-index: 0;
+}
+
+/* Community network container */
+.community-network {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+}
+
+/* Dotted network path */
+.community-network-path {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  z-index: 1;
+}
+
+/* ===== CENTER LABRADOR ===== */
+
+.community-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 280px;
+  height: 280px;
+  border-radius: 50%;
+  background: #fff;
+  padding: 8px;
+  box-shadow:
+    0 0 0 2px #e6d9ca,
+    inset 0 0 0 1px rgba(0, 0, 0, 0.05);
+  z-index: 10;
+  overflow: hidden;
+}
+
+.community-center img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  border-radius: 50%;
+  display: block;
+}
+
+/* ===== SURROUNDING BUBBLES (6 items in circle) ===== */
+
+.community-bubble {
+  position: absolute;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background: #fff;
+  border: 3px solid #e6d9ca;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  z-index: 5;
+}
+
+.community-bubble img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  border-radius: 50%;
+}
+
+.community-bubble svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* Bubble positioning: 6 items around center in circle */
+/* Positions based on clock: 12, 2, 3, 4, 6 o'clock areas */
+
+.community-bubble-1 {
+  /* ~12 o'clock */
+  top: 5%;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.community-bubble-2 {
+  /* ~1-2 o'clock */
+  top: 18%;
+  right: 10%;
+  transform: translate(0, -50%);
+}
+
+.community-bubble-3 {
+  /* ~3 o'clock */
+  top: 50%;
+  right: -8%;
+  transform: translateY(-50%);
+}
+
+.community-bubble-4 {
+  /* ~3-4 o'clock */
+  bottom: 18%;
+  right: 10%;
+  transform: translate(0, 50%);
+}
+
+.community-bubble-5 {
+  /* ~6 o'clock */
+  bottom: 5%;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.community-bubble-6 {
+  /* ~7-9 o'clock area */
+  bottom: 18%;
+  left: 10%;
+  transform: translate(0, 50%);
+}
+
+/* Hover effect */
+.community-bubble:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+  transition: all 0.3s ease;
+}
+
+/* ===== INVITATION BUBBLE ===== */
+
+.community-invitation {
+  position: absolute;
+  top: 62%;
+  right: 8%;
+  transform: translate(0, -50%);
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  background: #f2d9c4;
+  border: 3px solid #d4af88;
+  color: #8b6f47;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-align: center;
+  line-height: 1.3;
+  z-index: 6;
+  padding: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.community-invitation span:first-child {
+  font-size: 2rem;
+  line-height: 1;
+  margin-bottom: 2px;
+  color: #a89968;
+}
+
+.community-invitation:hover {
+  transform: translate(0, -54px);
+  background: #ede6dc;
+  transition: all 0.3s ease;
+}
+
+/* ===== TEXT COLUMN (right side) ===== */
+
+.community-message {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  z-index: 2;
+}
+
+.community-message .eyebrow {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #8b6f47;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid #d4af88;
+  display: inline-block;
+}
+
+.community-message h2 {
+  font-family: 'Newsreader', serif;
+  font-size: 3rem;
+  font-weight: 600;
+  line-height: 1.1;
+  color: #2c2c2c;
+  margin: 0;
+  padding: 0;
+}
+
+.community-message p:last-child {
+  font-size: 1rem;
+  line-height: 1.6;
+  color: #555;
+  margin: 0.5rem 0 0 0;
+}
+
+/* ===== RESPONSIVE: TABLET (681px - 980px) ===== */
+
+@media (max-width: 980px) {
+  .community-container {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+    padding: 1.5rem;
+  }
+
+  .community-visual {
+    max-width: 500px;
+    margin: 0 auto;
+  }
+
+  .community-center {
+    width: 220px;
+    height: 220px;
+  }
+
+  .community-bubble {
+    width: 80px;
+    height: 80px;
+    border: 2.5px solid #e6d9ca;
+  }
+
+  .community-invitation {
+    width: 75px;
+    height: 75px;
+    font-size: 0.75rem;
+  }
+
+  .community-invitation span:first-child {
+    font-size: 1.5rem;
+  }
+
+  .community-message h2 {
+    font-size: 2.2rem;
+  }
+}
+
+/* ===== RESPONSIVE: MOBILE (≤680px) ===== */
+
+@media (max-width: 680px) {
+  .community-container {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+    padding: 1rem;
+  }
+
+  .community-visual {
+    max-width: 100%;
+    aspect-ratio: 1 / 1;
+    order: 2;
+  }
+
+  .community-message {
+    order: 1;
+    gap: 0.75rem;
+  }
+
+  .community-message h2 {
+    font-size: 1.75rem;
+  }
+
+  .community-message p:last-child {
+    font-size: 0.95rem;
+  }
+
+  .community-center {
+    width: 180px;
+    height: 180px;
+    padding: 6px;
+  }
+
+  .community-bubble {
+    width: 65px;
+    height: 65px;
+    border: 2px solid #e6d9ca;
+  }
+
+  .community-invitation {
+    width: 65px;
+    height: 65px;
+    font-size: 0.7rem;
+  }
+
+  .community-invitation span:first-child {
+    font-size: 1.3rem;
+    margin-bottom: 0;
+  }
+
+  /* Show only 4 bubbles on mobile */
+  .community-bubble-4,
+  .community-bubble-6 {
+    display: none;
+  }
+}
+
+/* ===== ACCESSIBILITY ===== */
+
+@media (prefers-reduced-motion: reduce) {
+  .community-bubble,
+  .community-invitation {
+    transition: none;
+  }
+
+  .community-bubble:hover,
+  .community-invitation:hover {
+    transform: none;
+  }
+}

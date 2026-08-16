@@ -1351,7 +1351,7 @@ app.get('/check-in/:dog_id', async (req, res) => {
             <textarea
               id="observation"
               name="observation"
-              placeholder="E.g., 'Easier on stairs today' or 'Stiff this morning'"
+              placeholder="E.g., 'Easier on stairs this week' or 'Stiff in morning'"
               style="height: 80px;"
             ></textarea>
 
@@ -1536,7 +1536,7 @@ app.post('/api/checkin-senior', async (req, res) => {
         pet_id: dog_id,
         message_type: `week_${weekNumber + 1}_checkin`,
         scheduled_for: nextReminderDate.toISOString(),
-        message_body: `Week ${weekNumber + 1}: How's ${dog.dog_name} moving? (1-8)`,
+        message_body: `${dog.dog_name}'s #${weekNumber + 1} week check-in Time! Please click the link to complete 30 second update!`,
         status: 'pending'
       }]);
 
@@ -1548,9 +1548,9 @@ app.post('/api/checkin-senior', async (req, res) => {
     if (scoreDiff > 0) {
       changeText = `↑ Up from ${previousScore}/10 last week. Great work, keep it up!`;
     } else if (scoreDiff < 0) {
-      changeText = `Mobility at ${mobilityScoreInt}/10 this week. Some variation is completely normal — good thing you're tracking it consistently. Many dogs have ups and downs. Keep going! 💪`;
+      changeText = `Mobility is at ${mobilityScoreInt}/10 this week. Tracking it consistently can help you notice changes and patterns over time. Keep going!`;
     } else {
-      changeText = `Holding steady at ${mobilityScoreInt}/10 — that consistency is valuable data. Keep checking in! 📈`;
+      changeText = `Mobility was rated ${mobilityScoreInt}/10 again this week—each check-in helps build a clearer picture over time. Keep it going! 📈`;
     }
 
     console.log(`✅ Week ${weekNumber} check-in saved for ${dog.dog_name}`);
@@ -2088,7 +2088,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px;">
             <div style="background: #FAFAF8; border-radius: 12px; padding: 18px; border-left: 4px solid #D4AF88;">
               <p style="margin: 0; font-size: 13px; color: #2C2C2C; line-height: 1.6;">
-                <strong>Based on anonymized observations</strong> from participating ${dog.breed || 'dogs'} of a similar age.<br>
+                Based on anonymized observations from participating ${dog.breed || 'dogs'} of a similar age. For context only—not a diagnosis or veterinary assessment.<br>
                 For context only—not a diagnosis or veterinary assessment.
               </p>
             </div>
@@ -2097,7 +2097,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
               <div style="display: flex; align-items: flex-start; gap: 12px;">
                 <span style="font-size: 20px; flex-shrink: 0;">❓</span>
                 <div>
-                  <p style="margin: 0 0 8px 0; font-size: 14px; font-weight: 500; color: #2C2C2C;">Prepare for a veterinarian conversation</p>
+                  <p style="margin: 0 0 8px 0; font-size: 14px; font-weight: 500; color: #2C2C2C;">Prepare for a conversation with [dog_name]'s vet, family, babysitter etc.</p>
                   <p style="margin: 0; font-size: 13px; color: #2C2C2C;">Review recent notes and highlights to help you share what matters most.</p>
                 </div>
               </div>
@@ -2125,7 +2125,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
               <div id="hint" style="font-size: 12px; color: #666; margin: 5px 0 0 0;">4/10 - Some good days, some bad days</div>
 
               <label style="display: block; margin: 20px 0 5px 0; font-weight: 500; color: #333;">Any notes? (optional)</label>
-              <textarea id="observation" name="observation" placeholder="E.g., 'Easier on stairs today' or 'Stiff this morning'" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-family: inherit; font-size: 14px; box-sizing: border-box; height: 80px;"></textarea>
+              <textarea id="observation" name="observation" placeholder="E.g., 'Easier on stairs this week' or 'Stiff in morning'" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-family: inherit; font-size: 14px; box-sizing: border-box; height: 80px;"></textarea>
 
               <button type="submit" style="background: #A89968; color: white; border: none; padding: 15px; border-radius: 8px; font-size: 16px; cursor: pointer; width: 100%; margin-top: 20px; font-weight: 500;">Submit Check-In ✓</button>
             </form>
@@ -3395,18 +3395,18 @@ async function sendChurnAlertEmail(ownerEmail, dogName, lastScore, lastCheckInDa
               We noticed we haven't heard from you since <strong>${new Date(lastCheckInDate).toLocaleDateString()}</strong>. No pressure — we know life gets busy.
             </p>
             <p style="color: #666; font-size: 16px; margin: 15px 0; line-height: 1.6;">
-              When you get a moment, we'd love to know how ${dogName}'s doing this week. One quick check-in takes 30 seconds and helps build a clear picture of ${dogName}'s mobility over time.
+              When you get a moment, we'd love to know how ${dogName}'s doing this week. One quick check-in takes 30 seconds and helps build a clear picture of ${dogName} and all pets families participating
             </p>
             <p style="color: #666; font-size: 14px; margin: 15px 0; line-height: 1.6;">
-              <strong>Bonus:</strong> Every check-in means we have better data to discuss with your vet next visit. 🐾
+              <strong>Bonus:</strong> Every check-in helps us build information with the intentions to provide insights to the entire community. 🐾
             </p>
             <div style="text-align: center; margin-top: 25px;">
               <a href="http://192.168.1.19:3000/dashboard/${dogId}" style="display: inline-block; background: #d96f56; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: 600;">
-                View Progress & Check-In
+                View [dog_name]'s Progress and Update
               </a>
             </div>
             <p style="color: #999; font-size: 12px; margin-top: 30px; text-align: center;">
-              CompanionCommons — Mobility tracking for senior dogs
+              Companion Commons — Together we can change the future of pet health understanding
             </p>
           </div>
         </div>
@@ -3591,7 +3591,7 @@ setInterval(async () => {
               pet_id: dog.id,
               message_type: `week_${currentWeek}_reminder_1`,
               scheduled_for: reminderDay1.toISOString(),
-              message_body: `${dog.dog_name}'s weekly check-in is open! How's your pup moving? Reply with 1-8 (1=stiff, 8=moving great).`,
+              message_body: `${dog.dog_name}'s #${currentWeek} week check-in Time! Please click the link to complete 30 second update!`,
               status: 'pending'
             });
           if (queueError1) {
@@ -3609,7 +3609,7 @@ setInterval(async () => {
               pet_id: dog.id,
               message_type: `week_${currentWeek}_reminder_2`,
               scheduled_for: reminderDay2At7pm.toISOString(),
-              message_body: `${dog.dog_name}'s check-in reminder: How's your pup moving today? Reply with 1-8 (1=stiff, 8=moving great)`,
+              message_body: `${dog.dog_name}'s #${currentWeek} week check-in reminder! We know life gets busy, so when you have a chance, please click the link and update!`,
               status: 'pending'
             });
           if (queueError2) {
@@ -3627,7 +3627,7 @@ setInterval(async () => {
               pet_id: dog.id,
               message_type: `week_${currentWeek}_reminder_3`,
               scheduled_for: reminderDay3.toISOString(),
-              message_body: `Last check-in for ${dog.dog_name} before we close out this week! 1-8?`,
+              message_body: `${dog.dog_name}'s #${currentWeek} week check-in reminder! Our community really depends on building a large community of health journeys, If you can please click the link and update!`,
               status: 'pending'
             });
           if (queueError3) {
