@@ -1,5 +1,7 @@
-.env 
-.env.local 
-*.json 
-"# Supabase Configuration.txt" 
+.env
+.env.local
+*.json
+!package.json
+!package-lock.json
+"# Supabase Configuration.txt"
 node_modules/

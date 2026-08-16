@@ -2723,7 +2723,13 @@ app.post('/api/send-magic-link', async (req, res) => {
       email,
       phone,
       consent,
-      sms_consent
+      sms_consent,
+      weight_lbs,
+      spayed_neutered,
+      zip_code,
+      diet_type,
+      pet_insurance,
+      treatment_category
     } = req.body;
 
     // Validate required fields
@@ -2784,6 +2790,62 @@ app.post('/api/send-magic-link', async (req, res) => {
       });
     }
 
+    // ============================================
+    // NEW BASELINE FIELDS (weight, spay/neuter, zip,
+    // diet, insurance, treatment category)
+    // ============================================
+    const cleanWeight = parseInt(weight_lbs);
+    if (isNaN(cleanWeight) || cleanWeight < 1 || cleanWeight > 250) {
+      return res.status(400).json({
+        success: false,
+        error: 'Weight must be a number between 1 and 250 lbs'
+      });
+    }
+
+    const cleanSpayedNeutered = sanitizeSelect(spayed_neutered, ['yes', 'no']);
+    if (spayed_neutered && !['yes', 'no'].includes(String(spayed_neutered).toLowerCase())) {
+      return res.status(400).json({
+        success: false,
+        error: 'Spayed/neutered must be yes or no'
+      });
+    }
+
+    const cleanZip = typeof zip_code === 'string' ? zip_code.trim() : '';
+    if (!/^\d{5}$/.test(cleanZip)) {
+      return res.status(400).json({
+        success: false,
+        error: 'ZIP code must be exactly 5 digits'
+      });
+    }
+
+    const allowedDietTypes = ['dry', 'wet', 'raw', 'prescription', 'mixed', 'other'];
+    const cleanDietType = sanitizeSelect(diet_type, allowedDietTypes);
+    if (!diet_type || !allowedDietTypes.includes(String(diet_type).toLowerCase())) {
+      return res.status(400).json({
+        success: false,
+        error: 'Diet type must be one of: ' + allowedDietTypes.join(', ')
+      });
+    }
+
+    const allowedInsuranceValues = ['yes', 'no', 'not_sure'];
+    const cleanPetInsurance = sanitizeSelect(pet_insurance, allowedInsuranceValues);
+    if (!pet_insurance || !allowedInsuranceValues.includes(String(pet_insurance).toLowerCase())) {
+      return res.status(400).json({
+        success: false,
+        error: 'Pet insurance must be one of: ' + allowedInsuranceValues.join(', ')
+      });
+    }
+
+    const allowedTreatmentCategories = [
+      'none', 'joint_supplement', 'nsaid', 'steroid',
+      'pain_medication', 'other_prescription', 'other_supplement'
+    ];
+    const rawTreatmentCategories = Array.isArray(treatment_category)
+      ? treatment_category
+      : (treatment_category ? [treatment_category] : []);
+    const cleanTreatmentCategories = rawTreatmentCategories
+      .filter(v => allowedTreatmentCategories.includes(v));
+
     // Generate a secure random token (32 bytes = 64 hex characters)
     const token = crypto.randomBytes(32).toString('hex');
 
@@ -2804,6 +2866,12 @@ app.post('/api/send-magic-link', async (req, res) => {
         baseline_mobility_score: cleanBaseline,
         observations: cleanObservations,
         sms_consent: sms_consent === 'on' || sms_consent === true,
+        weight_lbs: cleanWeight,
+        spayed_neutered: cleanSpayedNeutered,
+        zip_code: cleanZip,
+        diet_type: cleanDietType,
+        pet_insurance: cleanPetInsurance,
+        treatment_category: cleanTreatmentCategories,
         expires_at: expiresAt,
         used_at: null,
         created_at: new Date().toISOString()
@@ -2906,8 +2974,8 @@ app.get('/verify', async (req, res) => {
           <body>
             <div class="error-box">
               <h1>❌ Invalid Link</h1>
-              <p>This verification link is missing or invalid. Please start the baseline survey again.</p>
-              <a href="/senior-dog-baseline-survey.html">Start Over</a>
+              <p>This verification link is missing or invalid. Please start your Baseline Health Journey again.</p>
+              <a href="/baseline-health-journey.html">Start Over</a>
             </div>
           </body>
         </html>
@@ -2964,8 +3032,8 @@ app.get('/verify', async (req, res) => {
           <body>
             <div class="error-box">
               <h1>❌ Link Not Found</h1>
-              <p>This verification link doesn't exist. Please request a new one by completing the baseline survey.</p>
-              <a href="/senior-dog-baseline-survey.html">Start Over</a>
+              <p>This verification link doesn't exist. Please request a new one by completing the Baseline Health Journey.</p>
+              <a href="/baseline-health-journey.html">Start Over</a>
             </div>
           </body>
         </html>
@@ -3016,8 +3084,8 @@ app.get('/verify', async (req, res) => {
           <body>
             <div class="error-box">
               <h1>❌ Link Already Used</h1>
-              <p>This verification link has already been used. If you need a new one, complete the baseline survey again.</p>
-              <a href="/senior-dog-baseline-survey.html">Start Over</a>
+              <p>This verification link has already been used. If you need a new one, complete the Baseline Health Journey again.</p>
+              <a href="/baseline-health-journey.html">Start Over</a>
             </div>
           </body>
         </html>
@@ -3069,8 +3137,8 @@ app.get('/verify', async (req, res) => {
           <body>
             <div class="error-box">
               <h1>⏰ Link Expired</h1>
-              <p>This verification link expired after 15 minutes. Complete the baseline survey again to get a new link.</p>
-              <a href="/senior-dog-baseline-survey.html">Start Over</a>
+              <p>This verification link expired after 15 minutes. Complete the Baseline Health Journey again to get a new link.</p>
+              <a href="/baseline-health-journey.html">Start Over</a>
             </div>
           </body>
         </html>
@@ -3088,6 +3156,12 @@ app.get('/verify', async (req, res) => {
         gender: tokenData.gender,
         baseline_mobility_score: tokenData.baseline_mobility_score,
         baseline_notes: tokenData.observations,
+        weight_lbs: tokenData.weight_lbs,
+        spayed_neutered: tokenData.spayed_neutered,
+        zip_code: tokenData.zip_code,
+        diet_type: tokenData.diet_type,
+        pet_insurance: tokenData.pet_insurance,
+        treatment_category: tokenData.treatment_category,
         created_at: now,
         preferred_reminder_day: 3,        // Wednesday (mid-week, neutral)
         preferred_reminder_time: '14:00'  // 2:00 PM (afternoon, safe for all)

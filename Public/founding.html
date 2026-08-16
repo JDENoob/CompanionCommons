@@ -1,321 +1,132 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Become a Founding Member - CompanionCommons</title>
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            background-color: #F7F5EF;
-            font-family: 'Inter', sans-serif;
-            color: #24312F;
-            line-height: 1.6;
-        }
-
-        nav {
-            background: #FFFFFF;
-            border-bottom: 1px solid #E0DDD7;
-            padding: 12px 16px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-        }
-
-        .logo {
-            font-family: 'DM Sans', sans-serif;
-            font-size: 18px;
-            font-weight: 700;
-            color: #173F3A;
-            text-decoration: none;
-        }
-
-        .nav-links {
-            display: flex;
-            gap: 12px;
-            font-size: 11px;
-            overflow-x: auto;
-        }
-
-        .nav-links a {
-            background: none;
-            border: none;
-            color: #64736F;
-            cursor: pointer;
-            padding: 12px 6px;
-            border-bottom: 2px solid transparent;
-            white-space: nowrap;
-            font-family: inherit;
-            text-decoration: none;
-            display: block;
-        }
-
-        .nav-links a.active {
-            color: #D9A441;
-            border-bottom: 2px solid #D9A441;
-            font-weight: 600;
-        }
-
-        .hero {
-            background: linear-gradient(135deg, #173F3A 0%, #7FA69A 100%);
-            color: white;
-            padding: 40px 20px;
-            text-align: center;
-        }
-
-        .hero h1 {
-            font-family: 'DM Sans', sans-serif;
-            font-size: 32px;
-            font-weight: 700;
-            margin-bottom: 8px;
-            line-height: 1.2;
-            color: #D9A441;
-        }
-
-        .hero p {
-            font-size: 14px;
-            line-height: 1.7;
-            opacity: 0.95;
-        }
-
-        .content-section {
-            background: #FFFFFF;
-            padding: 30px 20px;
-            margin: 0;
-        }
-
-        .content-section h2 {
-            font-family: 'DM Sans', sans-serif;
-            font-size: 22px;
-            margin-bottom: 16px;
-            color: #173F3A;
-            font-weight: 700;
-        }
-
-        .content-section p {
-            font-size: 14px;
-            line-height: 1.7;
-            color: #24312F;
-            margin-bottom: 16px;
-        }
-
-        .benefits-list {
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-            margin: 24px 0;
-        }
-
-        .benefit-item {
-            display: flex;
-            gap: 12px;
-            align-items: flex-start;
-        }
-
-        .benefit-icon {
-            font-size: 24px;
-            flex-shrink: 0;
-        }
-
-        .benefit-content h3 {
-            font-family: 'DM Sans', sans-serif;
-            font-size: 14px;
-            color: #173F3A;
-            margin-bottom: 4px;
-            font-weight: 600;
-        }
-
-        .benefit-content p {
-            font-size: 13px;
-            line-height: 1.5;
-            color: #64736F;
-            margin: 0;
-        }
-
-        .commitment-box {
-            background: #F0F9F7;
-            border-left: 4px solid #3E8278;
-            padding: 20px;
-            margin: 24px 0;
-            border-radius: 4px;
-        }
-
-        .commitment-box h3 {
-            font-family: 'DM Sans', sans-serif;
-            font-size: 16px;
-            margin-bottom: 12px;
-            color: #173F3A;
-            font-weight: 600;
-        }
-
-        .commitment-box p {
-            font-size: 14px;
-            line-height: 1.6;
-            color: #24312F;
-            margin: 0;
-        }
-
-        .cta-section {
-            background: #173F3A;
-            color: white;
-            padding: 40px 20px;
-            text-align: center;
-        }
-
-        .cta-section h2 {
-            font-family: 'DM Sans', sans-serif;
-            font-size: 24px;
-            margin-bottom: 16px;
-            color: white;
-            font-weight: 700;
-        }
-
-        .cta-section p {
-            font-size: 14px;
-            line-height: 1.7;
-            margin-bottom: 24px;
-            opacity: 0.95;
-        }
-
-        .cta-button {
-            background-color: #D9A441;
-            color: #FFFFFF;
-            border: none;
-            padding: 14px 28px;
-            border-radius: 8px;
-            font-size: 15px;
-            font-weight: 600;
-            cursor: pointer;
-            width: 100%;
-            font-family: inherit;
-            margin-bottom: 12px;
-            text-decoration: none;
-            display: block;
-        }
-
-        .cta-button:hover {
-            opacity: 0.9;
-        }
-
-        .cta-subtitle {
-            font-size: 12px;
-            opacity: 0.9;
-            font-weight: 500;
-        }
-
-        footer {
-            background: #173F3A;
-            color: white;
-            text-align: center;
-            padding: 24px 20px;
-        }
-
-        footer .brand {
-            font-family: 'DM Sans', sans-serif;
-            font-size: 14px;
-            font-weight: 700;
-            margin-bottom: 8px;
-        }
-
-        footer .tagline {
-            font-size: 12px;
-            opacity: 0.9;
-            font-style: italic;
-            margin: 0;
-        }
-    .modal{display:none;position:fixed;z-index:1000;left:0;top:0;width:100%;height:100%;background-color:rgba(0,0,0,0.5)}.modal-content{background-color:#FFF;padding:0;border-radius:12px;max-width:500px;max-height:90vh;overflow-y:auto;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);box-shadow:0 4px 20px rgba(0,0,0,0.15)}.modal-header{background:linear-gradient(135deg,#173F3A 0%,#7FA69A 100%);color:#fff;padding:24px 20px;display:flex;justify-content:space-between;align-items:center}.modal-header h2{font-family:'DM Sans';font-size:20px;font-weight:700;margin:0}.close-btn{background:0;border:0;color:#fff;font-size:28px;cursor:pointer;padding:0}.form-group{margin-bottom:20px}.form-group label{display:block;font-family:'DM Sans';font-size:14px;font-weight:600;color:#173F3A;margin-bottom:8px}.form-group input[type=text],.form-group input[type=email],.form-group input[type=number]{width:100%;padding:12px;border:1px solid #E0DDD7;border-radius:6px;font-size:14px;color:#24312F;box-sizing:border-box}.radio-group,.checkbox-group{display:flex;flex-direction:column;gap:10px}.radio-label,.checkbox-label{display:flex;align-items:center;gap:8px;font-size:14px;color:#24312F;cursor:pointer}.slider{width:100%;height:6px;border-radius:3px;background:#E0DDD7}.slider::-webkit-slider-thumb{width:20px;height:20px;border-radius:50%;background:#173F3A;cursor:pointer}.slider::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:#173F3A;cursor:pointer;border:0}.slider-labels{display:flex;justify-content:space-between;font-size:12px;color:#64736F;margin-top:8px}.submit-button{width:100%;background-color:#D9A441;color:#FFF;border:0;padding:14px 20px;border-radius:6px;font-size:15px;font-weight:600;cursor:pointer;font-family:Inter;margin-top:20px}.submit-button:hover{opacity:.9}.status-message{margin-top:12px;padding:12px;border-radius:6px;font-size:13px;text-align:center;display:none}.status-message.success{background-color:#D4EDDA;color:#155724;display:block}.modal{display:none;position:fixed;z-index:1000;left:0;top:0;width:100%;height:100%;background-color:rgba(0,0,0,0.5)}.modal-content{background-color:#FFF;padding:0;border-radius:12px;max-width:500px;max-height:90vh;overflow:hidden;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);box-shadow:0 4px 20px rgba(0,0,0,0.15);display:flex;flex-direction:column}.modal-header{background:linear-gradient(135deg,#173F3A 0%,#7FA69A 100%);color:#fff;padding:24px 20px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0}.modal-header h2{font-family:'DM Sans';font-size:20px;font-weight:700;margin:0}.close-btn{background:0;border:0;color:#fff;font-size:28px;cursor:pointer;padding:0;width:30px;height:30px}.close-btn:hover{opacity:.8}.form-scroll{overflow-y:auto;padding:20px;flex:1}.form-group{margin-bottom:20px}.form-group label{display:block;font-family:'DM Sans';font-size:14px;font-weight:600;color:#173F3A;margin-bottom:8px}.form-group input[type=text],.form-group input[type=email],.form-group input[type=tel],.form-group input[type=number]{width:100%;padding:12px;border:1px solid #E0DDD7;border-radius:6px;font-size:14px;color:#24312F;box-sizing:border-box;font-family:Inter}.form-group input:focus{outline:0;border-color:#173F3A;box-shadow:0 0 0 3px rgba(23,63,58,.1)}.radio-group,.checkbox-group{display:flex;flex-direction:column;gap:10px}.radio-label,.checkbox-label{display:flex;align-items:flex-start;gap:8px;font-size:14px;color:#24312F;cursor:pointer;font-family:Inter}.radio-label input[type=radio],.checkbox-label input[type=radio]{cursor:pointer;width:18px;height:18px;accent-color:#173F3A;flex-shrink:0;margin-top:2px}.consent-group{background:#F0F9F7;padding:16px;border-radius:6px;border:1px solid #D1E7E3}.consent-label{font-size:13px;line-height:1.6;font-weight:400}.slider{width:100%;height:6px;border-radius:3px;background:#E0DDD7;outline:0;-webkit-appearance:none;appearance:none}.slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:20px;height:20px;border-radius:50%;background:#173F3A;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,.2)}.slider::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:#173F3A;cursor:pointer;border:0;box-shadow:0 2px 4px rgba(0,0,0,.2)}.slider-labels{display:flex;justify-content:space-between;font-size:12px;color:#64736F;margin-top:8px}.submit-button{width:100%;background-color:#D9A441;color:#FFF;border:0;padding:14px 20px;border-radius:6px;font-size:15px;font-weight:600;cursor:pointer;font-family:Inter;margin-top:20px;transition:opacity .2s}.submit-button:hover{opacity:.9}.submit-button:disabled{opacity:.6;cursor:not-allowed}.status-message{margin-top:12px;padding:12px;border-radius:6px;font-size:13px;text-align:center;display:none}.status-message.success{background-color:#D4EDDA;color:#155724;display:block}.status-message.error{background-color:#F8D7DA;color:#721C24;display:block}@media (max-width:600px){.modal-content{width:90%;max-height:95vh}.modal-header{padding:16px}.form-scroll{padding:16px}.form-group{margin-bottom:16px}.form-group label{font-size:13px}.form-group input[type=text],.form-group input[type=email],.form-group input[type=tel],.form-group input[type=number]{padding:10px;font-size:16px}.submit-button{padding:12px 16px;font-size:14px}}.modal{display:none;position:fixed;z-index:1000;left:0;top:0;width:100%;height:100%;background-color:rgba(0,0,0,0.6);animation:fadeIn .3s}@keyframes fadeIn{from{opacity:0}to{opacity:1}}.modal-content{background-color:#FFF;padding:0;border-radius:12px;max-width:500px;max-height:90vh;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);box-shadow:0 8px 32px rgba(0,0,0,0.25);display:flex;flex-direction:column;border:3px solid #173F3A}.modal-header{background:linear-gradient(135deg,#173F3A 0%,#7FA69A 100%);color:#fff;padding:24px 20px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;border-bottom:2px solid rgba(255,255,255,.1)}.modal-header h2{font-family:'DM Sans';font-size:20px;font-weight:700;margin:0}.close-btn{background:0;border:0;color:#fff;font-size:28px;cursor:pointer;padding:0;width:30px;height:30px}.close-btn:hover{opacity:.8}.form-scroll{overflow-y:auto;overflow-x:hidden;padding:20px;flex:1;max-height:calc(90vh - 120px)}.form-group{margin-bottom:20px}.form-group label{display:block;font-family:'DM Sans';font-size:14px;font-weight:600;color:#173F3A;margin-bottom:8px}.form-group input[type=text],.form-group input[type=email],.form-group input[type=tel],.form-group input[type=number]{width:100%;padding:12px;border:1px solid #E0DDD7;border-radius:6px;font-size:14px;color:#24312F;box-sizing:border-box;font-family:Inter}.form-group input:focus{outline:0;border-color:#173F3A;box-shadow:0 0 0 3px rgba(23,63,58,.1)}.radio-group,.checkbox-group{display:flex;flex-direction:column;gap:10px}.radio-label,.checkbox-label{display:flex;align-items:flex-start;gap:8px;font-size:14px;color:#24312F;cursor:pointer;font-family:Inter}.radio-label input[type=radio],.checkbox-label input[type=radio]{cursor:pointer;width:18px;height:18px;accent-color:#173F3A;flex-shrink:0;margin-top:2px}.consent-group{background:#F0F9F7;padding:16px;border-radius:6px;border:1px solid #D1E7E3}.consent-label{font-size:13px;line-height:1.6;font-weight:400}.slider{width:100%;height:6px;border-radius:3px;background:#E0DDD7;outline:0;-webkit-appearance:none;appearance:none}.slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:20px;height:20px;border-radius:50%;background:#173F3A;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,.2)}.slider::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:#173F3A;cursor:pointer;border:0;box-shadow:0 2px 4px rgba(0,0,0,.2)}.slider-labels{display:flex;justify-content:space-between;font-size:12px;color:#64736F;margin-top:8px}.submit-button{width:100%;background-color:#D9A441;color:#FFF;border:0;padding:14px 20px;border-radius:6px;font-size:15px;font-weight:600;cursor:pointer;font-family:Inter;margin-top:20px;transition:opacity .2s}.submit-button:hover{opacity:.9}.submit-button:disabled{opacity:.6;cursor:not-allowed}.status-message{margin-top:12px;padding:12px;border-radius:6px;font-size:13px;text-align:center;display:none}.status-message.success{background-color:#D4EDDA;color:#155724;display:block}.status-message.error{background-color:#F8D7DA;color:#721C24;display:block}@media (max-width:600px){.modal-content{width:90%;max-height:95vh}.modal-header{padding:16px}.form-scroll{padding:16px}.form-group{margin-bottom:16px}.form-group label{font-size:13px}.form-group input[type=text],.form-group input[type=email],.form-group input[type=tel],.form-group input[type=number]{padding:10px;font-size:16px}.submit-button{padding:12px 16px;font-size:14px}}.survey-modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:9999;display:none;align-items:center;justify-content:center;padding:20px}.survey-modal-overlay.show{display:flex}.survey-modal-box{background:#fff;border:4px solid #173F3A;border-radius:12px;max-width:500px;width:100%;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,0.3)}.survey-modal-header{background:linear-gradient(135deg,#173F3A 0%,#7FA69A 100%);color:#fff;padding:20px;display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #fff;flex-shrink:0}.survey-modal-header h2{margin:0;font-size:18px;font-weight:700;font-family:'DM Sans'}.survey-close-btn{background:none;border:none;color:#fff;font-size:32px;cursor:pointer;padding:0;width:40px;height:40px;display:flex;align-items:center;justify-content:center}.survey-close-btn:hover{opacity:0.8}.survey-form{display:flex;flex-direction:column;height:100%;overflow:hidden}.form-content{overflow-y:auto;overflow-x:hidden;padding:20px;flex:1}.form-group{margin-bottom:18px}.form-group label{display:block;font-size:14px;font-weight:600;color:#173F3A;margin-bottom:6px;font-family:'DM Sans'}.form-group input[type='text'],.form-group input[type='email'],.form-group input[type='tel'],.form-group input[type='number']{width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:14px;font-family:Inter;color:#24312F}.form-group input:focus{outline:none;border-color:#173F3A;box-shadow:0 0 0 3px rgba(23,63,58,0.15)}.radio-group{display:flex;flex-direction:column;gap:8px}.radio-group label{display:flex;align-items:center;gap:8px;font-weight:400;font-size:14px;cursor:pointer;margin:0}.radio-group input[type='radio']{cursor:pointer;width:16px;height:16px;accent-color:#173F3A}.slider{width:100%;height:6px;border-radius:3px;background:#e0e0e0;outline:none;-webkit-appearance:none;appearance:none}.slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:18px;height:18px;border-radius:50%;background:#173F3A;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,0.2)}.slider::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:#173F3A;cursor:pointer;border:none}.slider-values{display:flex;justify-content:space-between;font-size:12px;color:#666;margin-top:6px;font-weight:500}.consent-box{background:#f0f9f7;border:1px solid #d1e7e3;padding:12px;border-radius:6px;margin-top:10px}.consent-box label{margin:0;font-size:13px;font-weight:400;line-height:1.5}.status-msg{padding:12px;margin:10px 0;border-radius:6px;font-size:13px;text-align:center;display:none}.status-msg.success{background:#d4edda;color:#155724;display:block}.status-msg.error{background:#f8d7da;color:#721c24;display:block}.survey-submit{background:#D9A441;color:#fff;border:none;padding:14px 20px;border-radius:6px;font-size:15px;font-weight:600;cursor:pointer;margin-top:10px;font-family:Inter}.survey-submit:hover{opacity:0.9}.survey-submit:disabled{opacity:0.6;cursor:not-allowed}@media(max-width:480px){.survey-modal-box{max-height:95vh;border:3px solid #173F3A}.survey-modal-header{padding:16px}.form-content{padding:16px}.survey-submit{font-size:14px;padding:12px}}</style>
-</head>
-<body>
-    <nav>
-        <a href="index.html" class="logo">CompanionCommons™</a>
-        <div class="nav-links">
-            <a href="index.html">Home</a>
-            <a href="about.html">About</a>
-            <a href="independent.html">Independent</a>
-            <a href="privacy.html">Privacy</a>
-            <a href="governance.html">Governance</a>
-            <a href="faq.html">FAQ</a>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Become a Founding Member | Companion Commons</title>
+    <link rel="stylesheet" href="assets/css/styles.css" />
+    <script src="assets/js/main.js" defer></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container nav-shell">
+        <a class="brand" href="index.html"
+          ><span class="brand-mark">C</span
+          ><span class="brand-name">Companion<br />Commons</span></a
+        ><button
+          class="menu-toggle"
+          aria-expanded="false"
+          aria-controls="site-nav"
+          data-menu-toggle
+        >
+          <span class="sr-only">Open navigation</span><span></span><span></span
+          ><span></span>
+        </button>
+        <nav class="site-nav" id="site-nav" data-menu>
+          <a href="how-it-works.html">How It Works</a
+          ><a href="senior-dog-mobility.html">Pet Health Library</a
+          ><a href="public-insights.html">Our Impact</a
+          ><a href="about.html">About</a
+          ><a href="trust-and-data.html">Trust, Privacy &amp; Independence</a
+          ><a href="faqs.html">FAQs</a
+          ><a class="button button-small" href="baseline-health-journey.html"
+            >Become a Founding Member</a
+          >
+        </nav>
+      </div>
+    </header>
+    <main>
+      <section class="page-hero">
+        <div class="container inner">
+          <p class="eyebrow">Founding Members</p>
+          <h1>Help shape the future of pet health understanding.</h1>
+          <p>
+            We're inviting the first 1,500 pet families to become Founding
+            Members and help build the most trusted source of pet health
+            intelligence.
+          </p>
         </div>
-    </nav>
-
-    <section class="hero">
-        <h1>Become a Founding Member</h1>
-        <p>Help shape the future of pet health understanding.</p>
-    </section>
-
-    <section class="content-section">
-        <h2>Join a Movement</h2>
-        <p>We're inviting the first 1,500 pet families to become Founding Members and help build the future of pet health.</p>
-        <p>As a Founding Member, you're not just participating—you're helping create the most trusted source of pet health intelligence built around transparency, community, and independence.</p>
-    </section>
-
-    <section class="content-section">
-        <h2>What You Get as a Founding Member</h2>
-        <div class="benefits-list">
-            <div class="benefit-item">
-                <span class="benefit-icon">📋</span>
-                <div class="benefit-content">
-                    <h3>Personalized Health Journey Profile</h3>
-                    <p>A place to understand your companion's unique story, lifestyle, and health over time.</p>
-                </div>
-            </div>
-            <div class="benefit-item">
-                <span class="benefit-icon">📱</span>
-                <div class="benefit-content">
-                    <h3>Simple Health Journey Check-Ins</h3>
-                    <p>Quick updates that help you stay connected with changes in your pet's health.</p>
-                </div>
-            </div>
-            <div class="benefit-item">
-                <span class="benefit-icon">🐾</span>
-                <div class="benefit-content">
-                    <h3>Health Journey Insights</h3>
-                    <p>Future insights designed to help you better understand your companion.</p>
-                </div>
-            </div>
-            <div class="benefit-item">
-                <span class="benefit-icon">📑</span>
-                <div class="benefit-content">
-                    <h3>Health Journey Record</h3>
-                    <p>A resource you can save, review, and share with anyone in your companion's community.</p>
-                </div>
-            </div>
-            <div class="benefit-item">
-                <span class="benefit-icon">🤝</span>
-                <div class="benefit-content">
-                    <h3>Be Part of the Community</h3>
-                    <p>Join thousands of pet families building a deeper understanding of companion health together.</p>
-                </div>
-            </div>
+      </section>
+      <section class="content-section">
+        <div class="container">
+          <h2>What You Get as a Founding Member</h2>
+          <div class="content-grid">
+            <article class="content-card">
+              <h3>Personalized Health Journey Profile</h3>
+              <p>
+                A place to understand your companion's unique story, lifestyle,
+                and health over time.
+              </p>
+            </article>
+            <article class="content-card">
+              <h3>Simple Health Journey Check-Ins</h3>
+              <p>
+                Quick updates that help you stay connected with changes in your
+                pet's health.
+              </p>
+            </article>
+            <article class="content-card">
+              <h3>A Growing Health Journey Record</h3>
+              <p>
+                A resource you can save, review, and share with your
+                veterinarian.
+              </p>
+            </article>
+            <article class="content-card">
+              <h3>Be Part of the Community</h3>
+              <p>
+                Join pet families building a deeper understanding of companion
+                health together.
+              </p>
+            </article>
+          </div>
         </div>
-    </section>
-
-    <section class="content-section">
-        <div class="commitment-box">
-            <h3>Our Commitment to You</h3>
-            <p>As a Founding Member, your trust is everything. We commit to transparency, protecting your privacy, and keeping your information safe. Your participation helps build knowledge—not marketing lists.</p>
+      </section>
+      <section class="content-section alt">
+        <div class="container">
+          <p class="eyebrow">Our commitment</p>
+          <h2>Your trust is everything.</h2>
+          <p>
+            As a Founding Member, we commit to transparency, protecting your
+            privacy, and keeping your information safe. Your participation
+            helps build knowledge—not marketing lists. Read more on our
+            <a class="text-link" href="trust-and-data.html"
+              >Trust, Privacy &amp; Independence</a
+            >
+            page.
+          </p>
         </div>
-    </section>
-
-    <section class="cta-section">
-        <h2>Begin Your Companion's Health Journey</h2>
-        <p>Join the first 1,500 Founding Members. It takes less than 3 minutes to get started.</p>
-        <button class="cta-button" onclick="alert('Signup form coming soon')">Become a Founding Member</button>
-        <p class="cta-subtitle">Always free. Privacy protected. Community powered.</p>
-    </section>
-
-    <footer>
-        <p class="brand">CompanionCommons™ — Independent Pet Health Intelligence</p>
-        <p class="tagline">"Every Pet Has a Story. Every Health Journey Matters."</p>
+      </section>
+      <section class="review-marker" aria-label="Founding member signup">
+        <div class="container">
+          <p>Begin Your Companion's Health Journey</p>
+          <h2>Join the first 1,500 Founding Members. It takes less than 3.5 minutes.</h2>
+          <a class="button" href="baseline-health-journey.html" style="margin-top: 25px"
+            >Become a Founding Member</a
+          >
+          <p style="margin-top: 12px; opacity: 0.8;">
+            Always free. Privacy protected. Community powered.
+          </p>
+        </div>
+      </section>
+    </main>
+    <footer class="site-footer">
+      <div class="container footer-grid">
+        <div>
+          <h2>Pet families. Shared purpose.</h2>
+          <p>Building better understanding together.</p>
+        </div>
+        <a href="trust-and-data.html">Trust, Privacy &amp; Independence</a>
+      </div>
+      <div class="container veterinary-disclaimer">
+        <p>
+          Companion Commons is not a veterinary service and does not diagnose,
+          treat, prescribe, or provide veterinary advice. Always consult a
+          licensed veterinarian about your companion's health and care. Think
+          this may be an emergency? Contact your veterinarian or the nearest
+          emergency veterinary hospital immediately.
+        </p>
+      </div>
     </footer>
-<div id="surveyModal" class="survey-modal-overlay"><div class="survey-modal-box"><div class="survey-modal-header"><h2>Tell Us About Your Companion</h2><button class="survey-close-btn" onclick="closeSurvey()">&times;</button></div><form id="surveyForm" onsubmit="submitSurvey(event)" class="survey-form"><div class="form-content"><div class="form-group"><label>Companion's Name</label><input type="text" id="companionName" name="companionName" required></div><div class="form-group"><label>Birthday or Adoption Day (MM/YY)</label><input type="text" id="birthday" name="birthday" placeholder="MM/YY" maxlength="5" required></div><div class="form-group"><label>Age (years)</label><input type="number" id="age" name="age" min="0" max="30" step="0.1" required></div><div class="form-group"><label>Breed</label><input type="text" id="breed" name="breed" required></div><div class="form-group"><label>Gender</label><div class="radio-group"><label><input type="radio" name="gender" value="Male" required> Male</label><label><input type="radio" name="gender" value="Female" required> Female</label></div></div><div class="form-group"><label>General Health (1-8)</label><input type="range" id="health" name="health" min="1" max="8" value="5" class="slider"><div class="slider-values"><span>Poor</span><span id="healthValue">5</span><span>Excellent</span></div></div><div class="form-group"><label>Activity Level (1-8)</label><input type="range" id="activity" name="activity" min="1" max="8" value="5" class="slider"><div class="slider-values"><span>Low</span><span id="activityValue">5</span><span>High</span></div></div><div class="form-group"><label>Current Treatments</label><div class="radio-group"><label><input type="radio" name="treatments" value="None" required> None</label><label><input type="radio" name="treatments" value="Supplements" required> Supplements</label><label><input type="radio" name="treatments" value="Medication" required> Medication</label><label><input type="radio" name="treatments" value="Both" required> Both</label></div></div><div class="form-group"><label>Email Address</label><input type="email" id="email" name="email" required></div><div class="form-group"><label>Phone Number</label><input type="tel" id="phone" name="phone" placeholder="(123) 456-7890" required></div><div class="form-group consent-box"><label><input type="checkbox" id="smsConsent" name="smsConsent"> I'd like to receive SMS check-ins about my companion's health (1x per week). Standard SMS rates apply.</label></div><div class="form-group consent-box"><label><input type="checkbox" id="consent" name="consent" required> I consent to Companion Commons collecting, storing, and using my companion's health information for research and insights. My personal information will never be sold.</label></div></div><div id="statusMessage" class="status-msg"></div><button type="submit" class="survey-submit">Begin My Pet's Health Journey</button></form></div></div><script>function openSurvey(){document.getElementById('surveyModal').classList.add('show');document.body.style.overflow='hidden'}function closeSurvey(){document.getElementById('surveyModal').classList.remove('show');document.body.style.overflow='auto';document.getElementById('surveyForm').reset()}document.getElementById('health')?.addEventListener('input',function(){document.getElementById('healthValue').textContent=this.value});document.getElementById('activity')?.addEventListener('input',function(){document.getElementById('activityValue').textContent=this.value});document.getElementById('birthday')?.addEventListener('input',function(e){let v=e.target.value.replace(/\D/g,'');if(v.length>=2)v=v.slice(0,2)+'/'+v.slice(2,4);e.target.value=v});document.getElementById('phone')?.addEventListener('input',function(e){let v=e.target.value.replace(/\D/g,'');if(v.length>0){if(v.length<=3){}else if(v.length<=6)v=v.slice(0,3)+'-'+v.slice(3);else v='('+v.slice(0,3)+') '+v.slice(3,6)+'-'+v.slice(6,10)}e.target.value=v});async function submitSurvey(event){event.preventDefault();const btn=event.target.querySelector('.survey-submit');const msg=document.getElementById('statusMessage');btn.disabled=true;msg.textContent='Saving...';msg.className='status-msg';const data={companionName:document.getElementById('companionName').value,birthday:document.getElementById('birthday').value,age:document.getElementById('age').value,breed:document.getElementById('breed').value,gender:document.querySelector('input[name=gender]:checked').value,health:document.getElementById('health').value,activity:document.getElementById('activity').value,treatments:document.querySelector('input[name=treatments]:checked').value,email:document.getElementById('email').value,phone:document.getElementById('phone').value,consent:document.getElementById('consent').checked,smsConsent:document.getElementById('smsConsent').checked,timestamp:new Date().toISOString()};try{const r=await fetch('/api/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});console.log('Signup response status:',r.status,'r.ok:',r.ok);if(r.ok){console.log('Response OK, redirecting to governance.html');setTimeout(()=>{location.href='/governance.html?success=true'},500)}else{const errText=await r.text();console.error('Error response:',errText);msg.textContent='Error saving data.';msg.className='status-msg error'}}catch(e){msg.textContent='Connection error.';msg.className='status-msg error'}finally{btn.disabled=false}}window.onclick=e=>{if(e.target.id==='surveyModal')closeSurvey()};document.querySelectorAll('.cta-button').forEach(b=>{b.onclick=e=>{if(b.tagName==='A')return;e.preventDefault();openSurvey()}})</script></body>
+  </body>
 </html>

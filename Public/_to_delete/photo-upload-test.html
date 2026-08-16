@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Photo Upload</title>
+  <style>
+    body {
+      font-family: -apple-system, sans-serif;
+      max-width: 600px;
+      margin: 50px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #333;
+      margin-bottom: 10px;
+    }
+    .subtitle {
+      color: #666;
+      margin-bottom: 30px;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #333;
+    }
+    input[type="text"],
+    input[type="file"] {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      box-sizing: border-box;
+      font-size: 14px;
+    }
+    input[type="file"] {
+      padding: 8px;
+    }
+    button {
+      background: #007AFF;
+      color: white;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 4px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+    }
+    button:hover {
+      background: #0051D5;
+    }
+    .result {
+      margin-top: 30px;
+      padding: 20px;
+      border-radius: 4px;
+      display: none;
+    }
+    .result.success {
+      display: block;
+      background: #e8f5e9;
+      border: 1px solid #4caf50;
+      color: #2e7d32;
+    }
+    .result.error {
+      display: block;
+      background: #ffebee;
+      border: 1px solid #f44336;
+      color: #c62828;
+    }
+    .result h3 {
+      margin-top: 0;
+      margin-bottom: 10px;
+    }
+    .result-content {
+      font-family: monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      word-break: break-all;
+    }
+    .photo-preview {
+      margin-top: 20px;
+      text-align: center;
+    }
+    .photo-preview img {
+      max-width: 100%;
+      max-height: 300px;
+      border-radius: 4px;
+    }
+    .loading {
+      display: none;
+      text-align: center;
+      color: #007AFF;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📸 Photo Upload Test</h1>
+    <p class="subtitle">Test the /api/upload-dog-photo endpoint</p>
+
+    <form id="uploadForm">
+      <div class="form-group">
+        <label for="dogId">Dog ID:</label>
+        <input
+          type="text"
+          id="dogId"
+          name="dog_id"
+          value="da28a771-c9b0-438e-a120-ec44d18f986f"
+          placeholder="Enter dog ID (UUID)"
+          required
+        />
+        <small style="color: #999;">Baily's test dog ID</small>
+      </div>
+
+      <div class="form-group">
+        <label for="photo">Photo File:</label>
+        <input
+          type="file"
+          id="photo"
+          name="photo"
+          accept="image/jpeg,image/png,image/webp"
+          required
+        />
+        <small style="color: #999;">Supported: JPEG, PNG, WebP (max 5 MB)</small>
+      </div>
+
+      <div class="loading" id="loading">⏳ Uploading...</div>
+      <button type="submit">Upload Photo</button>
+    </form>
+
+    <div class="result" id="result">
+      <h3 id="resultTitle"></h3>
+      <div class="result-content" id="resultContent"></div>
+      <div class="photo-preview" id="photoPreview"></div>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('uploadForm');
+    const result = document.getElementById('result');
+    const resultTitle = document.getElementById('resultTitle');
+    const resultContent = document.getElementById('resultContent');
+    const photoPreview = document.getElementById('photoPreview');
+    const loading = document.getElementById('loading');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const dogId = document.getElementById('dogId').value;
+      const photoFile = document.getElementById('photo').files[0];
+
+      if (!photoFile) {
+        showError('Please select a photo file');
+        return;
+      }
+
+      loading.style.display = 'block';
+      result.style.display = 'none';
+
+      const formData = new FormData();
+      formData.append('photo', photoFile);
+      formData.append('dog_id', dogId);
+
+      try {
+        const response = await fetch('http://192.168.1.19:3000/api/upload-dog-photo', {
+          method: 'POST',
+          body: formData
+        });
+
+        loading.style.display = 'none';
+
+        const data = await response.json();
+
+        if (data.success) {
+          showSuccess(data);
+        } else {
+          showError(data.error);
+        }
+      } catch (error) {
+        loading.style.display = 'none';
+        showError(`Network error: ${error.message}`);
+      }
+    });
+
+    function showSuccess(data) {
+      result.className = 'result success';
+      resultTitle.textContent = '✅ Upload Successful!';
+      resultContent.innerHTML = `
+        <strong>Photo URL:</strong><br/>
+        ${data.photo_url}<br/><br/>
+        <strong>Response:</strong><br/>
+        ${JSON.stringify(data, null, 2)}
+      `;
+
+      // Show photo preview
+      photoPreview.innerHTML = `
+        <strong>Photo Preview:</strong><br/>
+        <img src="${data.photo_url}" alt="Uploaded photo"/>
+      `;
+
+      result.style.display = 'block';
+    }
+
+    function showError(message) {
+      result.className = 'result error';
+      resultTitle.textContent = '❌ Upload Failed';
+      resultContent.textContent = message;
+      photoPreview.innerHTML = '';
+      result.style.display = 'block';
+    }
+  </script>
+</body>
+</html>

@@ -1,18 +1,31 @@
 // Copy Editor System
 // Manages editable wording throughout the site
+// Only active when the page is loaded with ?edit=true in the URL,
+// so regular visitors never see the editor UI.
 
 class CopyEditor {
   constructor() {
     this.storageKey = 'companion-commons-copy';
+    this.editMode = new URLSearchParams(window.location.search).get('edit') === 'true';
     this.defaultCopy = this.collectDefaultCopy();
     this.init();
   }
 
   init() {
-    this.setupToggle();
-    this.setupEditableElements();
-    this.setupActions();
+    if (this.editMode) {
+      this.setupToggle();
+      this.setupEditableElements();
+      this.setupActions();
+    } else {
+      this.hideEditorUI();
+    }
     this.loadSavedCopy();
+  }
+
+  // Hide the edit-wording button/panel entirely for normal visitors
+  hideEditorUI() {
+    const aside = document.querySelector('.copy-editor');
+    if (aside) aside.style.display = 'none';
   }
 
   // Collect all default copy from the page
