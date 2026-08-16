@@ -80,8 +80,8 @@
       <section class="hero">
         <div class="container hero-grid">
           <div class="hero-copy">
-            <p class="eyebrow" data-copy="hero.eyebrow">Building the world's largest pet health intelligence Community</p>
-            <h1 data-copy="hero.headline">Together, We Can Change the Future of Pet Health Understanding</h1>
+            <p class="eyebrow" data-copy="hero.eyebrow">Building The World's Largest Independent Pet Health Intelligence Community</p>
+            <h1 data-copy="hero.headline">Together We Can Change The Future Of Pet Health Understanding</h1>
             <p class="hero-intro" data-copy="hero.subheading">“Every pet health journey you share helps the community. Real
               experiences from real pet parents—that's how we get smarter
               together.”</p>
@@ -92,30 +92,114 @@
               >
             </div>
             <ul class="trust-list" aria-label="Participation promises">
-              <li><span aria-hidden="true">♡</span> Always free</li>
-              <li><span aria-hidden="true">◇</span> One update per week</li>
+              <li><span aria-hidden="true">♡</span> Always Free</li>
+              <li><span aria-hidden="true">◇</span> One 30 Second Update Per Week</li>
               <li><span aria-hidden="true">✓</span> Independent by Design</li>
             </ul>
           </div>
-          <div
-            class="hero-visual"
-            role="img"
-            aria-label="A warm community gathering of pet families and senior dogs"
-          >
-            <div class="sun-glow"></div>
-            <div class="portrait-card portrait-main">
-              <span class="dog-icon" aria-hidden="true">🐕</span>
-              <p>Pet families.<br />Shared purpose.</p>
+          <div class="hero-visual hero-community" aria-labelledby="community-hero-title">
+            <div class="community-visual">
+              <!-- Background shapes (decorative) -->
+              <div class="community-background"></div>
+
+              <!-- Community network -->
+              <div class="community-network">
+                <!-- Network path (dotted circle, decorative) -->
+                <svg class="community-network-path" viewBox="0 0 400 400" aria-hidden="true">
+                  <circle cx="200" cy="200" r="130" fill="none" stroke="#88977d" stroke-width="2" stroke-dasharray="6,4" opacity="0.4"/>
+                </svg>
+
+                <!-- Center Labrador -->
+                <div class="community-center">
+                  <img
+                    src="assets/images/center-labrador.jpg"
+                    alt="A yellow Labrador, a member of the Companion Commons community"
+                    loading="lazy"
+                    width="300"
+                    height="300"
+                  />
+                </div>
+
+                <!-- BUBBLE 1 (1 o'clock) - SVG: Person kneeling with small dog -->
+                <div class="community-bubble community-bubble-1">
+                  <svg viewBox="0 0 120 120" aria-hidden="true">
+                    <circle cx="60" cy="60" r="58" fill="#f7f0e6" stroke="#d4af88" stroke-width="2.5"/>
+                    <!-- Person kneeling with small dog -->
+                    <circle cx="50" cy="32" r="8" fill="none" stroke="#332e2a" stroke-width="1.5"/>
+                    <path d="M 50 40 L 50 56" stroke="#332e2a" stroke-width="1.5" fill="none"/>
+                    <path d="M 42 45 L 58 45" stroke="#332e2a" stroke-width="1.5" fill="none"/>
+                    <path d="M 50 56 L 42 72" stroke="#332e2a" stroke-width="1.5" fill="none"/>
+                    <path d="M 50 56 L 58 72" stroke="#332e2a" stroke-width="1.5" fill="none"/>
+                    <!-- Small dog -->
+                    <ellipse cx="75" cy="68" rx="12" ry="10" fill="none" stroke="#332e2a" stroke-width="1.5"/>
+                    <circle cx="85" cy="66" r="5" fill="none" stroke="#332e2a" stroke-width="1.5"/>
+                    <path d="M 75 58 L 73 48" stroke="#332e2a" stroke-width="1.5" fill="none"/>
+                  </svg>
+                </div>
+
+                <!-- BUBBLE 2 (3 o'clock) - SVG: Two people with dog between -->
+                <div class="community-bubble community-bubble-2">
+                  <svg viewBox="0 0 120 120" aria-hidden="true">
+                    <circle cx="60" cy="60" r="58" fill="#dcc8b0" stroke="#d4af88" stroke-width="2.5"/>
+                    <!-- Two people standing with dog between -->
+                    <circle cx="42" cy="30" r="7" fill="none" stroke="#332e2a" stroke-width="1.5"/>
+                    <path d="M 42 37 L 42 52" stroke="#332e2a" stroke-width="1.5" fill="none"/>
+                    <path d="M 36 42 L 48 42" stroke="#332e2a" stroke-width="1.5" fill="none"/>
+                    <path d="M 42 52 L 36 68" stroke="#332e2a" stroke-width="1.5" fill="none"/>
+                    <path d="M 42 52 L 48 68" stroke="#332e2a" stroke-width="1.5" fill="none"/>
+
+                    <circle cx="78" cy="30" r="7" fill="none" stroke="#332e2a" stroke-width="1.5"/>
+                    <path d="M 78 37 L 78 52" stroke="#332e2a" stroke-width="1.5" fill="none"/>
+                    <path d="M 72 42 L 84 42" stroke="#332e2a" stroke-width="1.5" fill="none"/>
+                    <path d="M 78 52 L 72 68" stroke="#332e2a" stroke-width="1.5" fill="none"/>
+                    <path d="M 78 52 L 84 68" stroke="#332e2a" stroke-width="1.5" fill="none"/>
+
+                    <!-- Dog between them -->
+                    <ellipse cx="60" cy="70" rx="14" ry="12" fill="none" stroke="#332e2a" stroke-width="1.5"/>
+                    <circle cx="72" cy="68" r="6" fill="none" stroke="#332e2a" stroke-width="1.5"/>
+                    <path d="M 60 58 L 58 48" stroke="#332e2a" stroke-width="1.5" fill="none"/>
+                  </svg>
+                </div>
+
+                <!-- BUBBLE 3 (5 o'clock) - SVG: Older adult walking with dog -->
+                <div class="community-bubble community-bubble-3">
+                  <svg viewBox="0 0 120 120" aria-hidden="true">
+                    <circle cx="60" cy="60" r="58" fill="#f7f0e6" stroke="#d4af88" stroke-width="2.5"/>
+                    <!-- Older adult walking with dog -->
+                    <circle cx="45" cy="28" r="8" fill="none" stroke="#332e2a" stroke-width="1.5"/>
+                    <path d="M 45 36 L 45 52" stroke="#332e2a" stroke-width="1.5" fill="none"/>
+                    <path d="M 37 42 L 53 42" stroke="#332e2a" stroke-width="1.5" fill="none"/>
+                    <path d="M 45 52 L 38 70" stroke="#332e2a" stroke-width="1.5" fill="none"/>
+                    <path d="M 45 52 L 52 70" stroke="#332e2a" stroke-width="1.5" fill="none"/>
+                    <!-- Dog walking alongside -->
+                    <ellipse cx="75" cy="62" rx="13" ry="11" fill="none" stroke="#332e2a" stroke-width="1.5"/>
+                    <circle cx="86" cy="60" r="5.5" fill="none" stroke="#332e2a" stroke-width="1.5"/>
+                    <path d="M 75 50 L 74 40" stroke="#332e2a" stroke-width="1.5" fill="none"/>
+                  </svg>
+                </div>
+
+                <!-- BUBBLE 4 (7 o'clock) - SVG placeholder -->
+                <div class="community-bubble community-bubble-4"></div>
+
+                <!-- BUBBLE 5 (9 o'clock) - SVG placeholder -->
+                <div class="community-bubble community-bubble-5"></div>
+
+                <!-- BUBBLE 6 (11 o'clock) - SVG placeholder -->
+                <div class="community-bubble community-bubble-6"></div>
+
+                <!-- Invitation bubble (5 o'clock area, separate) -->
+                <div class="community-invitation">
+                  <span aria-hidden="true">+</span>
+                  <span data-copy="community.invitation">Your companion belongs here.</span>
+                </div>
+              </div>
             </div>
-            <div class="portrait-card portrait-small portrait-one">
-              <span aria-hidden="true">🐶</span>
-            </div>
-            <div class="portrait-card portrait-small portrait-two">
-              <span aria-hidden="true">🐾</span>
-            </div>
-            <div class="founder-badge">
-              <strong>You cannot improve</strong
-              ><span>what you do not understand</span>
+
+            <!-- Community message (right side text) -->
+            <div class="community-message">
+              <p class="eyebrow" data-copy="community.eyebrow">A growing pet health intelligence community</p>
+              <h2 id="community-hero-title" data-copy="community.headline">Pet families.<br>Shared purpose.</h2>
+              <p data-copy="community.supporting">Real companions. Real experiences.<br>Better understanding—built together.</p>
             </div>
           </div>
         </div>
@@ -123,17 +207,17 @@
 
       <section class="impact-band" aria-labelledby="impact-title">
         <div class="container impact-grid">
-          <h2 id="impact-title" data-copy="impact.headline">A Growing Community<br>Built by Pet Families</h2>
+          <h2 id="impact-title" data-copy="impact.headline">A Growing Community Built by Pet Families</h2>
           <div class="impact-item">
             <span class="impact-icon" aria-hidden="true">◎</span>
             <div>
-              <small>Founding members</small><strong>Growing daily</strong>
+              <small>Founder Community</small><strong>Growing daily</strong>
             </div>
           </div>
           <div class="impact-item">
             <span class="impact-icon" aria-hidden="true">✓</span>
             <div>
-              <small>12-week Pet Health Journeys shared</small
+              <small>Pet Health Journeys Shared</small
               ><strong>Growing daily</strong>
             </div>
           </div>
@@ -149,9 +233,8 @@
       <section class="section two-lives" aria-labelledby="two-lives-title">
         <div class="container">
           <div class="section-heading centered">
-            <p class="eyebrow" data-copy="value.eyebrow">One 3-minute baseline. One 30-second update each week.</p>
-            <h2 id="two-lives-title" data-copy="value.headline">Your check-in helps T<em>wo Lives</em> at once.</em> at once.
-            </h2>
+            <p class="eyebrow" data-copy="value.eyebrow">One 3-minute baseline and then One 30-second update each week.</p>
+            <h2 id="two-lives-title" data-copy="value.headline">Every check-in helps your companion—and another.</h2>
             <p data-copy="value.intro">Useful guidance for the Companions you love today, and stronger
               knowledge for the pets who come next.</p>
           </div>
@@ -164,9 +247,7 @@
               <div class="value-content">
                 <span class="card-kicker">Personal value</span>
                 <h3 data-copy="value.personalTitle">For Your Companion</h3>
-                <p data-copy="value.personalBody">Notice mobility changes, understand what they may mean,&nbsp;
-                  get practical comparisons to similar dogs and understand more
-                  about your pet's health journey</p>
+                <p data-copy="value.personalBody">Notice changes and patterns, understand what they may mean, get practical comparisons to similar dogs and understand more about your pet's health journey</p>
                 <ul class="check-list">
                   <li>3-minute Health Journey Baseline</li>
                   <li>30-second Pet Journey Updates once per week</li>
@@ -208,7 +289,7 @@
             <div class="dashboard-intro">
               <p class="eyebrow">What you get</p>
               <h2 id="dashboard-title">
-                Your observations become a clearer story.
+                A Personalized Dashboard just for you, A complete healthy journey record, Insight and comparisons, Download to share
               </h2>
               <p>
                 Each weekly update adds to your companion’s private Health
