@@ -36,10 +36,146 @@ console.log('✅ All required environment variables loaded');
 
 const PORT = process.env.PORT || 3000;
 
+// The public web address used inside links sent to users (SMS, email).
+// Locally this defaults to your home network IP so testing on your own
+// devices still works. On Railway, set BASE_URL=https://companioncommons.com
+// as an environment variable and every link will use the real domain
+// instead — no code changes needed when you deploy.
+const BASE_URL = process.env.BASE_URL || `http://192.168.1.19:${PORT}`;
+
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+
+// ============================================
+// SITE LOCK ("Coming Soon" gate)
+// ============================================
+// Set SITE_PASSWORD in your .env (locally) or in your hosting provider's
+// environment variables (e.g. Railway) to hide the ENTIRE site — every
+// page and every form — behind a simple password wall showing a
+// "Coming Soon" splash instead. Leave SITE_PASSWORD unset/blank and the
+// site behaves 100% normally with no gate at all. To go public for real,
+// just remove the SITE_PASSWORD variable — no code changes needed.
+const SITE_PASSWORD = process.env.SITE_PASSWORD;
+const SITE_UNLOCK_COOKIE = 'cc_site_access';
+
+function siteUnlockHash(password) {
+  return crypto.createHash('sha256').update(String(password)).digest('hex');
+}
+
+function parseCookies(req) {
+  const header = req.headers.cookie;
+  const cookies = {};
+  if (!header) return cookies;
+  header.split(';').forEach(pair => {
+    const idx = pair.indexOf('=');
+    if (idx === -1) return;
+    const key = pair.slice(0, idx).trim();
+    const val = pair.slice(idx + 1).trim();
+    cookies[key] = decodeURIComponent(val);
+  });
+  return cookies;
+}
+
+const COMING_SOON_HTML = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Companion Commons — Coming Soon</title>
+<style>
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+         background:#2E2A26; color:#fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  .box { max-width: 420px; padding: 40px; text-align: center; }
+  h1 { font-size: 28px; margin-bottom: 12px; }
+  p { opacity: .8; line-height: 1.5; margin-bottom: 28px; }
+  input[type=password] { width: 100%; box-sizing: border-box; padding: 12px 14px; border-radius: 8px; border: none;
+         font-size: 16px; margin-bottom: 14px; }
+  button { width: 100%; padding: 12px 14px; border-radius: 8px; border: none; background:#d96f56; color:#fff;
+         font-size: 16px; font-weight: 600; cursor: pointer; }
+  .error { color: #ff9b9b; font-size: 14px; margin-top: 12px; min-height: 18px; }
+</style>
+</head>
+<body>
+  <div class="box">
+    <h1>Companion Commons</h1>
+    <p>We're still building. If you've got the password, come on in.</p>
+    <form id="unlockForm">
+      <input type="password" id="pw" placeholder="Password" autofocus required />
+      <button type="submit">Enter</button>
+      <div class="error" id="err"></div>
+    </form>
+  </div>
+  <script>
+    document.getElementById('unlockForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const pw = document.getElementById('pw').value;
+      const errEl = document.getElementById('err');
+      errEl.textContent = '';
+      try {
+        const res = await fetch('/api/site-unlock', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: pw })
+        });
+        if (res.ok) {
+          window.location.reload();
+        } else {
+          errEl.textContent = 'Wrong password, try again.';
+        }
+      } catch (err) {
+        errEl.textContent = 'Something went wrong, try again.';
+      }
+    });
+  </script>
+</body>
+</html>`;
+
+app.post('/api/site-unlock', (req, res) => {
+  if (!SITE_PASSWORD) return res.json({ success: true }); // lock disabled
+  const { password } = req.body || {};
+  if (password && password === SITE_PASSWORD) {
+    res.cookie(SITE_UNLOCK_COOKIE, siteUnlockHash(SITE_PASSWORD), {
+      httpOnly: true,
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      sameSite: 'lax'
+    });
+    return res.json({ success: true });
+  }
+  return res.status(401).json({ success: false });
+});
+
+app.use((req, res, next) => {
+  if (!SITE_PASSWORD) return next(); // no password set = gate fully disabled
+
+  // Always allow through: the unlock endpoint itself, hosting-provider
+  // health checks, Twilio's own status-callback webhook (Twilio's servers
+  // obviously can't type in a password), and the legal pages + their
+  // styling/script assets — Twilio's A2P 10DLC campaign review requires
+  // Privacy Policy / Terms URLs to be live and publicly reachable with NO
+  // password, even while the rest of the site stays locked down.
+  const alwaysAllowed =
+    req.path === '/api/site-unlock' ||
+    req.path === '/health' ||
+    req.path.startsWith('/api/sms/') ||
+    req.path === '/privacy.html' ||
+    req.path === '/terms.html' ||
+    req.path.startsWith('/assets/');
+
+  if (alwaysAllowed) return next();
+
+  const cookies = parseCookies(req);
+  if (cookies[SITE_UNLOCK_COOKIE] === siteUnlockHash(SITE_PASSWORD)) {
+    return next(); // already unlocked on this browser
+  }
+
+  if (req.method === 'GET') {
+    return res.status(200).send(COMING_SOON_HTML);
+  }
+  return res.status(401).json({ error: 'Site is locked' });
+});
+
 app.use(express.static('public'));
 
 // ============================================
@@ -1653,21 +1789,26 @@ app.post('/api/checkin-senior', async (req, res) => {
     // QUEUE NEXT WEEK'S SMS AT PERSONALIZED TIME
     // ============================================
     const nextReminderDate = getNextReminderDate(submissionDayOfWeek, reminderTime);
-    const nextCheckinLink = `http://192.168.1.19:3000/check-in/${dog_id}`;
+    const nextCheckinLink = `${BASE_URL}/check-in/${dog_id}`;
 
-    const { error: queueError } = await supabase
-      .from('sms_queue')
-      .insert([{
-        pet_id: dog_id,
-        phone: dog.phone || null,
-        message_type: `week_${weekNumber + 1}_checkin`,
-        scheduled_for: nextReminderDate.toISOString(),
-        message_body: `${dog.dog_name}'s #${weekNumber + 1} week check-in time! Click here to complete a 30-second update: ${nextCheckinLink}`,
-        status: 'pending'
-      }]);
+    // Only queue a reminder text if this owner actually opted in to SMS reminders.
+    if (dog.sms_consent && dog.phone) {
+      const { error: queueError } = await supabase
+        .from('sms_queue')
+        .insert([{
+          pet_id: dog_id,
+          phone: dog.phone,
+          message_type: `week_${weekNumber + 1}_checkin`,
+          scheduled_for: nextReminderDate.toISOString(),
+          message_body: `${dog.dog_name}'s #${weekNumber + 1} week check-in time! Click here to complete a 30-second update: ${nextCheckinLink}`,
+          status: 'pending'
+        }]);
 
-    if (queueError) console.warn('⚠️ Error queueing next reminder:', queueError);
-    console.log(`📅 Next reminder for ${dog.dog_name} scheduled: ${nextReminderDate.toLocaleString()} (${getDayName(submissionDayOfWeek)} at ${reminderTime})`);
+      if (queueError) console.warn('⚠️ Error queueing next reminder:', queueError);
+      console.log(`📅 Next reminder for ${dog.dog_name} scheduled: ${nextReminderDate.toLocaleString()} (${getDayName(submissionDayOfWeek)} at ${reminderTime})`);
+    } else {
+      console.log(`📅 Skipping reminder queue for ${dog.dog_name} — SMS consent not given`);
+    }
 
     // Generate feedback message
     let changeText = '';
@@ -3121,7 +3262,7 @@ app.post('/api/send-magic-link', async (req, res) => {
     }
 
     // Build verification URL
-    const verifyUrl = `http://192.168.1.19:3000/verify?token=${token}`;
+    const verifyUrl = `${BASE_URL}/verify?token=${token}`;
 
     // Send SMS with magic link via Twilio
     try {
@@ -3396,6 +3537,7 @@ app.get('/verify', async (req, res) => {
         baseline_notes: tokenData.observations,
         phone: tokenData.phone,
         email: tokenData.email,
+        sms_consent: tokenData.sms_consent === true || tokenData.sms_consent === 'true',
         weight_lbs: tokenData.weight_lbs,
         spayed_neutered: tokenData.spayed_neutered,
         zip_code: tokenData.zip_code,
@@ -3715,7 +3857,7 @@ async function sendChurnAlertEmail(ownerEmail, dogName, lastScore, lastCheckInDa
               <strong>Bonus:</strong> Every check-in helps us build information with the intentions to provide insights to the entire community. 🐾
             </p>
             <div style="text-align: center; margin-top: 25px;">
-              <a href="http://192.168.1.19:3000/dashboard/${dogId}" style="display: inline-block; background: #d96f56; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+              <a href="${BASE_URL}/dashboard/${dogId}" style="display: inline-block; background: #d96f56; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: 600;">
                 View [dog_name]'s Progress and Update
               </a>
             </div>
@@ -3816,7 +3958,7 @@ setInterval(async () => {
     // Get all senior dogs
     const { data: allDogs, error: dogsError } = await supabase
       .from('senior_dogs')
-      .select('id, dog_name, phone, baseline_mobility_score, created_at');
+      .select('id, dog_name, phone, sms_consent, baseline_mobility_score, created_at');
 
     if (dogsError) {
       console.error('❌ Error fetching senior dogs:', dogsError.message);
@@ -3897,14 +4039,17 @@ setInterval(async () => {
           console.log(`  ⏰ ${dog.dog_name}: Reminder #1 fires at ${reminderDay1.toLocaleString()}, Reminder #2 at ${reminderDay2At7pm.toLocaleString()}, Reminder #3 at ${reminderDay3.toLocaleString()}`);
         }
 
-        const reminderCheckinLink = `http://192.168.1.19:3000/check-in/${dog.id}`;
+        const reminderCheckinLink = `${BASE_URL}/check-in/${dog.id}`;
+        const canTextThisDog = !!(dog.phone && dog.sms_consent);
 
         if (!dog.phone) {
           console.warn(`⚠️ ${dog.dog_name} has no phone on file — skipping reminder queue (they signed up before phone numbers were saved to the profile)`);
+        } else if (!dog.sms_consent) {
+          console.log(`ℹ️ ${dog.dog_name}'s owner didn't opt in to SMS reminders — skipping`);
         }
 
         // REMINDER #1 (2pm): Queue if it's time and hasn't been sent yet
-        if (now >= reminderDay1 && !reminder1Sent && dog.phone) {
+        if (now >= reminderDay1 && !reminder1Sent && canTextThisDog) {
           const { error: queueError1 } = await supabase
             .from('sms_queue')
             .insert({
@@ -3923,7 +4068,7 @@ setInterval(async () => {
         }
 
         // REMINDER #2 (7pm): Queue if it's time and hasn't been sent yet
-        if (now >= reminderDay2At7pm && !reminder2Sent && dog.phone) {
+        if (now >= reminderDay2At7pm && !reminder2Sent && canTextThisDog) {
           const { error: queueError2 } = await supabase
             .from('sms_queue')
             .insert({
@@ -3942,7 +4087,7 @@ setInterval(async () => {
         }
 
         // REMINDER #3 (7:30am/2pm next day): Queue if it's time and hasn't been sent yet
-        if (now >= reminderDay3 && !reminder3Sent && dog.phone) {
+        if (now >= reminderDay3 && !reminder3Sent && canTextThisDog) {
           const { error: queueError3 } = await supabase
             .from('sms_queue')
             .insert({
@@ -4207,9 +4352,9 @@ app.use((req, res) => {
 // ============================================
 app.listen(PORT, () => {
     console.log(`\n✅ CompanionCommons Server Running`);
-    console.log(`📍 Web:   http://192.168.1.19:${PORT}`);
-    console.log(`🎯 Admin: http://192.168.1.19:${PORT}/admin`);
-    console.log(`📊 API:   http://192.168.1.19:${PORT}/api/signups`);
+    console.log(`📍 Web:   ${BASE_URL}`);
+    console.log(`🎯 Admin: ${BASE_URL}/admin`);
+    console.log(`📊 API:   ${BASE_URL}/api/signups`);
     console.log(`\n🗄️  Survey data now saves to Supabase (not signups.json)`);
     console.log(`💬 SMS cron running (sends pending SMS every 60 seconds)\n`);
 });
