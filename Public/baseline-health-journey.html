@@ -128,13 +128,13 @@
               </div>
             </fieldset>
 
-            <!-- Baseline Mobility Section -->
+            <!-- Baseline Health Snapshot Section -->
             <fieldset>
-              <legend>Current Mobility</legend>
+              <legend>Current Health Snapshot</legend>
 
               <div class="form-group">
                 <label for="mobilityScore">
-                  On a scale of 1-8, How is your dog's mobility this week?
+                  On a scale of 1-8, how is your dog's mobility this week?
                   <span class="hint">(1 = very stiff, 8 = excellent movement)</span> *
                 </label>
                 <input
@@ -152,7 +152,64 @@
               </div>
 
               <div class="form-group">
-                <label for="observations">Tell us what we should know about your dog's mobility (optional)</label>
+                <label for="energyScore">
+                  On a scale of 1-8, how is your dog's energy level?
+                  <span class="hint">(1 = very low energy, 8 = very active)</span> *
+                </label>
+                <input
+                  type="range"
+                  id="energyScore"
+                  name="baseline_energy_score"
+                  min="1"
+                  max="8"
+                  value="4"
+                  required
+                />
+                <div id="energyHint" style="margin-top: 8px; font-size: 14px; color: #666;">
+                  4 — Average energy
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="appetiteScore">
+                  On a scale of 1-8, how is your dog's appetite?
+                  <span class="hint">(1 = barely eating, 8 = excellent appetite)</span> *
+                </label>
+                <input
+                  type="range"
+                  id="appetiteScore"
+                  name="baseline_appetite_score"
+                  min="1"
+                  max="8"
+                  value="4"
+                  required
+                />
+                <div id="appetiteHint" style="margin-top: 8px; font-size: 14px; color: #666;">
+                  4 — Eating normally
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="cognitiveScore">
+                  On a scale of 1-8, how is your dog's alertness and behavior?
+                  <span class="hint">(1 = often confused/withdrawn, 8 = sharp and engaged)</span> *
+                </label>
+                <input
+                  type="range"
+                  id="cognitiveScore"
+                  name="baseline_cognitive_score"
+                  min="1"
+                  max="8"
+                  value="4"
+                  required
+                />
+                <div id="cognitiveHint" style="margin-top: 8px; font-size: 14px; color: #666;">
+                  4 — Normal alertness
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="observations">Tell us what we should know about your dog's health (optional)</label>
                 <textarea
                   id="observations"
                   name="observations"
@@ -336,6 +393,57 @@
 
       slider.addEventListener('input', () => {
         hint.textContent = hints[slider.value];
+      });
+
+      // Energy score hint
+      const energySlider = document.getElementById('energyScore');
+      const energyHint = document.getElementById('energyHint');
+      const energyHints = {
+        1: "1 — Very low energy",
+        2: "2 — Mostly lethargic",
+        3: "3 — Below average energy",
+        4: "4 — Average energy",
+        5: "5 — Fairly active",
+        6: "6 — Active",
+        7: "7 — Very active",
+        8: "8 — Extremely energetic"
+      };
+      energySlider.addEventListener('input', () => {
+        energyHint.textContent = energyHints[energySlider.value];
+      });
+
+      // Appetite score hint
+      const appetiteSlider = document.getElementById('appetiteScore');
+      const appetiteHint = document.getElementById('appetiteHint');
+      const appetiteHints = {
+        1: "1 — Barely eating",
+        2: "2 — Eating much less than usual",
+        3: "3 — Eating somewhat less than usual",
+        4: "4 — Eating normally",
+        5: "5 — Good appetite",
+        6: "6 — Very good appetite",
+        7: "7 — Eager to eat",
+        8: "8 — Excellent appetite"
+      };
+      appetiteSlider.addEventListener('input', () => {
+        appetiteHint.textContent = appetiteHints[appetiteSlider.value];
+      });
+
+      // Cognitive/behavior score hint
+      const cognitiveSlider = document.getElementById('cognitiveScore');
+      const cognitiveHint = document.getElementById('cognitiveHint');
+      const cognitiveHints = {
+        1: "1 — Often confused or withdrawn",
+        2: "2 — Frequently disoriented",
+        3: "3 — Occasionally confused",
+        4: "4 — Normal alertness",
+        5: "5 — Alert and responsive",
+        6: "6 — Engaged and attentive",
+        7: "7 — Very sharp",
+        8: "8 — Extremely sharp and engaged"
+      };
+      cognitiveSlider.addEventListener('input', () => {
+        cognitiveHint.textContent = cognitiveHints[cognitiveSlider.value];
       });
 
       // "None" checkbox clears other treatment checkboxes, and vice versa

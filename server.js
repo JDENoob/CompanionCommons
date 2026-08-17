@@ -1268,16 +1268,26 @@ app.get('/check-in/:dog_id', async (req, res) => {
       `);
     }
 
-    // Get the latest mobility score for comparison
+    // Get the latest check-in for comparison
     const { data: latestCheckin } = await supabase
       .from('mobility_checkins')
-      .select('mobility_score, week_number')
+      .select('mobility_score, energy_score, appetite_score, week_number')
       .eq('dog_id', dog_id)
       .order('created_at', { ascending: false })
       .limit(1);
 
     const latestScore = latestCheckin?.[0]?.mobility_score || null;
-    const weekNumber = latestCheckin?.[0]?.week_number || 1;
+    const latestEnergy = latestCheckin?.[0]?.energy_score || null;
+    const latestAppetite = latestCheckin?.[0]?.appetite_score || null;
+
+    // Calculate the actual current week based on when the dog was enrolled
+    // (matches the same calculation used at submission time in /api/checkin-senior)
+    const created = new Date(dog.created_at);
+    const now = new Date();
+    const weekNumber = Math.max(1, Math.floor((now - created) / (7 * 24 * 60 * 60 * 1000)) + 1);
+
+    // Cognitive/behavior is only asked every 4th week (4, 8, 12...)
+    const showCognitive = weekNumber % 4 === 0;
 
     // Send HTML form
     res.send(`
@@ -1333,7 +1343,7 @@ app.get('/check-in/:dog_id', async (req, res) => {
       <body>
         <div class="card">
           <h2>📱 ${dog.dog_name}'s Check-In</h2>
-          <p class="subtitle">Week ${weekNumber} Mobility Tracker</p>
+          <p class="subtitle">Week ${weekNumber} Health Tracker</p>
 
           <form id="checkinForm">
             <label for="mobility">How's ${dog.dog_name}'s mobility this week?</label>
@@ -1345,7 +1355,42 @@ app.get('/check-in/:dog_id', async (req, res) => {
               max="8"
               value="${latestScore || 4}"
             >
-            <div class="hint" id="hint">4/10 - Some good days, some bad days</div>
+            <div class="hint" id="mobilityHint">4/8 - Some good days, some bad days</div>
+
+            <label for="energy" style="margin-top: 20px;">How's ${dog.dog_name}'s energy level this week?</label>
+            <input
+              type="range"
+              id="energy"
+              name="energy_score"
+              min="1"
+              max="8"
+              value="${latestEnergy || 4}"
+            >
+            <div class="hint" id="energyHint">4/8 - Average energy</div>
+
+            <label for="appetite" style="margin-top: 20px;">How's ${dog.dog_name}'s appetite this week?</label>
+            <input
+              type="range"
+              id="appetite"
+              name="appetite_score"
+              min="1"
+              max="8"
+              value="${latestAppetite || 4}"
+            >
+            <div class="hint" id="appetiteHint">4/8 - Average appetite</div>
+
+            ${showCognitive ? `
+            <label for="cognitive" style="margin-top: 20px;">How's ${dog.dog_name}'s alertness &amp; behavior this week?</label>
+            <input
+              type="range"
+              id="cognitive"
+              name="cognitive_score"
+              min="1"
+              max="8"
+              value="4"
+            >
+            <div class="hint" id="cognitiveHint">4/8 - Average alertness</div>
+            ` : ''}
 
             <label for="observation" style="margin-top: 20px;">Any notes? (optional)</label>
             <textarea
@@ -1360,21 +1405,67 @@ app.get('/check-in/:dog_id', async (req, res) => {
         </div>
 
         <script>
-          const slider = document.getElementById('mobility');
-          const hints = {
-            1: "1/10 - Very stiff/limited movement",
-            2: "2/10 - Mostly struggling",
-            3: "3/10 - Significant issues",
-            4: "4/10 - Some good days, some bad days",
-            5: "5/10 - Moderate improvement",
-            6: "6/10 - Noticeably better",
-            7: "7/10 - Very active",
-            8: "8/10 - Excellent, no mobility issues"
+          const mobilitySlider = document.getElementById('mobility');
+          const mobilityHints = {
+            1: "1/8 - Very stiff/limited movement",
+            2: "2/8 - Mostly struggling",
+            3: "3/8 - Significant issues",
+            4: "4/8 - Some good days, some bad days",
+            5: "5/8 - Moderate improvement",
+            6: "6/8 - Noticeably better",
+            7: "7/8 - Very active",
+            8: "8/8 - Excellent, no mobility issues"
           };
-
-          slider.addEventListener('input', () => {
-            document.getElementById('hint').textContent = hints[slider.value];
+          mobilitySlider.addEventListener('input', () => {
+            document.getElementById('mobilityHint').textContent = mobilityHints[mobilitySlider.value];
           });
+
+          const energySlider = document.getElementById('energy');
+          const energyHints = {
+            1: "1/8 - Very low energy",
+            2: "2/8 - Mostly lethargic",
+            3: "3/8 - Below average energy",
+            4: "4/8 - Average energy",
+            5: "5/8 - Fairly active",
+            6: "6/8 - Active",
+            7: "7/8 - Very active",
+            8: "8/8 - Extremely energetic"
+          };
+          energySlider.addEventListener('input', () => {
+            document.getElementById('energyHint').textContent = energyHints[energySlider.value];
+          });
+
+          const appetiteSlider = document.getElementById('appetite');
+          const appetiteHints = {
+            1: "1/8 - Barely eating",
+            2: "2/8 - Eating very little",
+            3: "3/8 - Below average appetite",
+            4: "4/8 - Average appetite",
+            5: "5/8 - Good appetite",
+            6: "6/8 - Very good appetite",
+            7: "7/8 - Excellent appetite",
+            8: "8/8 - Eating everything in sight"
+          };
+          appetiteSlider.addEventListener('input', () => {
+            document.getElementById('appetiteHint').textContent = appetiteHints[appetiteSlider.value];
+          });
+
+          const cognitiveSlider = document.getElementById('cognitive');
+          if (cognitiveSlider) {
+            const cognitiveHints = {
+              1: "1/8 - Often confused/withdrawn",
+              2: "2/8 - Frequently disoriented",
+              3: "3/8 - Below average alertness",
+              4: "4/8 - Average alertness",
+              5: "5/8 - Fairly engaged",
+              6: "6/8 - Engaged and responsive",
+              7: "7/8 - Very sharp",
+              8: "8/8 - Sharp and fully engaged"
+            };
+            cognitiveSlider.addEventListener('input', () => {
+              document.getElementById('cognitiveHint').textContent = cognitiveHints[cognitiveSlider.value];
+            });
+          }
 
           document.getElementById('checkinForm').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -1387,6 +1478,9 @@ app.get('/check-in/:dog_id', async (req, res) => {
                 body: JSON.stringify({
                   dog_id: '${dog_id}',
                   mobility_score: parseInt(formData.get('mobility_score')),
+                  energy_score: parseInt(formData.get('energy_score')),
+                  appetite_score: parseInt(formData.get('appetite_score')),
+                  cognitive_score: formData.get('cognitive_score') ? parseInt(formData.get('cognitive_score')) : null,
                   observation: formData.get('observation') || null
                 })
               });
@@ -1398,7 +1492,7 @@ app.get('/check-in/:dog_id', async (req, res) => {
                   <div class="card" style="text-align: center;">
                     <h2 style="color: green;">✅ Check-In Submitted!</h2>
                     <p style="font-size: 18px; color: #007AFF; margin: 20px 0;">
-                      ${dog.dog_name}'s mobility: \${result.mobility_score}/10
+                      ${dog.dog_name}'s mobility: \${result.mobility_score}/8
                     </p>
                     <p style="font-size: 14px; color: #666; margin: 20px 0;">
                       \${result.change_text}
@@ -1433,13 +1527,13 @@ app.get('/check-in/:dog_id', async (req, res) => {
 // ============================================
 app.post('/api/checkin-senior', async (req, res) => {
   try {
-    const { dog_id, mobility_score, observation } = req.body;
+    const { dog_id, mobility_score, energy_score, appetite_score, cognitive_score, observation } = req.body;
 
     // Validation
-    if (!dog_id || !mobility_score) {
+    if (!dog_id || !mobility_score || !energy_score || !appetite_score) {
       return res.status(400).json({
         success: false,
-        error: 'Missing required fields: dog_id, mobility_score'
+        error: 'Missing required fields: dog_id, mobility_score, energy_score, appetite_score'
       });
     }
 
@@ -1449,6 +1543,34 @@ app.post('/api/checkin-senior', async (req, res) => {
         success: false,
         error: 'Mobility score must be between 1 and 8'
       });
+    }
+
+    const energyScoreInt = parseInt(energy_score);
+    if (isNaN(energyScoreInt) || energyScoreInt < 1 || energyScoreInt > 8) {
+      return res.status(400).json({
+        success: false,
+        error: 'Energy score must be between 1 and 8'
+      });
+    }
+
+    const appetiteScoreInt = parseInt(appetite_score);
+    if (isNaN(appetiteScoreInt) || appetiteScoreInt < 1 || appetiteScoreInt > 8) {
+      return res.status(400).json({
+        success: false,
+        error: 'Appetite score must be between 1 and 8'
+      });
+    }
+
+    // Cognitive/behavior is only asked every 4th week, so it's optional here
+    let cognitiveScoreInt = null;
+    if (cognitive_score !== undefined && cognitive_score !== null && cognitive_score !== '') {
+      cognitiveScoreInt = parseInt(cognitive_score);
+      if (isNaN(cognitiveScoreInt) || cognitiveScoreInt < 1 || cognitiveScoreInt > 8) {
+        return res.status(400).json({
+          success: false,
+          error: 'Cognitive score must be between 1 and 8'
+        });
+      }
     }
 
     // Get the dog info
@@ -1518,6 +1640,9 @@ app.post('/api/checkin-senior', async (req, res) => {
         dog_id: dog_id,
         week_number: weekNumber,
         mobility_score: mobilityScoreInt,
+        energy_score: energyScoreInt,
+        appetite_score: appetiteScoreInt,
+        cognitive_score: cognitiveScoreInt,
         observation: observation || null,
         segment: segment
       });
@@ -1528,15 +1653,16 @@ app.post('/api/checkin-senior', async (req, res) => {
     // QUEUE NEXT WEEK'S SMS AT PERSONALIZED TIME
     // ============================================
     const nextReminderDate = getNextReminderDate(submissionDayOfWeek, reminderTime);
+    const nextCheckinLink = `http://192.168.1.19:3000/check-in/${dog_id}`;
 
     const { error: queueError } = await supabase
       .from('sms_queue')
       .insert([{
-        user_id: dog.user_id || null,
         pet_id: dog_id,
+        phone: dog.phone || null,
         message_type: `week_${weekNumber + 1}_checkin`,
         scheduled_for: nextReminderDate.toISOString(),
-        message_body: `${dog.dog_name}'s #${weekNumber + 1} week check-in Time! Please click the link to complete 30 second update!`,
+        message_body: `${dog.dog_name}'s #${weekNumber + 1} week check-in time! Click here to complete a 30-second update: ${nextCheckinLink}`,
         status: 'pending'
       }]);
 
@@ -1546,11 +1672,11 @@ app.post('/api/checkin-senior', async (req, res) => {
     // Generate feedback message
     let changeText = '';
     if (scoreDiff > 0) {
-      changeText = `↑ Up from ${previousScore}/10 last week. Great work, keep it up!`;
+      changeText = `↑ Up from ${previousScore}/8 last week. Great work, keep it up!`;
     } else if (scoreDiff < 0) {
-      changeText = `Mobility is at ${mobilityScoreInt}/10 this week. Tracking it consistently can help you notice changes and patterns over time. Keep going!`;
+      changeText = `Mobility is at ${mobilityScoreInt}/8 this week. Tracking it consistently can help you notice changes and patterns over time. Keep going!`;
     } else {
-      changeText = `Mobility was rated ${mobilityScoreInt}/10 again this week—each check-in helps build a clearer picture over time. Keep it going! 📈`;
+      changeText = `Mobility was rated ${mobilityScoreInt}/8 again this week—each check-in helps build a clearer picture over time. Keep it going! 📈`;
     }
 
     console.log(`✅ Week ${weekNumber} check-in saved for ${dog.dog_name}`);
@@ -1709,6 +1835,18 @@ app.get('/dashboard/:dog_id', async (req, res) => {
     // Prepare chart data
     const chartScores = checkins.map(c => c.mobility_score);
     const chartWeeks = checkins.map(c => `W${c.week_number}`);
+
+    // Latest energy/appetite for pre-filling the check-in modal sliders
+    const latestCheckinRow = checkins[checkins.length - 1];
+    const latestEnergyScore = latestCheckinRow?.energy_score || 4;
+    const latestAppetiteScore = latestCheckinRow?.appetite_score || 4;
+
+    // Calculate the actual current week (matches /api/checkin-senior's calculation)
+    // so we know whether to show the every-4th-week cognitive/behavior slider.
+    const dogCreatedAt = new Date(dog.created_at);
+    const dashboardNow = new Date();
+    const nextCheckinWeekNumber = Math.max(1, Math.floor((dashboardNow - dogCreatedAt) / (7 * 24 * 60 * 60 * 1000)) + 1);
+    const showCognitiveThisWeek = nextCheckinWeekNumber % 4 === 0;
 
     console.log(`✅ Dashboard loaded for ${dog.dog_name}: score=${currentScore}, trend=${trend}, streak=${streak}, rank=${rank}/${totalDogs}`);
 
@@ -2122,7 +2260,21 @@ app.get('/dashboard/:dog_id', async (req, res) => {
             <form id="checkInForm">
               <label style="display: block; margin: 15px 0 5px 0; font-weight: 500; color: #333;">How's ${dog.dog_name}'s mobility this week?</label>
               <input type="range" id="mobility" name="mobility_score" min="1" max="8" value="4" style="width: 100%; cursor: pointer;">
-              <div id="hint" style="font-size: 12px; color: #666; margin: 5px 0 0 0;">4/10 - Some good days, some bad days</div>
+              <div id="mobilityHint" style="font-size: 12px; color: #666; margin: 5px 0 0 0;">4/8 - Some good days, some bad days</div>
+
+              <label style="display: block; margin: 20px 0 5px 0; font-weight: 500; color: #333;">How's ${dog.dog_name}'s energy level this week?</label>
+              <input type="range" id="energy" name="energy_score" min="1" max="8" value="${latestEnergyScore}" style="width: 100%; cursor: pointer;">
+              <div id="energyHint" style="font-size: 12px; color: #666; margin: 5px 0 0 0;">4/8 - Average energy</div>
+
+              <label style="display: block; margin: 20px 0 5px 0; font-weight: 500; color: #333;">How's ${dog.dog_name}'s appetite this week?</label>
+              <input type="range" id="appetite" name="appetite_score" min="1" max="8" value="${latestAppetiteScore}" style="width: 100%; cursor: pointer;">
+              <div id="appetiteHint" style="font-size: 12px; color: #666; margin: 5px 0 0 0;">4/8 - Average appetite</div>
+
+              ${showCognitiveThisWeek ? `
+              <label style="display: block; margin: 20px 0 5px 0; font-weight: 500; color: #333;">How's ${dog.dog_name}'s alertness &amp; behavior this week?</label>
+              <input type="range" id="cognitive" name="cognitive_score" min="1" max="8" value="4" style="width: 100%; cursor: pointer;">
+              <div id="cognitiveHint" style="font-size: 12px; color: #666; margin: 5px 0 0 0;">4/8 - Average alertness</div>
+              ` : ''}
 
               <label style="display: block; margin: 20px 0 5px 0; font-weight: 500; color: #333;">Any notes? (optional)</label>
               <textarea id="observation" name="observation" placeholder="E.g., 'Easier on stairs this week' or 'Stiff in morning'" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-family: inherit; font-size: 14px; box-sizing: border-box; height: 80px;"></textarea>
@@ -2137,16 +2289,53 @@ app.get('/dashboard/:dog_id', async (req, res) => {
           const modal = document.getElementById('checkInModal');
           const openBtn = document.getElementById('openCheckInBtn');
           const closeBtn = document.getElementById('closeCheckInBtn');
-          const slider = document.getElementById('mobility');
-          const hints = {
-            1: "1/10 - Very stiff/limited movement",
-            2: "2/10 - Mostly struggling",
-            3: "3/10 - Significant issues",
-            4: "4/10 - Some good days, some bad days",
-            5: "5/10 - Moderate improvement",
-            6: "6/10 - Noticeably better",
-            7: "7/10 - Very active",
-            8: "8/10 - Excellent, no mobility issues"
+
+          const mobilitySlider = document.getElementById('mobility');
+          const mobilityHints = {
+            1: "1/8 - Very stiff/limited movement",
+            2: "2/8 - Mostly struggling",
+            3: "3/8 - Significant issues",
+            4: "4/8 - Some good days, some bad days",
+            5: "5/8 - Moderate improvement",
+            6: "6/8 - Noticeably better",
+            7: "7/8 - Very active",
+            8: "8/8 - Excellent, no mobility issues"
+          };
+
+          const energySlider = document.getElementById('energy');
+          const energyHints = {
+            1: "1/8 - Very low energy",
+            2: "2/8 - Mostly lethargic",
+            3: "3/8 - Below average energy",
+            4: "4/8 - Average energy",
+            5: "5/8 - Fairly active",
+            6: "6/8 - Active",
+            7: "7/8 - Very active",
+            8: "8/8 - Extremely energetic"
+          };
+
+          const appetiteSlider = document.getElementById('appetite');
+          const appetiteHints = {
+            1: "1/8 - Barely eating",
+            2: "2/8 - Eating very little",
+            3: "3/8 - Below average appetite",
+            4: "4/8 - Average appetite",
+            5: "5/8 - Good appetite",
+            6: "6/8 - Very good appetite",
+            7: "7/8 - Excellent appetite",
+            8: "8/8 - Eating everything in sight"
+          };
+
+          const cognitiveSlider = document.getElementById('cognitive');
+          const cognitiveHints = {
+            1: "1/8 - Often confused/withdrawn",
+            2: "2/8 - Frequently disoriented",
+            3: "3/8 - Below average alertness",
+            4: "4/8 - Average alertness",
+            5: "5/8 - Fairly engaged",
+            6: "6/8 - Engaged and responsive",
+            7: "7/8 - Very sharp",
+            8: "8/8 - Sharp and fully engaged"
           };
 
           openBtn.addEventListener('click', () => {
@@ -2163,9 +2352,20 @@ app.get('/dashboard/:dog_id', async (req, res) => {
             }
           });
 
-          slider.addEventListener('input', () => {
-            document.getElementById('hint').textContent = hints[slider.value];
+          mobilitySlider.addEventListener('input', () => {
+            document.getElementById('mobilityHint').textContent = mobilityHints[mobilitySlider.value];
           });
+          energySlider.addEventListener('input', () => {
+            document.getElementById('energyHint').textContent = energyHints[energySlider.value];
+          });
+          appetiteSlider.addEventListener('input', () => {
+            document.getElementById('appetiteHint').textContent = appetiteHints[appetiteSlider.value];
+          });
+          if (cognitiveSlider) {
+            cognitiveSlider.addEventListener('input', () => {
+              document.getElementById('cognitiveHint').textContent = cognitiveHints[cognitiveSlider.value];
+            });
+          }
 
           // Journey summary button - TODO: Build summary page pulling health data/criteria
           document.getElementById('viewSummaryBtn').addEventListener('click', () => {
@@ -2183,6 +2383,9 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                 body: JSON.stringify({
                   dog_id: '${dog_id}',
                   mobility_score: parseInt(formData.get('mobility_score')),
+                  energy_score: parseInt(formData.get('energy_score')),
+                  appetite_score: parseInt(formData.get('appetite_score')),
+                  cognitive_score: formData.get('cognitive_score') ? parseInt(formData.get('cognitive_score')) : null,
                   observation: formData.get('observation') || null
                 })
               });
@@ -2719,6 +2922,9 @@ app.post('/api/send-magic-link', async (req, res) => {
       age,
       gender,
       baseline_mobility_score,
+      baseline_energy_score,
+      baseline_appetite_score,
+      baseline_cognitive_score,
       observations,
       email,
       phone,
@@ -2746,12 +2952,17 @@ app.post('/api/send-magic-link', async (req, res) => {
     const cleanAge = parseInt(age);
     const cleanGender = sanitizeSelect(gender, ['male', 'female', 'unknown']);
     const cleanBaseline = parseInt(baseline_mobility_score);
+    const cleanEnergy = parseInt(baseline_energy_score);
+    const cleanAppetite = parseInt(baseline_appetite_score);
+    const cleanCognitive = parseInt(baseline_cognitive_score);
     const cleanEmail = sanitizeEmail(email);
     const cleanPhone = sanitizePhone(phone);
     const cleanObservations = sanitizeString(observations, 500);
 
+    console.log(`📝 Baseline received for ${cleanName}: mobility=${cleanBaseline}, energy=${cleanEnergy}, appetite=${cleanAppetite}, cognitive=${cleanCognitive}`);
+
     // Validate parsed values
-    if (!cleanName || !cleanBreed || isNaN(cleanAge) || isNaN(cleanBaseline)) {
+    if (!cleanName || !cleanBreed || isNaN(cleanAge) || isNaN(cleanBaseline) || isNaN(cleanEnergy) || isNaN(cleanAppetite) || isNaN(cleanCognitive)) {
       return res.status(400).json({
         success: false,
         error: 'Invalid input values'
@@ -2770,6 +2981,27 @@ app.post('/api/send-magic-link', async (req, res) => {
       return res.status(400).json({
         success: false,
         error: 'Mobility score must be between 1 and 8'
+      });
+    }
+
+    if (cleanEnergy < 1 || cleanEnergy > 8) {
+      return res.status(400).json({
+        success: false,
+        error: 'Energy score must be between 1 and 8'
+      });
+    }
+
+    if (cleanAppetite < 1 || cleanAppetite > 8) {
+      return res.status(400).json({
+        success: false,
+        error: 'Appetite score must be between 1 and 8'
+      });
+    }
+
+    if (cleanCognitive < 1 || cleanCognitive > 8) {
+      return res.status(400).json({
+        success: false,
+        error: 'Cognitive score must be between 1 and 8'
       });
     }
 
@@ -2864,6 +3096,9 @@ app.post('/api/send-magic-link', async (req, res) => {
         age: cleanAge,
         gender: cleanGender,
         baseline_mobility_score: cleanBaseline,
+        baseline_energy_score: cleanEnergy,
+        baseline_appetite_score: cleanAppetite,
+        baseline_cognitive_score: cleanCognitive,
         observations: cleanObservations,
         sms_consent: sms_consent === 'on' || sms_consent === true,
         weight_lbs: cleanWeight,
@@ -3155,7 +3390,12 @@ app.get('/verify', async (req, res) => {
         age: tokenData.age,
         gender: tokenData.gender,
         baseline_mobility_score: tokenData.baseline_mobility_score,
+        baseline_energy_score: tokenData.baseline_energy_score,
+        baseline_appetite_score: tokenData.baseline_appetite_score,
+        baseline_cognitive_score: tokenData.baseline_cognitive_score,
         baseline_notes: tokenData.observations,
+        phone: tokenData.phone,
+        email: tokenData.email,
         weight_lbs: tokenData.weight_lbs,
         spayed_neutered: tokenData.spayed_neutered,
         zip_code: tokenData.zip_code,
@@ -3576,7 +3816,7 @@ setInterval(async () => {
     // Get all senior dogs
     const { data: allDogs, error: dogsError } = await supabase
       .from('senior_dogs')
-      .select('id, dog_name, baseline_mobility_score, created_at');
+      .select('id, dog_name, phone, baseline_mobility_score, created_at');
 
     if (dogsError) {
       console.error('❌ Error fetching senior dogs:', dogsError.message);
@@ -3657,15 +3897,22 @@ setInterval(async () => {
           console.log(`  ⏰ ${dog.dog_name}: Reminder #1 fires at ${reminderDay1.toLocaleString()}, Reminder #2 at ${reminderDay2At7pm.toLocaleString()}, Reminder #3 at ${reminderDay3.toLocaleString()}`);
         }
 
+        const reminderCheckinLink = `http://192.168.1.19:3000/check-in/${dog.id}`;
+
+        if (!dog.phone) {
+          console.warn(`⚠️ ${dog.dog_name} has no phone on file — skipping reminder queue (they signed up before phone numbers were saved to the profile)`);
+        }
+
         // REMINDER #1 (2pm): Queue if it's time and hasn't been sent yet
-        if (now >= reminderDay1 && !reminder1Sent) {
+        if (now >= reminderDay1 && !reminder1Sent && dog.phone) {
           const { error: queueError1 } = await supabase
             .from('sms_queue')
             .insert({
               pet_id: dog.id,
+              phone: dog.phone,
               message_type: `week_${currentWeek}_reminder_1`,
               scheduled_for: reminderDay1.toISOString(),
-              message_body: `${dog.dog_name}'s #${currentWeek} week check-in Time! Please click the link to complete 30 second update!`,
+              message_body: `${dog.dog_name}'s #${currentWeek} week check-in time! Click here to complete a 30-second update: ${reminderCheckinLink}`,
               status: 'pending'
             });
           if (queueError1) {
@@ -3676,14 +3923,15 @@ setInterval(async () => {
         }
 
         // REMINDER #2 (7pm): Queue if it's time and hasn't been sent yet
-        if (now >= reminderDay2At7pm && !reminder2Sent) {
+        if (now >= reminderDay2At7pm && !reminder2Sent && dog.phone) {
           const { error: queueError2 } = await supabase
             .from('sms_queue')
             .insert({
               pet_id: dog.id,
+              phone: dog.phone,
               message_type: `week_${currentWeek}_reminder_2`,
               scheduled_for: reminderDay2At7pm.toISOString(),
-              message_body: `${dog.dog_name}'s #${currentWeek} week check-in reminder! We know life gets busy, so when you have a chance, please click the link and update!`,
+              message_body: `${dog.dog_name}'s #${currentWeek} week check-in reminder! We know life gets busy, so when you have a chance, click here to update: ${reminderCheckinLink}`,
               status: 'pending'
             });
           if (queueError2) {
@@ -3694,14 +3942,15 @@ setInterval(async () => {
         }
 
         // REMINDER #3 (7:30am/2pm next day): Queue if it's time and hasn't been sent yet
-        if (now >= reminderDay3 && !reminder3Sent) {
+        if (now >= reminderDay3 && !reminder3Sent && dog.phone) {
           const { error: queueError3 } = await supabase
             .from('sms_queue')
             .insert({
               pet_id: dog.id,
+              phone: dog.phone,
               message_type: `week_${currentWeek}_reminder_3`,
               scheduled_for: reminderDay3.toISOString(),
-              message_body: `${dog.dog_name}'s #${currentWeek} week check-in reminder! Our community really depends on building a large community of health journeys, If you can please click the link and update!`,
+              message_body: `${dog.dog_name}'s #${currentWeek} week check-in reminder! Our community really depends on building a large community of health journeys. If you can, click here to update: ${reminderCheckinLink}`,
               status: 'pending'
             });
           if (queueError3) {
@@ -3782,11 +4031,7 @@ setInterval(async () => {
     try {
         const { data: pending } = await supabase
             .from('sms_queue')
-            .select(`
-                id, user_id, pet_id, message_body,
-                users (phone),
-                pets (name)
-            `)
+            .select(`id, pet_id, phone, message_body`)
             .eq('status', 'pending')
             .lte('scheduled_for', new Date().toISOString())
             .limit(10);
@@ -3794,8 +4039,8 @@ setInterval(async () => {
         if (!pending || pending.length === 0) return;
 
         for (const msg of pending) {
-            if (!msg.users?.phone) {
-                console.warn(`⚠️ No phone for user ${msg.user_id}, skipping SMS`);
+            if (!msg.phone) {
+                console.warn(`⚠️ No phone on queued message ${msg.id} (pet_id: ${msg.pet_id}), skipping SMS`);
                 await supabase
                     .from('sms_queue')
                     .update({ status: 'failed', error_message: 'No phone number' })
@@ -3805,9 +4050,9 @@ setInterval(async () => {
 
             try {
                 const sent = await twilioClient.messages.create({
-                    body: msg.message_body.replace('[PetName]', msg.pets?.name || 'your pet'),
+                    body: msg.message_body,
                     from: TWILIO_PHONE_NUMBER,
-                    to: msg.users.phone
+                    to: msg.phone
                 });
 
                 await supabase
@@ -3819,7 +4064,7 @@ setInterval(async () => {
                     })
                     .eq('id', msg.id);
 
-                console.log(`✅ SMS sent to ${msg.users.phone}`);
+                console.log(`✅ SMS sent to ${msg.phone}`);
             } catch (error) {
                 console.error(`❌ Error sending SMS for message ${msg.id}:`, error.message);
                 await supabase
