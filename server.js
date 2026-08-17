@@ -176,7 +176,7 @@ app.use((req, res, next) => {
   return res.status(401).json({ error: 'Site is locked' });
 });
 
-app.use(express.static('public'));
+app.use(express.static('Public'));
 
 // ============================================
 // SUPABASE SETUP
@@ -3798,31 +3798,31 @@ app.post('/api/upload-dog-photo', upload.single('photo'), async (req, res) => {
 // STATIC PAGES (UNCHANGED)
 // ============================================
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    res.sendFile(path.join(__dirname, 'Public', 'index.html'));
 });
 
 app.get('/about.html', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'about.html'));
+    res.sendFile(path.join(__dirname, 'Public', 'about.html'));
 });
 
 app.get('/independent.html', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'independent.html'));
+    res.sendFile(path.join(__dirname, 'Public', 'independent.html'));
 });
 
 app.get('/privacy.html', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'privacy.html'));
+    res.sendFile(path.join(__dirname, 'Public', 'privacy.html'));
 });
 
 app.get('/governance.html', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'governance.html'));
+    res.sendFile(path.join(__dirname, 'Public', 'governance.html'));
 });
 
 app.get('/faq.html', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'faq.html'));
+    res.sendFile(path.join(__dirname, 'Public', 'faq.html'));
 });
 
 app.get('/founding.html', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'founding.html'));
+    res.sendFile(path.join(__dirname, 'Public', 'founding.html'));
 });
 
 // ============================================
