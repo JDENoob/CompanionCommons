@@ -1785,6 +1785,71 @@ function getStreakMilestoneMessage(dogName, streak) {
   return milestones[streak] || null;
 }
 
+// ============================================
+// STEP 27D: HEALTH ALERT TRIGGERS
+// Dashboard-only (no SMS). Fires on 2+ point swings in EITHER direction
+// (threshold is provisional — no real user data yet to tune it).
+// De-dupes per dog+metric within a 14-day window so owners aren't shown
+// the same alert repeatedly.
+// ============================================
+const HEALTH_ALERT_THRESHOLD = 2; // points, provisional
+const HEALTH_ALERT_DEDUP_DAYS = 14;
+
+async function detectHealthAlerts(dog_id, dogName, current, previous) {
+  const metrics = [
+    { key: 'mobility', label: 'mobility' },
+    { key: 'energy', label: 'energy' },
+    { key: 'appetite', label: 'appetite' },
+    { key: 'cognitive', label: 'cognitive sharpness' }
+  ];
+
+  const fourteenDaysAgo = new Date(Date.now() - HEALTH_ALERT_DEDUP_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
+  for (const m of metrics) {
+    if (current[m.key] == null || previous[m.key] == null) continue;
+
+    const diff = current[m.key] - previous[m.key];
+    if (Math.abs(diff) < HEALTH_ALERT_THRESHOLD) continue; // didn't cross threshold
+
+    const direction = diff > 0 ? 'up' : 'down';
+    const magnitude = Math.abs(diff);
+
+    // De-dup: skip if this dog already got an alert for this exact metric AND
+    // direction within the last 14 days. Direction-specific on purpose — a
+    // decline alert shouldn't suppress a later improvement alert for the same
+    // metric (a recovery is worth surfacing even if a drop fired recently).
+    const { data: recentAlerts } = await supabase
+      .from('health_alerts')
+      .select('id')
+      .eq('dog_id', dog_id)
+      .eq('metric', m.key)
+      .eq('direction', direction)
+      .gte('created_at', fourteenDaysAgo)
+      .limit(1);
+
+    if (recentAlerts && recentAlerts.length > 0) continue; // already alerted recently
+
+    // SAFE, non-diagnostic framing — no treatment claims, always points to the vet.
+    // See project compliance framework: observational only, never interprets
+    // what a change "means" medically.
+    const message = direction === 'down'
+      ? `${dogName}'s ${m.label} dropped ${magnitude} points compared to a recent check-in. This isn't a diagnosis — just a pattern that might be worth mentioning at ${dogName}'s next vet visit.`
+      : `${dogName}'s ${m.label} improved ${magnitude} points compared to a recent check-in. Worth noting what's been different lately.`;
+
+    const { error: alertError } = await supabase
+      .from('health_alerts')
+      .insert({
+        dog_id: dog_id,
+        metric: m.key,
+        direction: direction,
+        magnitude: magnitude,
+        message: message
+      });
+
+    if (alertError) console.warn(`⚠️ Error saving health alert for ${m.key}:`, alertError);
+  }
+}
+
 app.post('/api/checkin-senior', async (req, res) => {
   try {
     const { dog_id, mobility_score, energy_score, appetite_score, cognitive_score, observation } = req.body;
@@ -1960,21 +2025,25 @@ app.post('/api/checkin-senior', async (req, res) => {
     // Compares all 4 metrics against last week (cognitive falls back to baseline
     // on weeks it isn't asked, since it's only collected every 4th week).
     const prevRow = prevCheckins?.[0];
-    const changeText = generatePostLogInsight(
-      dog.dog_name,
-      {
-        mobility: mobilityScoreInt,
-        energy: energyScoreInt,
-        appetite: appetiteScoreInt,
-        cognitive: cognitiveScoreInt // null on non-4th weeks, that's fine — diff just skips it
-      },
-      {
-        mobility: prevRow?.mobility_score ?? dog.baseline_mobility_score,
-        energy: prevRow?.energy_score ?? dog.baseline_energy_score,
-        appetite: prevRow?.appetite_score ?? dog.baseline_appetite_score,
-        cognitive: prevRow?.cognitive_score ?? dog.baseline_cognitive_score
-      }
-    );
+    const currentScores = {
+      mobility: mobilityScoreInt,
+      energy: energyScoreInt,
+      appetite: appetiteScoreInt,
+      cognitive: cognitiveScoreInt // null on non-4th weeks, that's fine — diff just skips it
+    };
+    const previousScores = {
+      mobility: prevRow?.mobility_score ?? dog.baseline_mobility_score,
+      energy: prevRow?.energy_score ?? dog.baseline_energy_score,
+      appetite: prevRow?.appetite_score ?? dog.baseline_appetite_score,
+      cognitive: prevRow?.cognitive_score ?? dog.baseline_cognitive_score
+    };
+
+    const changeText = generatePostLogInsight(dog.dog_name, currentScores, previousScores);
+
+    // STEP 27D: Health Alert Triggers — dashboard-only, no SMS. Runs after
+    // the insight so it reuses the same current/previous data. Doesn't block
+    // or affect the response either way — alerts show up on next dashboard load.
+    await detectHealthAlerts(dog_id, dog.dog_name, currentScores, previousScores);
 
     console.log(`✅ Week ${weekNumber} check-in saved for ${dog.dog_name}`);
     console.log(`🔥 Current streak: ${currentStreak}, longest: ${longestStreak}`);
@@ -2053,6 +2122,19 @@ app.get('/dashboard/:dog_id', async (req, res) => {
       console.error('Error fetching checkins:', checkinsError);
       throw checkinsError;
     }
+
+    // STEP 27D: Fetch any active health alerts (last 14 days) for the banner.
+    // Most recent first — if multiple metrics triggered alerts, show the newest.
+    const fourteenDaysAgoForDisplay = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: activeAlerts } = await supabase
+      .from('health_alerts')
+      .select('*')
+      .eq('dog_id', dog_id)
+      .gte('created_at', fourteenDaysAgoForDisplay)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    const activeAlert = activeAlerts?.[0] || null;
 
     // If no check-ins yet, show empty state
     if (!checkins || checkins.length === 0) {
@@ -2437,6 +2519,13 @@ app.get('/dashboard/:dog_id', async (req, res) => {
               </div>
             </div>
           </div>
+
+          ${activeAlert ? `
+          <div style="background: #FFF3E0; border-left: 4px solid #FF9800; border-radius: 8px; padding: 16px 20px; margin: 20px 0;">
+            <p style="margin: 0 0 4px 0; font-weight: 600; color: #E65100; font-size: 14px;">⚠️ Worth a look</p>
+            <p style="margin: 0; color: #5D4037; font-size: 14px; line-height: 1.5;">${activeAlert.message}</p>
+          </div>
+          ` : ''}
 
           <div class="dashboard-layout">
             <!-- LEFT COLUMN: DOG INFO + CHARTS -->
