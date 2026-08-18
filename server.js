@@ -2075,6 +2075,391 @@ app.post('/api/checkin-senior', async (req, res) => {
 // NEW ENDPOINT - STEP 7
 // Displays: mobility score, trend, streak, peer comparison with Chart.js
 // ============================================
+// ============================================
+// STEP P1D: CONTENT REWARDS (Tier 1 — Breed History)
+// Static content, no AI generation, no cohort comparisons — deliberately
+// scoped down from the original spec, which called for AI-generated guides
+// with "compared to X other dogs on this platform" claims. That kind of
+// claim needs a real breed cohort to be honest, and there are zero real
+// founding members yet. This version uses only general, well-established
+// breed knowledge and shows the dog's OWN score neutrally, never compared
+// to other users. Add the cohort-comparison layer once P1C's blocker clears.
+//
+// Unlock state is NOT stored anywhere — same pattern as current_streak.
+// "Unlocked" just means "this dog's current week is >= 2," computed live
+// from the same week-number logic already used elsewhere, so there's
+// nothing that can drift out of sync.
+// ============================================
+const BREED_GUIDES = {
+  // ===== Larger breeds =====
+  'labrador': {
+    displayName: 'Labrador Retriever',
+    typicalWeight: '55–80 lb',
+    history: `Labrador Retrievers originated in Newfoundland, Canada, where they worked alongside fishermen retrieving nets and catch from icy water. Their name comes from the nearby Labrador Sea. They were brought to England in the 1800s, refined into the breed known today, and have been one of the most popular family dogs for decades.`,
+    temperament: `Labs are known for being friendly, outgoing, and eager to please — traits that made them natural fits as family companions, service dogs, and working retrievers. They tend to stay playful well into their senior years, though most slow down noticeably by age 9-10.`,
+    seniorPatterns: `As Labs age, joint health is one of the most commonly discussed topics among owners, given the breed's size and activity level earlier in life. Morning stiffness, a preference for shorter walks, and more careful movement on stairs are all commonly reported by owners of senior Labs. This isn't universal, and every dog ages differently — but it's a pattern worth being aware of and worth mentioning to your vet if you notice it.`
+  },
+  'golden retriever': {
+    displayName: 'Golden Retriever',
+    typicalWeight: '55–75 lb',
+    history: `Golden Retrievers were developed in Scotland in the mid-1800s, bred specifically for retrieving waterfowl in the Scottish Highlands. Their soft mouths (for retrieving game undamaged) and warm temperament made them quickly popular beyond hunting, becoming one of the most beloved family breeds worldwide.`,
+    temperament: `Goldens are known for being gentle, patient, and intelligent — qualities that make them common choices for therapy and service work. Many stay affectionate and eager to be near their people throughout their senior years.`,
+    seniorPatterns: `Golden Retrievers are a breed where owners commonly discuss joint and mobility changes with age, along with skin and coat changes. Many senior Goldens do well with consistent, moderate exercise rather than high-intensity activity. As always, individual dogs vary widely — tracking your own dog's patterns over time is more useful than any breed generalization.`
+  },
+  'german shepherd': {
+    displayName: 'German Shepherd',
+    typicalWeight: '50–90 lb',
+    history: `German Shepherds were developed in Germany in the late 1800s, originally bred for herding sheep and valued for their intelligence, trainability, and versatility. Those same traits later made them a top choice for police, military, and service work worldwide.`,
+    temperament: `German Shepherds are known for loyalty, confidence, and a strong working drive. They tend to bond closely with their families and often remain alert and engaged well into their senior years.`,
+    seniorPatterns: `Hind-leg mobility and stability are commonly discussed topics among senior German Shepherd owners, given the breed's build. Owners often notice changes in how a dog navigates stairs or gets up after resting before other changes appear. This is general breed-level context, not a prediction for any individual dog — tracking your own dog's actual patterns is what matters most.`
+  },
+  'rottweiler': {
+    displayName: 'Rottweiler',
+    typicalWeight: '80–135 lb',
+    history: `Rottweilers trace back to Roman drover dogs used to herd cattle, later refined in the German town of Rottweil, where they were used to drive livestock to market and pull carts. Their strength and work ethic later made them popular for police and guard work.`,
+    temperament: `Rottweilers are known for being confident, loyal, and protective of their families. Many remain calm and steady companions well into their senior years, though their size means mobility changes can be more noticeable.`,
+    seniorPatterns: `Joint health — particularly hips and elbows — is one of the most commonly discussed topics among Rottweiler owners, given the breed's size and build. Owners often notice changes in willingness to jump, climb stairs, or rise after resting before other signs appear. Weight management is frequently discussed too, since extra weight adds real strain to large joints.`
+  },
+  'german shorthaired pointer': {
+    displayName: 'German Shorthaired Pointer',
+    typicalWeight: '45–70 lb',
+    history: `German Shorthaired Pointers were developed in Germany in the 1800s as versatile hunting dogs, bred to point, track, and retrieve across a range of terrain and game.`,
+    temperament: `GSPs are known for being high-energy, intelligent, and eager to work — traits that made them prized all-purpose hunting companions. Many stay active and engaged well into their senior years, though exercise needs typically taper with age.`,
+    seniorPatterns: `Joint health is a commonly discussed topic among GSP owners as the breed ages, given their athletic build and activity level earlier in life. Owners often notice gradual changes in stamina or willingness for longer outings before other signs appear. Adjusting exercise intensity (not necessarily stopping it) is a common conversation senior GSP owners have with their vets.`
+  },
+  'cane corso': {
+    displayName: 'Cane Corso',
+    typicalWeight: '85–110 lb',
+    history: `Cane Corsos descend from ancient Roman war and guard dogs, developed in southern Italy and traditionally used for guarding property and livestock. The name roughly translates to "bodyguard dog."`,
+    temperament: `Cane Corsos are known for being confident, loyal, and protective, with a calm, steady demeanor in a well-socialized dog. Many remain devoted, watchful companions well into their senior years.`,
+    seniorPatterns: `Given their large size, joint health — particularly hips and elbows — is a commonly discussed topic among Cane Corso owners as the breed ages. Heart health is also a frequent topic of conversation with vets for large breeds generally. Owners often find that weight management makes a real difference in comfort and mobility as these dogs get older.`
+  },
+  'doberman pinscher': {
+    displayName: 'Doberman Pinscher',
+    typicalWeight: '60–100 lb',
+    history: `Doberman Pinschers were developed in Germany in the late 1800s by a tax collector who wanted a loyal, protective companion for his rounds. The breed was quickly recognized for intelligence and versatility in guard and police work.`,
+    temperament: `Dobermans are known for being loyal, alert, and highly trainable, often forming close bonds with their families. Many remain watchful and devoted companions well into their senior years.`,
+    seniorPatterns: `Heart health is one of the most widely discussed topics for Dobermans as they age, and it's an area many vets pay particular attention to during senior wellness visits for this breed specifically. Staying consistent with regular vet checkups alongside your own tracking is commonly recommended.`
+  },
+  'boxer': {
+    displayName: 'Boxer',
+    typicalWeight: '50–80 lb',
+    history: `Boxers were developed in Germany in the late 1800s, descended from bull-baiting breeds and later refined into versatile working dogs used for guarding, police work, and companionship.`,
+    temperament: `Boxers are known for being playful, energetic, and loyal, often maintaining a puppyish enthusiasm well into adulthood. Many stay engaged and affectionate through their senior years, even as activity levels naturally decrease.`,
+    seniorPatterns: `Heart health is a commonly discussed topic among Boxer owners as the breed ages, and it's an area many vets pay particular attention to during senior wellness visits. Joint health and gradual changes in exercise tolerance are also frequently discussed. Regular vet checkups alongside your own tracking can help catch changes early.`
+  },
+  'bernese mountain dog': {
+    displayName: 'Bernese Mountain Dog',
+    typicalWeight: '70–115 lb',
+    history: `Bernese Mountain Dogs originated in the Swiss Alps, bred by farmers as versatile working dogs for driving cattle, pulling carts, and guarding property. Their name comes from the canton of Bern.`,
+    temperament: `Berners are known for being gentle, calm, and deeply affectionate with their families. Many remain sweet, easygoing companions well into their senior years, often preferring to be near their people over anything else.`,
+    seniorPatterns: `Joint health is a commonly discussed topic among Berner owners given the breed's size, and many owners find that this breed tends to show its age a bit earlier than some other large breeds. Regular, gentle exercise and weight management are commonly discussed with vets as ways to support comfort in the senior years.`
+  },
+  'great dane': {
+    displayName: 'Great Dane',
+    typicalWeight: '110–175 lb',
+    history: `Great Danes descend from large mastiff-type dogs used in Germany for boar hunting and estate guarding, later refined into the gentle giant companion breed known today.`,
+    temperament: `Great Danes are known for being gentle, affectionate, and surprisingly laid-back for their size — often described as "gentle giants." Many remain calm, dignified companions well into their senior years.`,
+    seniorPatterns: `Given their exceptionally large size, joint health and heart health are both commonly discussed topics among Great Dane owners as the breed ages. Owners often work closely with their vets on weight management and mobility support, since extra strain on joints and the heart can be more noticeable in giant breeds.`
+  },
+  'siberian husky': {
+    displayName: 'Siberian Husky',
+    typicalWeight: '35–60 lb',
+    history: `Siberian Huskies were developed by the Chukchi people of northeastern Siberia as endurance sled dogs, bred to pull light loads over long distances in extreme cold. They were brought to Alaska in the early 1900s and gained wider popularity through sled-racing.`,
+    temperament: `Huskies are known for being energetic, independent, and highly social with people and other dogs. Many stay spirited and vocal well into their senior years, even as their exercise needs gradually decrease.`,
+    seniorPatterns: `Eye health is a commonly discussed topic for Huskies as they age, and joint health is a frequent topic for active breeds generally. Owners often find that adjusting (rather than eliminating) exercise routines helps senior Huskies stay comfortable and engaged.`
+  },
+  'vizsla': {
+    displayName: 'Vizsla',
+    typicalWeight: '45–65 lb',
+    history: `Vizslas originated in Hungary, developed by nobility as versatile hunting dogs skilled at pointing and retrieving. Their short, sleek coat and lean build reflect their history as an all-purpose field dog.`,
+    temperament: `Vizslas are known for being affectionate, energetic, and closely bonded to their people — often nicknamed "velcro dogs" for how closely they like to stay by their owner's side. Many remain eager and attentive well into their senior years.`,
+    seniorPatterns: `Joint health is a commonly discussed topic among Vizsla owners as the breed ages, given their athletic build earlier in life. Skin health is also sometimes discussed for the breed generally. Owners often find that keeping a senior Vizsla mentally and physically engaged (at a gentler pace) supports overall wellbeing.`
+  },
+  'mastiff': {
+    displayName: 'Mastiff',
+    typicalWeight: '120–230 lb',
+    history: `Mastiffs are among the oldest recognized dog breeds, with ancestry tracing back thousands of years to large guardian dogs used across the ancient world. The modern English Mastiff was refined in Britain and valued for its size and protective nature.`,
+    temperament: `Mastiffs are known for being calm, dignified, and gentle with their families despite their imposing size. Many remain low-key, affectionate companions well into their senior years.`,
+    seniorPatterns: `Given their exceptionally large size, joint health and heart health are both commonly discussed topics among Mastiff owners as the breed ages. Owners often work closely with their vets on weight management specifically, since even modest excess weight adds significant strain to joints in giant breeds.`
+  },
+  'rhodesian ridgeback': {
+    displayName: 'Rhodesian Ridgeback',
+    typicalWeight: '70–85 lb',
+    history: `Rhodesian Ridgebacks were developed in southern Africa, bred by combining European breeds with a native ridged-back hunting dog kept by the Khoikhoi people. They were historically used to track large game, including lions, though not to attack them.`,
+    temperament: `Ridgebacks are known for being loyal, independent, and dignified, often forming a close bond with one family. Many stay alert and steady well into their senior years.`,
+    seniorPatterns: `Joint health is a commonly discussed topic among Ridgeback owners as the breed ages, given their athletic build earlier in life. Owners often notice gradual changes in activity tolerance before other signs appear. Regular vet checkups alongside your own tracking are a good way to stay ahead of changes.`
+  },
+  'newfoundland': {
+    displayName: 'Newfoundland',
+    typicalWeight: '100–150 lb',
+    history: `Newfoundlands originated on the island of Newfoundland, Canada, developed as working dogs for fishermen — known for strength, swimming ability, and a talent for water rescue.`,
+    temperament: `Newfoundlands are known for being gentle, patient, and famously good-natured, often called "gentle giants." Many remain calm, sweet companions well into their senior years.`,
+    seniorPatterns: `Given their exceptionally large size, joint health and heart health are both commonly discussed topics among Newfoundland owners as the breed ages. Owners often work with their vets on weight management and moderate, joint-friendly exercise (like swimming) to support comfort in the senior years.`
+  },
+
+  // ===== Smaller breeds =====
+  'french bulldog': {
+    displayName: 'French Bulldog',
+    typicalWeight: '16–28 lb',
+    history: `French Bulldogs descend from small English Bulldogs brought to France by lace workers in the 1800s, where they were crossed with local breeds and refined into the compact companion dog known today. They were recognized by the AKC in 1898.`,
+    temperament: `Frenchies are known for being affectionate, easygoing, and adaptable — traits that have made them especially popular with owners in cities and smaller living spaces. Many remain playful and people-focused well into their senior years.`,
+    seniorPatterns: `Breathing and airway comfort is one of the most commonly discussed topics for French Bulldogs throughout life, given the breed's short-nosed (brachycephalic) build, and it's especially worth watching in warm weather or during activity. Spinal and joint health are also frequently discussed topics for the breed. Weight management can meaningfully affect comfort and breathing ease.`
+  },
+  'dachshund': {
+    displayName: 'Dachshund',
+    typicalWeight: '11–32 lb',
+    history: `Dachshunds were developed in Germany, originally bred to hunt badgers — their name literally translates to "badger dog." Their long, low build was specifically suited to tunneling into burrows after game.`,
+    temperament: `Dachshunds are known for being spirited, loyal, and sometimes stubborn — traits that likely served them well as independent hunters. Many stay alert and vocal well into their senior years.`,
+    seniorPatterns: `Back and spinal health is one of the most commonly discussed topics among Dachshund owners at any age, given the breed's elongated body shape, and it often becomes a bigger focus as dogs age. Owners commonly watch for reluctance to jump, changes in gait, or sensitivity around the back. Weight management is also frequently discussed, since extra weight adds strain to the spine.`
+  },
+  'cavalier king charles spaniel': {
+    displayName: 'Cavalier King Charles Spaniel',
+    typicalWeight: '13–18 lb',
+    history: `Cavalier King Charles Spaniels descend from small companion spaniels favored in English royal courts for centuries, later refined in the early 1900s into the breed recognized today, named after King Charles II.`,
+    temperament: `Cavaliers are known for being gentle, affectionate, and eager to be close to their people — bred specifically as companions. Many remain sweet-natured and devoted well into their senior years.`,
+    seniorPatterns: `Heart health is one of the most widely discussed topics for Cavaliers as they age, and it's an area many vets pay close attention to during regular senior wellness visits for this breed specifically. Staying consistent with vet checkups alongside your own tracking is commonly recommended for Cavalier owners.`
+  },
+  'yorkshire terrier': {
+    displayName: 'Yorkshire Terrier',
+    typicalWeight: '4–7 lb',
+    history: `Yorkshire Terriers originated in 19th-century England, bred by working-class weavers to catch rats in textile mills. Their small size and tenacity made them effective at the job before they became popular companion dogs.`,
+    temperament: `Yorkies are known for being confident, energetic, and affectionate with their families, often carrying a "big dog" attitude despite their small size. Many stay lively and attentive well into their senior years.`,
+    seniorPatterns: `Like many small breeds, dental health is a commonly discussed topic for Yorkies throughout their lives. Owners also frequently discuss joint and knee health as dogs age. Because of their small size, subtle changes in energy or mobility are often easier for owners to notice early.`
+  },
+  'pembroke welsh corgi': {
+    displayName: 'Pembroke Welsh Corgi',
+    typicalWeight: '22–30 lb',
+    history: `Pembroke Welsh Corgis originated in Wales, bred as herding dogs for cattle despite their small size — their low build allowed them to nip at heels while avoiding kicks. They later became widely known as a favorite breed of Queen Elizabeth II.`,
+    temperament: `Corgis are known for being smart, energetic, and confident, with a strong herding instinct that often shows up in play. Many stay lively and food-motivated well into their senior years.`,
+    seniorPatterns: `Back and spinal health is a commonly discussed topic for Corgis given their long body and short legs, similar to other elongated breeds. Weight management is especially frequently discussed for this breed, since extra weight adds real strain to both the spine and joints.`
+  },
+  'miniature schnauzer': {
+    displayName: 'Miniature Schnauzer',
+    typicalWeight: '11–20 lb',
+    history: `Miniature Schnauzers were developed in Germany by breeding down the Standard Schnauzer, originally used as farm dogs skilled at ratting and general guarding duties.`,
+    temperament: `Miniature Schnauzers are known for being alert, friendly, and spirited, often making excellent watchdogs despite their small size. Many stay energetic and engaged well into their senior years.`,
+    seniorPatterns: `Dental health and eye health are commonly discussed topics for Miniature Schnauzers as they age. Weight management is also frequently discussed, since the breed can be prone to gaining weight if activity decreases. Regular vet checkups alongside your own tracking are commonly recommended.`
+  },
+  'pomeranian': {
+    displayName: 'Pomeranian',
+    typicalWeight: '3–7 lb',
+    history: `Pomeranians descend from larger sled-dog-type breeds in the Pomerania region of Central Europe, gradually bred down in size over generations into the small companion dog known today. They became especially popular after Queen Victoria took an interest in the breed in the late 1800s.`,
+    temperament: `Pomeranians are known for being lively, alert, and confident, often described as having a big personality in a small package. Many stay spirited and vocal well into their senior years.`,
+    seniorPatterns: `Dental health is a commonly discussed topic for Pomeranians throughout life, as it is for many small breeds. Tracheal and joint health are also frequently discussed topics as the breed ages. Because Pomeranians are small, owners often find it easier to spot subtle day-to-day changes than with larger dogs.`
+  },
+  'shih tzu': {
+    displayName: 'Shih Tzu',
+    typicalWeight: '9–16 lb',
+    history: `Shih Tzus originated in China, believed to be bred from Tibetan breeds and favored as companion dogs in Chinese royal courts for centuries before becoming popular worldwide in the 20th century.`,
+    temperament: `Shih Tzus are known for being affectionate, outgoing, and people-oriented — bred specifically to be companions rather than working dogs. Many stay sweet-natured and attentive well into their senior years.`,
+    seniorPatterns: `Eye health is a commonly discussed topic for Shih Tzus given their prominent eye shape, and dental health is a frequent topic for small breeds generally. Breathing comfort is also sometimes discussed given the breed's shorter muzzle. Regular grooming and vet checkups alongside your own tracking are commonly recommended.`
+  },
+  'boston terrier': {
+    displayName: 'Boston Terrier',
+    typicalWeight: '10–25 lb',
+    history: `Boston Terriers were developed in the United States in the late 1800s, one of the first breeds developed specifically in America. They're sometimes called "the American Gentleman" for their tuxedo-like coat pattern.`,
+    temperament: `Boston Terriers are known for being friendly, lively, and adaptable, often described as having a comedic personality. Many stay playful and affectionate well into their senior years.`,
+    seniorPatterns: `Breathing comfort is a commonly discussed topic for Boston Terriers given their short-nosed (brachycephalic) build, and eye health is also a frequent topic for the breed. Weight management can meaningfully support breathing comfort as the breed ages.`
+  },
+  'chihuahua': {
+    displayName: 'Chihuahua',
+    typicalWeight: '2–6 lb',
+    history: `Chihuahuas take their name from the Mexican state of Chihuahua, where the breed was discovered by American travelers in the 1850s. Their exact ancestral origins are debated, but they're widely recognized as one of the oldest breeds in the Americas.`,
+    temperament: `Chihuahuas are known for big personalities in small bodies — often alert, confident, and deeply bonded to their owners. Many remain feisty and engaged throughout their senior years.`,
+    seniorPatterns: `Dental health is a commonly discussed topic for Chihuahuas throughout life, given their small jaw size, and often becomes more prominent with age. Knee (patella) health is another frequently discussed topic for small breeds generally. Because Chihuahuas are small, owners sometimes find it easier to notice subtle changes in movement or appetite than with larger dogs.`
+  },
+  'havanese': {
+    displayName: 'Havanese',
+    typicalWeight: '7–13 lb',
+    history: `Havanese dogs originated in Cuba, descended from small Mediterranean companion breeds brought over by Spanish settlers, and are the only dog breed native to the island.`,
+    temperament: `Havanese are known for being friendly, playful, and highly people-oriented, often thriving on close companionship. Many remain sociable and attentive well into their senior years.`,
+    seniorPatterns: `Dental health is a commonly discussed topic for Havanese throughout life, as it is for many small breeds. Eye health and joint health are also sometimes discussed as the breed ages. Owners often find this breed adapts well to a gentler activity pace as it gets older.`
+  },
+  'maltese': {
+    displayName: 'Maltese',
+    typicalWeight: '4–7 lb',
+    history: `Maltese dogs are among the oldest toy breeds, with a history tracing back thousands of years around the Mediterranean, prized as companion dogs by ancient nobility.`,
+    temperament: `Maltese are known for being gentle, affectionate, and lively, often forming close bonds with their people. Many stay sweet-natured and alert well into their senior years.`,
+    seniorPatterns: `Dental health is one of the most commonly discussed topics for Maltese throughout life, given their small jaw size. Eye health is also a frequently discussed topic for the breed. Regular vet checkups alongside your own tracking are commonly recommended.`
+  },
+  'pug': {
+    displayName: 'Pug',
+    typicalWeight: '14–18 lb',
+    history: `Pugs originated in China, bred as companion dogs for Chinese royalty, and were later brought to Europe by Dutch traders in the 1500s, where they became popular in royal courts.`,
+    temperament: `Pugs are known for being affectionate, playful, and easygoing, often described as having a charming, sociable personality. Many stay warm and people-focused well into their senior years.`,
+    seniorPatterns: `Breathing and airway comfort is one of the most commonly discussed topics for Pugs throughout life, given the breed's short-nosed (brachycephalic) build. Weight management is especially frequently discussed for this breed, since extra weight can meaningfully affect breathing comfort and joint health. Skin-fold care is also a common topic.`
+  },
+  'papillon': {
+    displayName: 'Papillon',
+    typicalWeight: '5–10 lb',
+    history: `Papillons take their name from the French word for "butterfly," referencing their distinctive fringed ears. The breed has a long history as a companion dog in European royal courts, dating back centuries.`,
+    temperament: `Papillons are known for being alert, friendly, and surprisingly athletic for their size. Many remain lively and mentally sharp well into their senior years.`,
+    seniorPatterns: `Dental health is a commonly discussed topic for Papillons throughout life, as it is for many small breeds. Knee (patella) health is also a frequently discussed topic. Because Papillons are small and often quite active, owners sometimes find it easier to notice subtle changes early.`
+  },
+  'bichon frise': {
+    displayName: 'Bichon Frise',
+    typicalWeight: '12–18 lb',
+    history: `Bichon Frises descend from small Mediterranean water dogs, with a history tracing through Spain, France, and Italy as beloved companion dogs in European courts for centuries.`,
+    temperament: `Bichons are known for being cheerful, affectionate, and playful, often described as having a naturally happy disposition. Many stay sociable and lively well into their senior years.`,
+    seniorPatterns: `Skin and coat health are commonly discussed topics for Bichons throughout life, along with dental health, as is common for many small breeds. Eye health is also sometimes discussed as the breed ages. Regular grooming and vet checkups alongside your own tracking are commonly recommended.`
+  },
+
+  'mixed breed': {
+    displayName: 'Mixed Breed',
+    typicalWeight: 'Varies widely',
+    history: `Mixed-breed dogs draw from two or more breed lineages, which often gives them a broader, more varied genetic background than purebred dogs. This diversity is sometimes associated with fewer breed-specific hereditary conditions, though every dog's health history is individual.`,
+    temperament: `Temperament in mixed-breed dogs varies widely and depends on their specific ancestry, individual personality, and upbringing — there's no single generalization that applies broadly.`,
+    seniorPatterns: `Because mixed-breed dogs don't share one specific health profile, tracking your own dog's individual patterns over time — rather than relying on breed generalizations — is especially valuable. That's exactly what consistent weekly check-ins are for.`
+  }
+};
+
+const GENERIC_BREED_GUIDE = {
+  displayName: 'Senior Dogs',
+  typicalWeight: 'Varies by breed',
+  history: `Dogs have been companions to humans for thousands of years, with countless breeds and mixes developed for different purposes — from herding and hunting to companionship. Every dog's individual history and genetics shape how they age.`,
+  temperament: `Every dog's temperament is shaped by a mix of genetics, upbringing, and individual personality — general breed traits are a starting point, not a guarantee.`,
+  seniorPatterns: `As dogs enter their senior years, changes in mobility, energy, appetite, and alertness are common across breeds, though the timing and severity vary widely from dog to dog. Regular tracking is one of the most reliable ways to notice real changes early, rather than relying on memory or breed-level assumptions.`
+};
+
+function getBreedGuide(breedName) {
+  if (!breedName) return GENERIC_BREED_GUIDE;
+  const normalized = breedName.trim().toLowerCase();
+  return BREED_GUIDES[normalized] || GENERIC_BREED_GUIDE;
+}
+
+app.get('/breed-guide/:dog_id', async (req, res) => {
+  try {
+    const { dog_id } = req.params;
+
+    const { data: dog, error: dogError } = await supabase
+      .from('senior_dogs')
+      .select('*')
+      .eq('id', dog_id)
+      .single();
+
+    if (dogError || !dog) {
+      return res.status(404).send(`
+        <!DOCTYPE html>
+        <html>
+        <head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Not Found</title></head>
+        <body style="font-family: -apple-system, sans-serif; max-width: 600px; margin: 60px auto; padding: 20px; text-align: center;">
+          <h2>❌ Dog Not Found</h2>
+          <p>We couldn't find this profile. Please check your link and try again.</p>
+        </body>
+        </html>
+      `);
+    }
+
+    // Same week-number calculation used everywhere else — no separate
+    // "unlocked" flag stored anywhere, computed live.
+    const created = new Date(dog.created_at);
+    const now = new Date();
+    const currentWeek = Math.max(1, Math.floor((now - created) / (7 * 24 * 60 * 60 * 1000)) + 1);
+
+    if (currentWeek < 2) {
+      return res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>${dog.dog_name}'s Breed Guide</title>
+          <style>
+            body { font-family: -apple-system, sans-serif; max-width: 600px; margin: 60px auto; padding: 20px; text-align: center; background: #f5f5f5; }
+            .card { background: white; border-radius: 12px; padding: 40px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <p style="font-size: 48px; margin: 0 0 20px 0;">🔒</p>
+            <h2 style="margin: 0 0 10px 0;">Not unlocked yet</h2>
+            <p style="color: #666;">${dog.dog_name}'s breed guide unlocks after your Week 2 check-in. Keep logging!</p>
+            <a href="/dashboard/${dog_id}" style="display: inline-block; margin-top: 20px; background: #007AFF; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none;">Back to Dashboard</a>
+          </div>
+        </body>
+        </html>
+      `);
+    }
+
+    const guide = getBreedGuide(dog.breed);
+
+    // Show the dog's own current score neutrally — deliberately NOT compared
+    // to other dogs, breed averages, or percentiles (see note at top of section).
+    const { data: latestCheckins } = await supabase
+      .from('mobility_checkins')
+      .select('mobility_score')
+      .eq('dog_id', dog_id)
+      .order('created_at', { ascending: false })
+      .limit(1);
+    const currentMobility = latestCheckins?.[0]?.mobility_score ?? dog.baseline_mobility_score;
+
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>${dog.dog_name}'s ${guide.displayName} Guide</title>
+        <style>
+          body { font-family: -apple-system, sans-serif; max-width: 650px; margin: 40px auto; padding: 20px; background: #f5f5f5; color: #333; line-height: 1.6; }
+          .card { background: white; border-radius: 12px; padding: 40px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+          .site-brand { font-size: 13px; font-weight: 700; letter-spacing: 0.5px; color: #A89968; text-transform: uppercase; margin: 0 0 20px 0; }
+          .dog-photo { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; margin: 0 0 16px 0; display: block; }
+          .dog-photo-placeholder { width: 80px; height: 80px; border-radius: 50%; background: #FFF8E7; display: flex; align-items: center; justify-content: center; font-size: 36px; margin: 0 0 16px 0; }
+          h1 { font-size: 24px; margin: 0 0 4px 0; }
+          .subtitle { color: #999; font-size: 14px; margin: 0 0 30px 0; }
+          h2 { font-size: 16px; color: #A89968; text-transform: uppercase; letter-spacing: 0.5px; margin: 30px 0 10px 0; }
+          .dog-snapshot { background: #FFF8E7; border-radius: 8px; padding: 16px 20px; margin: 30px 0; }
+          .disclaimer { background: #FAFAFA; border: 1px solid #EEE; border-radius: 8px; padding: 20px; margin-top: 30px; font-size: 13px; color: #777; line-height: 1.6; }
+          .disclaimer strong { color: #555; }
+          .disclaimer a { color: #A89968; }
+          .back-link { display: inline-block; margin-top: 30px; color: #007AFF; text-decoration: none; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <p class="site-brand">🐾 Companion Commons</p>
+
+          ${dog.photo_url
+            ? `<img src="${dog.photo_url}" alt="${dog.dog_name}" class="dog-photo" />`
+            : `<div class="dog-photo-placeholder">🐕</div>`
+          }
+
+          <p style="font-size: 32px; margin: 0 0 10px 0;">🎁</p>
+          <h1>${guide.displayName}: A Health Journey Guide</h1>
+          <p class="subtitle">Unlocked for ${dog.dog_name} — Week 2 milestone${guide.typicalWeight ? ` &nbsp;•&nbsp; Typical weight: ${guide.typicalWeight}` : ''}</p>
+
+          <h2>History</h2>
+          <p>${guide.history}</p>
+
+          <h2>Temperament</h2>
+          <p>${guide.temperament}</p>
+
+          <h2>Senior Health Patterns</h2>
+          <p>${guide.seniorPatterns}</p>
+
+          <div class="dog-snapshot">
+            <strong>${dog.dog_name}'s current mobility:</strong> ${currentMobility}/8
+            <p style="margin: 8px 0 0 0; font-size: 13px; color: #888;">This is just ${dog.dog_name}'s own number — not a comparison to other dogs. Keep logging to build a clearer picture over time.</p>
+          </div>
+
+          <div class="disclaimer">
+            <p style="margin: 0;">Companion Commons is not a veterinary service and does not diagnose, treat, prescribe, or provide veterinary advice. Always consult a licensed veterinarian about your companion's health and care. Think this may be an emergency? Contact your veterinarian or the nearest emergency veterinary hospital immediately.</p>
+            <p style="margin: 12px 0 0 0;">See our <a href="/terms.html">Terms of Service</a> and <a href="/privacy.html">Privacy Policy</a> for more.</p>
+          </div>
+
+          <a href="/dashboard/${dog_id}" class="back-link">← Back to Dashboard</a>
+        </div>
+      </body>
+      </html>
+    `);
+
+  } catch (error) {
+    console.error('Error loading breed guide:', error);
+    res.status(500).send('Error loading breed guide');
+  }
+});
+
 app.get('/dashboard/:dog_id', async (req, res) => {
   try {
     const { dog_id } = req.params;
@@ -2529,6 +2914,16 @@ app.get('/dashboard/:dog_id', async (req, res) => {
           <div style="background: #FFF3E0; border-left: 4px solid #FF9800; border-radius: 8px; padding: 16px 20px; margin: 20px 0;">
             <p style="margin: 0 0 4px 0; font-weight: 600; color: #E65100; font-size: 14px;">⚠️ Worth a look</p>
             <p style="margin: 0; color: #5D4037; font-size: 14px; line-height: 1.5;">${activeAlert.message}</p>
+          </div>
+          ` : ''}
+
+          ${nextCheckinWeekNumber >= 2 ? `
+          <div style="background: #FFF8E7; border-left: 4px solid #A89968; border-radius: 8px; padding: 16px 20px; margin: 20px 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div>
+              <p style="margin: 0 0 4px 0; font-weight: 600; color: #8A7A4F; font-size: 14px;">🎁 Breed guide unlocked</p>
+              <p style="margin: 0; color: #5D4E37; font-size: 14px;">${dog.dog_name}'s ${dog.breed || 'breed'} guide is ready to read.</p>
+            </div>
+            <a href="/breed-guide/${dog_id}" style="background: #A89968; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 500; white-space: nowrap;">Read it →</a>
           </div>
           ` : ''}
 
