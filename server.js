@@ -1662,6 +1662,71 @@ app.get('/check-in/:dog_id', async (req, res) => {
 // SENIOR DOGS MOBILITY: SAVE CHECK-IN DATA
 // NEW ENDPOINT - STEP 5 (companion to STEP 4)
 // ============================================
+// ============================================
+// STEP 27B: POST-LOG MICRO-INSIGHTS
+// Compares this week's 4 scores to last week's (or baseline, for cognitive
+// on weeks it wasn't asked) and writes a sentence about whichever metric
+// actually moved the most — not always mobility.
+// ============================================
+function generatePostLogInsight(dogName, current, previous) {
+  // current/previous are objects: { mobility, energy, appetite, cognitive }
+  // previous.cognitive may be null if no prior weekly cognitive score exists —
+  // caller is responsible for passing baseline_cognitive_score as the fallback in that case.
+
+  const metrics = [
+    { key: 'mobility', label: 'mobility' },
+    { key: 'energy', label: 'energy' },
+    { key: 'appetite', label: 'appetite' },
+    { key: 'cognitive', label: 'cognitive sharpness' }
+  ];
+
+  // Build a diff for each metric we actually have both values for
+  const diffs = metrics
+    .filter(m => current[m.key] != null && previous[m.key] != null)
+    .map(m => ({
+      ...m,
+      diff: current[m.key] - previous[m.key],
+      currentVal: current[m.key]
+    }));
+
+  if (diffs.length === 0) {
+    // Shouldn't normally happen (mobility/energy/appetite are always required),
+    // but guard against it rather than crash.
+    return `Thanks for logging ${dogName}'s check-in this week!`;
+  }
+
+  // Find the metric with the biggest absolute change
+  const biggest = diffs.reduce((a, b) => (Math.abs(b.diff) > Math.abs(a.diff) ? b : a));
+
+  // Everything flat — no metric moved
+  if (biggest.diff === 0) {
+    const flatVariants = [
+      `${dogName}'s scores held steady across the board this week. Consistency like this makes patterns easier to spot down the line.`,
+      `No major changes for ${dogName} this week — steady is good data too. Keep the check-ins coming.`,
+      `${dogName} looks about the same as last week. That stability itself is useful to track over time.`
+    ];
+    return flatVariants[Math.floor(Math.random() * flatVariants.length)];
+  }
+
+  const direction = biggest.diff > 0 ? 'up' : 'down';
+  const absDiff = Math.abs(biggest.diff);
+
+  const upVariants = [
+    `${dogName}'s ${biggest.label} is up ${absDiff} point${absDiff > 1 ? 's' : ''} from last week — nice trend, keep it going.`,
+    `Good sign: ${dogName}'s ${biggest.label} improved by ${absDiff} point${absDiff > 1 ? 's' : ''} since last week.`,
+    `${dogName}'s ${biggest.label} moved up this week (+${absDiff}). Worth noting if anything changed in the routine.`
+  ];
+
+  const downVariants = [
+    `${dogName}'s ${biggest.label} is down ${absDiff} point${absDiff > 1 ? 's' : ''} from last week. Nothing to panic about from one data point — but worth watching next week.`,
+    `Heads up: ${dogName}'s ${biggest.label} dropped ${absDiff} point${absDiff > 1 ? 's' : ''} since last week. Keep logging so you can see if it's a trend or a one-off.`,
+    `${dogName}'s ${biggest.label} was a bit lower this week (-${absDiff}). One week alone isn't a pattern — tracking it is how you'll know.`
+  ];
+
+  const variants = direction === 'up' ? upVariants : downVariants;
+  return variants[Math.floor(Math.random() * variants.length)];
+}
+
 app.post('/api/checkin-senior', async (req, res) => {
   try {
     const { dog_id, mobility_score, energy_score, appetite_score, cognitive_score, observation } = req.body;
@@ -1729,10 +1794,11 @@ app.post('/api/checkin-senior', async (req, res) => {
     const now = new Date();
     const weekNumber = Math.floor((now - created) / (7 * 24 * 60 * 60 * 1000)) + 1;
 
-    // Get previous score for comparison
+    // Get previous check-in for comparison — pulling all 4 scores now, not just mobility,
+    // so the post-log insight (STEP 27B) can comment on whichever metric actually moved most.
     const { data: prevCheckins } = await supabase
       .from('mobility_checkins')
-      .select('mobility_score')
+      .select('mobility_score, energy_score, appetite_score, cognitive_score')
       .eq('dog_id', dog_id)
       .order('created_at', { ascending: false })
       .limit(1);
@@ -1811,15 +1877,25 @@ app.post('/api/checkin-senior', async (req, res) => {
       console.log(`📅 Skipping reminder queue for ${dog.dog_name} — SMS consent not given`);
     }
 
-    // Generate feedback message
-    let changeText = '';
-    if (scoreDiff > 0) {
-      changeText = `↑ Up from ${previousScore}/8 last week. Great work, keep it up!`;
-    } else if (scoreDiff < 0) {
-      changeText = `Mobility is at ${mobilityScoreInt}/8 this week. Tracking it consistently can help you notice changes and patterns over time. Keep going!`;
-    } else {
-      changeText = `Mobility was rated ${mobilityScoreInt}/8 again this week—each check-in helps build a clearer picture over time. Keep it going! 📈`;
-    }
+    // Generate feedback message (STEP 27B: Post-Log Micro-Insights)
+    // Compares all 4 metrics against last week (cognitive falls back to baseline
+    // on weeks it isn't asked, since it's only collected every 4th week).
+    const prevRow = prevCheckins?.[0];
+    const changeText = generatePostLogInsight(
+      dog.dog_name,
+      {
+        mobility: mobilityScoreInt,
+        energy: energyScoreInt,
+        appetite: appetiteScoreInt,
+        cognitive: cognitiveScoreInt // null on non-4th weeks, that's fine — diff just skips it
+      },
+      {
+        mobility: prevRow?.mobility_score ?? dog.baseline_mobility_score,
+        energy: prevRow?.energy_score ?? dog.baseline_energy_score,
+        appetite: prevRow?.appetite_score ?? dog.baseline_appetite_score,
+        cognitive: prevRow?.cognitive_score ?? dog.baseline_cognitive_score
+      }
+    );
 
     console.log(`✅ Week ${weekNumber} check-in saved for ${dog.dog_name}`);
 
