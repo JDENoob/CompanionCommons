@@ -227,6 +227,7 @@ const twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 // SENDGRID SETUP (Email)
 // ============================================
 const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
+const SENDGRID_FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL || 'companioncommons@gmail.com';
 if (SENDGRID_API_KEY) {
   sgMail.setApiKey(SENDGRID_API_KEY);
   console.log('✅ SendGrid initialized');
@@ -2933,7 +2934,7 @@ app.post('/api/test-churn-detection', async (req, res) => {
         const lastCheckInDate = lastCheckin?.[0]?.created_at || dog.created_at;
 
         // Send alert
-        const ownerEmail = 'companioncommons.com@gmail.com'; // Test email
+        const ownerEmail = SENDGRID_FROM_EMAIL; // Test email (sends to whatever's configured as the from-address, for easy manual testing)
         await sendChurnAlertEmail(ownerEmail, dog.dog_name, lastScore, lastCheckInDate, dog.id);
 
         // Log flag
@@ -3841,7 +3842,7 @@ async function sendChurnAlertEmail(ownerEmail, dogName, lastScore, lastCheckInDa
 
     const msg = {
       to: ownerEmail,
-      from: 'companioncommons.com@gmail.com',
+      from: SENDGRID_FROM_EMAIL,
       subject: `How's ${dogName} this week? 👋`,
       html: `
         <div style="font-family: -apple-system, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px;">
@@ -3958,7 +3959,7 @@ setInterval(async () => {
     // Get all senior dogs
     const { data: allDogs, error: dogsError } = await supabase
       .from('senior_dogs')
-      .select('id, dog_name, phone, sms_consent, baseline_mobility_score, created_at');
+      .select('id, dog_name, phone, email, sms_consent, baseline_mobility_score, created_at');
 
     if (dogsError) {
       console.error('❌ Error fetching senior dogs:', dogsError.message);
@@ -4124,9 +4125,13 @@ setInterval(async () => {
           }
         }
 
-        // Get owner info (via the check-ins or baseline data)
-        // For now, use a test email - in production, link to users table
-        const ownerEmail = 'companioncommons.com@gmail.com'; // TODO: Query users table for real owner email
+        // Get owner's email from their profile - skip if we don't have one on file
+        // (dogs created before the email field was added won't have this)
+        if (!dog.email) {
+          console.warn(`⚠️ ${dog.dog_name} has no email on file — skipping churn alert email`);
+          continue;
+        }
+        const ownerEmail = dog.email;
 
         // Get last check-in to show context
         const { data: lastCheckin } = await supabase
