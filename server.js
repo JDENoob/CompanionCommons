@@ -1625,12 +1625,27 @@ app.get('/check-in/:dog_id', async (req, res) => {
               const result = await response.json();
 
               if (result.success) {
+                const streakBadge = result.current_streak > 1 ? \`
+                  <div style="background: #FFF3E0; border-radius: 8px; padding: 12px 16px; margin: 16px 0; display: inline-block;">
+                    <span style="font-size: 20px;">🔥</span>
+                    <span style="font-size: 16px; font-weight: 600; color: #E65100;">\${result.current_streak} week streak</span>
+                  </div>
+                \` : '';
+
+                const milestoneBanner = result.milestone_message ? \`
+                  <p style="font-size: 14px; color: #2E7D32; font-weight: 600; margin: 12px 0; background: #E8F5E9; border-radius: 8px; padding: 10px;">
+                    🎉 \${result.milestone_message}
+                  </p>
+                \` : '';
+
                 document.body.innerHTML = \`
                   <div class="card" style="text-align: center;">
                     <h2 style="color: green;">✅ Check-In Submitted!</h2>
                     <p style="font-size: 18px; color: #007AFF; margin: 20px 0;">
                       ${dog.dog_name}'s mobility: \${result.mobility_score}/8
                     </p>
+                    \${streakBadge}
+                    \${milestoneBanner}
                     <p style="font-size: 14px; color: #666; margin: 20px 0;">
                       \${result.change_text}
                     </p>
@@ -1702,8 +1717,8 @@ function generatePostLogInsight(dogName, current, previous) {
   if (biggest.diff === 0) {
     const flatVariants = [
       `${dogName}'s scores held steady across the board this week. Consistency like this makes patterns easier to spot down the line.`,
-      `No major changes for ${dogName} this week — steady is good data too. Keep the check-ins coming.`,
-      `${dogName} looks about the same as last week. That stability itself is useful to track over time.`
+      `No major changes for ${dogName} this week — steady weeks matter too. Keep the check-ins coming.`,
+      `${dogName} looks about the same as last week. That stability itself is worth tracking over time.`
     ];
     return flatVariants[Math.floor(Math.random() * flatVariants.length)];
   }
@@ -1718,13 +1733,56 @@ function generatePostLogInsight(dogName, current, previous) {
   ];
 
   const downVariants = [
-    `${dogName}'s ${biggest.label} is down ${absDiff} point${absDiff > 1 ? 's' : ''} from last week. Nothing to panic about from one data point — but worth watching next week.`,
+    `${dogName}'s ${biggest.label} is down ${absDiff} point${absDiff > 1 ? 's' : ''} from last week. Nothing to panic about from a single week — but worth watching next week.`,
     `Heads up: ${dogName}'s ${biggest.label} dropped ${absDiff} point${absDiff > 1 ? 's' : ''} since last week. Keep logging so you can see if it's a trend or a one-off.`,
     `${dogName}'s ${biggest.label} was a bit lower this week (-${absDiff}). One week alone isn't a pattern — tracking it is how you'll know.`
   ];
 
   const variants = direction === 'up' ? upVariants : downVariants;
   return variants[Math.floor(Math.random() * variants.length)];
+}
+
+// ============================================
+// STEP 27C: STREAK GAMIFICATION
+// current_streak is deliberately NOT stored anywhere — it's calculated
+// live from mobility_checkins, same logic the dashboard already uses.
+// This function is the single shared source of truth for that calculation
+// so the dashboard and the check-in endpoint can never disagree.
+// ============================================
+async function calculateCurrentStreak(dog_id) {
+  const { data: checkins } = await supabase
+    .from('mobility_checkins')
+    .select('week_number')
+    .eq('dog_id', dog_id);
+
+  if (!checkins || checkins.length === 0) return 0;
+
+  let streak = 0;
+  const sortedByWeek = [...checkins].sort((a, b) => b.week_number - a.week_number);
+  // Defensive floor: a stray week_number of 0 or less (bad data, clock skew,
+  // pre-fix legacy rows) shouldn't make the countdown loop skip entirely.
+  const maxWeek = Math.max(1, sortedByWeek[0].week_number);
+  for (let i = maxWeek; i >= 1; i--) {
+    const hasWeek = checkins.some(c => c.week_number === i);
+    if (hasWeek) {
+      streak++;
+    } else {
+      break;
+    }
+  }
+  return streak;
+}
+
+// Returns a milestone message for round-number streaks, or null on
+// non-milestone weeks (so the front end can just not show anything extra).
+function getStreakMilestoneMessage(dogName, streak) {
+  const milestones = {
+    2: `2 weeks in a row for ${dogName}! You're building a real health journey.`,
+    4: `${dogName}'s first month of consistent tracking — 4 weeks straight!`,
+    8: `8-week streak for ${dogName}. Patterns are getting clearer with every check-in.`,
+    12: `${dogName} made it a full 12 weeks! This is exactly the kind of consistency that builds a real picture of ${dogName}'s health over time.`
+  };
+  return milestones[streak] || null;
 }
 
 app.post('/api/checkin-senior', async (req, res) => {
@@ -1792,7 +1850,11 @@ app.post('/api/checkin-senior', async (req, res) => {
     // Calculate week number based on when dog was created
     const created = new Date(dog.created_at);
     const now = new Date();
-    const weekNumber = Math.floor((now - created) / (7 * 24 * 60 * 60 * 1000)) + 1;
+    // Floor at week 1 — matches the same safety clamp already used on the
+    // check-in display page. Without this, clock skew or a created_at that's
+    // slightly in the future (found during 27C testing) can save week_number
+    // as 0 or negative, which silently breaks streak counting downstream.
+    const weekNumber = Math.max(1, Math.floor((now - created) / (7 * 24 * 60 * 60 * 1000)) + 1);
 
     // Get previous check-in for comparison — pulling all 4 scores now, not just mobility,
     // so the post-log insight (STEP 27B) can comment on whichever metric actually moved most.
@@ -1853,6 +1915,23 @@ app.post('/api/checkin-senior', async (req, res) => {
     if (saveError) throw saveError;
 
     // ============================================
+    // STEP 27C: UPDATE STREAK (current is live-calculated, only longest is stored)
+    // ============================================
+    const currentStreak = await calculateCurrentStreak(dog_id);
+    let longestStreak = dog.longest_streak || 0;
+
+    if (currentStreak > longestStreak) {
+      longestStreak = currentStreak;
+      const { error: streakError } = await supabase
+        .from('senior_dogs')
+        .update({ longest_streak: longestStreak })
+        .eq('id', dog_id);
+      if (streakError) console.warn('⚠️ Error updating longest_streak:', streakError);
+    }
+
+    const milestoneMessage = getStreakMilestoneMessage(dog.dog_name, currentStreak);
+
+    // ============================================
     // QUEUE NEXT WEEK'S SMS AT PERSONALIZED TIME
     // ============================================
     const nextReminderDate = getNextReminderDate(submissionDayOfWeek, reminderTime);
@@ -1898,13 +1977,17 @@ app.post('/api/checkin-senior', async (req, res) => {
     );
 
     console.log(`✅ Week ${weekNumber} check-in saved for ${dog.dog_name}`);
+    console.log(`🔥 Current streak: ${currentStreak}, longest: ${longestStreak}`);
 
     res.json({
       success: true,
       mobility_score: mobilityScoreInt,
       change_text: changeText,
       week_number: weekNumber,
-      segment: segment
+      segment: segment,
+      current_streak: currentStreak,
+      longest_streak: longestStreak,
+      milestone_message: milestoneMessage
     });
 
   } catch (error) {
@@ -2015,7 +2098,9 @@ app.get('/dashboard/:dog_id', async (req, res) => {
     // Calculate streak (consecutive weeks with check-ins)
     let streak = 0;
     const sortedByWeek = [...checkins].sort((a, b) => b.week_number - a.week_number);
-    const maxWeek = sortedByWeek[0].week_number;
+    // Same defensive floor as calculateCurrentStreak() — a stray week_number
+    // of 0 or less shouldn't make this loop skip entirely.
+    const maxWeek = Math.max(1, sortedByWeek[0].week_number);
     for (let i = maxWeek; i >= 1; i--) {
       const hasWeek = checkins.some(c => c.week_number === i);
       if (hasWeek) {
@@ -2385,8 +2470,12 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                       <div class="baseline-info-value">${dog.baseline_mobility_score}/8</div>
                     </div>
                     <div class="baseline-info-item">
-                      <div class="baseline-info-label">Weeks Tracked</div>
-                      <div class="baseline-info-value">${streak}w</div>
+                      <div class="baseline-info-label">Current Streak</div>
+                      <div class="baseline-info-value">${streak > 0 ? '🔥 ' : ''}${streak}w</div>
+                    </div>
+                    <div class="baseline-info-item">
+                      <div class="baseline-info-label">Best Streak</div>
+                      <div class="baseline-info-value">${dog.longest_streak || streak}w</div>
                     </div>
                   </div>
                   ${dog.baseline_notes ? `
