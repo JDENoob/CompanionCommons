@@ -1408,14 +1408,15 @@ app.get('/check-in/:dog_id', async (req, res) => {
     // Get the latest check-in for comparison
     const { data: latestCheckin } = await supabase
       .from('mobility_checkins')
-      .select('mobility_score, energy_score, appetite_score, week_number')
+      .select('mobility_score, energy_score, appetite_score, cognitive_score, week_number')
       .eq('dog_id', dog_id)
       .order('created_at', { ascending: false })
       .limit(1);
 
-    const latestScore = latestCheckin?.[0]?.mobility_score || null;
-    const latestEnergy = latestCheckin?.[0]?.energy_score || null;
-    const latestAppetite = latestCheckin?.[0]?.appetite_score || null;
+    const latestScore = latestCheckin?.[0]?.mobility_score ?? dog.baseline_mobility_score ?? null;
+    const latestEnergy = latestCheckin?.[0]?.energy_score ?? dog.baseline_energy_score ?? null;
+    const latestAppetite = latestCheckin?.[0]?.appetite_score ?? dog.baseline_appetite_score ?? null;
+    const latestCognitive = latestCheckin?.[0]?.cognitive_score ?? dog.baseline_cognitive_score ?? null;
 
     // Calculate the actual current week based on when the dog was enrolled
     // (matches the same calculation used at submission time in /api/checkin-senior)
@@ -1524,7 +1525,7 @@ app.get('/check-in/:dog_id', async (req, res) => {
               name="cognitive_score"
               min="1"
               max="8"
-              value="4"
+              value="${latestCognitive || 4}"
             >
             <div class="hint" id="cognitiveHint">4/8 - Average alertness</div>
             ` : ''}
@@ -2221,10 +2222,14 @@ app.get('/dashboard/:dog_id', async (req, res) => {
     const chartScores = checkins.map(c => c.mobility_score);
     const chartWeeks = checkins.map(c => `W${c.week_number}`);
 
-    // Latest energy/appetite for pre-filling the check-in modal sliders
+    // Latest scores for pre-filling the check-in modal sliders (STEP P1B: Smart
+    // Defaults). Falls back to the dog's baseline score, not a hardcoded 4, so
+    // a dog with no prior weekly check-in still gets a real starting point.
     const latestCheckinRow = checkins[checkins.length - 1];
-    const latestEnergyScore = latestCheckinRow?.energy_score || 4;
-    const latestAppetiteScore = latestCheckinRow?.appetite_score || 4;
+    const latestMobilityScore = latestCheckinRow?.mobility_score ?? dog.baseline_mobility_score ?? 4;
+    const latestEnergyScore = latestCheckinRow?.energy_score ?? dog.baseline_energy_score ?? 4;
+    const latestAppetiteScore = latestCheckinRow?.appetite_score ?? dog.baseline_appetite_score ?? 4;
+    const latestCognitiveScore = latestCheckinRow?.cognitive_score ?? dog.baseline_cognitive_score ?? 4;
 
     // Calculate the actual current week (matches /api/checkin-senior's calculation)
     // so we know whether to show the every-4th-week cognitive/behavior slider.
@@ -2655,7 +2660,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
 
             <form id="checkInForm">
               <label style="display: block; margin: 15px 0 5px 0; font-weight: 500; color: #333;">How's ${dog.dog_name}'s mobility this week?</label>
-              <input type="range" id="mobility" name="mobility_score" min="1" max="8" value="4" style="width: 100%; cursor: pointer;">
+              <input type="range" id="mobility" name="mobility_score" min="1" max="8" value="${latestMobilityScore}" style="width: 100%; cursor: pointer;">
               <div id="mobilityHint" style="font-size: 12px; color: #666; margin: 5px 0 0 0;">4/8 - Some good days, some bad days</div>
 
               <label style="display: block; margin: 20px 0 5px 0; font-weight: 500; color: #333;">How's ${dog.dog_name}'s energy level this week?</label>
@@ -2668,7 +2673,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
 
               ${showCognitiveThisWeek ? `
               <label style="display: block; margin: 20px 0 5px 0; font-weight: 500; color: #333;">How's ${dog.dog_name}'s alertness &amp; behavior this week?</label>
-              <input type="range" id="cognitive" name="cognitive_score" min="1" max="8" value="4" style="width: 100%; cursor: pointer;">
+              <input type="range" id="cognitive" name="cognitive_score" min="1" max="8" value="${latestCognitiveScore}" style="width: 100%; cursor: pointer;">
               <div id="cognitiveHint" style="font-size: 12px; color: #666; margin: 5px 0 0 0;">4/8 - Average alertness</div>
               ` : ''}
 
