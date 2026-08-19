@@ -238,25 +238,31 @@ if (SENDGRID_API_KEY) {
 // ============================================
 // GOOGLE SHEETS SETUP
 // ============================================
-const SHEET_ID = '1MSej8ul_HvjpVSL2CoRxxEgse1VILoJv3eFV02AYQnk';
+// GOOGLE SHEETS INTEGRATION
+// Rebuilt Aug 19 — the old version looked for a credentials FILE on disk,
+// which never worked once deployed (service account keys correctly never
+// get committed to GitHub, so the file was never actually present on
+// Railway — this is why every startup log showed "key file not found").
+// Now reads credentials from the GOOGLE_SHEETS_CREDENTIALS environment
+// variable instead, set directly in Railway.
+// ============================================
+const SHEET_ID = '1Qxm9pbI9PuE-dxCKJ5UrrspJGYcZXfb-fLwB69UyBsY';
 let sheetsClient = null;
 
-// Find and load Google service account key
 function loadGoogleSheetsAuth() {
   try {
-    // Look for JSON key file in project root
-    const files = fs.readdirSync('./');
-    const keyFile = files.find(f => f.endsWith('.json') && f.includes('companioncommons'));
+    const credsBase64 = process.env.GOOGLE_SHEETS_CREDENTIALS_BASE64;
 
-    if (!keyFile) {
-      console.warn('⚠️ Google Sheets key file not found. Skipping Google Sheets integration.');
+    if (!credsBase64) {
+      console.warn('⚠️ GOOGLE_SHEETS_CREDENTIALS_BASE64 env var not set. Skipping Google Sheets integration.');
       return null;
     }
 
-    const keyPath = path.join('./', keyFile);
-
-    // Read and parse JSON file properly
-    const keyData = JSON.parse(fs.readFileSync(keyPath, 'utf8'));
+    // Base64-decode first — this sidesteps a common .env gotcha where literal
+    // \n escape sequences inside a raw JSON value can get misinterpreted as
+    // real line breaks by some .env parsers, breaking JSON.parse.
+    const credsJson = Buffer.from(credsBase64, 'base64').toString('utf8');
+    const keyData = JSON.parse(credsJson);
 
     const auth = new google.auth.GoogleAuth({
       credentials: keyData,
@@ -264,7 +270,7 @@ function loadGoogleSheetsAuth() {
     });
 
     sheetsClient = google.sheets({ version: 'v4', auth });
-    console.log(`✅ Google Sheets authenticated (${keyFile})`);
+    console.log(`✅ Google Sheets authenticated (${keyData.client_email})`);
     return true;
   } catch (error) {
     console.warn('⚠️ Failed to load Google Sheets:', error.message);
@@ -636,395 +642,75 @@ app.post('/api/page/:slug', async (req, res) => {
 // ============================================
 // GOOGLE SHEETS DATA EXPORT FUNCTION
 // ============================================
-async function appendToGoogleSheets(data) {
+// Ensures both tabs (Signups, CheckIns) exist in the spreadsheet.
+// Runs once at startup. If the sheet was just created blank (only has the
+// default "Sheet1"), this creates both tabs we actually need.
+// ============================================
+async function ensureGoogleSheetTabsExist() {
+  if (!sheetsClient) return;
+
+  try {
+    const spreadsheet = await sheetsClient.spreadsheets.get({ spreadsheetId: SHEET_ID });
+    const existingTitles = spreadsheet.data.sheets.map(s => s.properties.title);
+
+    const neededTabs = ['Signups', 'CheckIns'];
+    const tabsToCreate = neededTabs.filter(t => !existingTitles.includes(t));
+
+    if (tabsToCreate.length > 0) {
+      await sheetsClient.spreadsheets.batchUpdate({
+        spreadsheetId: SHEET_ID,
+        resource: {
+          requests: tabsToCreate.map(title => ({ addSheet: { properties: { title } } }))
+        }
+      });
+      console.log(`✅ Created Google Sheets tabs: ${tabsToCreate.join(', ')}`);
+
+      // Add header rows to any newly-created tabs
+      if (tabsToCreate.includes('Signups')) {
+        await appendRowToSheet('Signups', [
+          'Timestamp', 'Email', 'Dog Name', 'Breed', 'Age', 'Gender',
+          'Baseline Mobility', 'Baseline Energy', 'Baseline Appetite', 'Baseline Cognitive'
+        ]);
+      }
+      if (tabsToCreate.includes('CheckIns')) {
+        await appendRowToSheet('CheckIns', [
+          'Timestamp', 'Dog Name', 'Week Number', 'Mobility', 'Energy', 'Appetite', 'Cognitive', 'Notes'
+        ]);
+      }
+    }
+  } catch (error) {
+    console.warn('⚠️ Failed to verify/create Google Sheets tabs:', error.message);
+  }
+}
+
+// ============================================
+// Appends one row to the given tab. Uses the standard "append" API, which
+// automatically finds the next empty row — simpler and one fewer network
+// call than the old approach (which fetched sheet metadata every time just
+// to append cells manually).
+// ============================================
+async function appendRowToSheet(tabName, rowValues) {
   if (!sheetsClient) {
     console.log('ℹ️ Google Sheets not connected, skipping export');
     return;
   }
 
   try {
-    const now = new Date().toISOString();
-    const values = [
-      [
-        now,                          // timestamp
-        data.email || '',             // email
-        data.petName || '',           // petName
-        data.breed || '',             // breed
-        data.age || '',               // age
-        data.mobility || '',          // mobility
-        '',                           // week (empty for signup)
-        '',                           // trend (empty for signup)
-        data.observations || ''       // observations
-      ]
-    ];
-
-    // First, get the sheet ID for Sheet1
-    const spreadsheet = await sheetsClient.spreadsheets.get({
-      spreadsheetId: SHEET_ID
-    });
-
-    const sheet = spreadsheet.data.sheets.find(s => s.properties.title === 'Sheet1');
-    if (!sheet) {
-      throw new Error('Sheet1 not found in spreadsheet');
-    }
-
-    const sheetId = sheet.properties.sheetId;
-
-    // Append using batchUpdate
-    await sheetsClient.spreadsheets.batchUpdate({
+    await sheetsClient.spreadsheets.values.append({
       spreadsheetId: SHEET_ID,
-      resource: {
-        requests: [
-          {
-            appendCells: {
-              sheetId: sheetId,
-              rows: [
-                {
-                  values: values[0].map(v => ({ userEnteredValue: { stringValue: String(v) } }))
-                }
-              ],
-              fields: 'userEnteredValue'
-            }
-          }
-        ]
-      }
+      range: `${tabName}!A1`,
+      valueInputOption: 'USER_ENTERED',
+      insertDataOption: 'INSERT_ROWS',
+      resource: { values: [rowValues] }
     });
-
-    console.log(`✅ Survey data exported to Google Sheets for ${data.email}`);
   } catch (error) {
-    console.error('⚠️ Failed to export to Google Sheets:', error.message);
-    if (error.errors) {
-      console.error('   API Errors:', error.errors);
-    }
-    if (error.config) {
-      console.error('   Request URL:', error.config.url);
-    }
+    console.error(`⚠️ Failed to append to Google Sheets tab "${tabName}":`, error.message);
   }
 }
 
-// ============================================
-// PHASE 0: SIGNUP (Day 0 Progressive Profiling)
-// NEW: Saves to Supabase instead of signups.json
-// ============================================
-app.post('/api/signup', async (req, res) => {
-    try {
-        const {
-            email,
-            phone,
-            companionName,
-            birthday,
-            breed,
-            gender,
-            health,
-            activity,
-            treatments,
-            treatmentNames,
-            consent,
-            smsConsent,
-            preferredSmsTime,
-            smsFrequency
-        } = req.body;
+// Make sure both tabs exist before anything tries to write to them
+ensureGoogleSheetTabsExist();
 
-        // ============================================
-        // INPUT SANITIZATION (AFTER VALIDATION)
-        // ============================================
-        const sanitizedEmail = sanitizeEmail(email);
-        const sanitizedCompanionName = sanitizeName(companionName);
-        const sanitizedPhone = phone ? sanitizePhone(phone) : null;
-        const sanitizedBreed = breed ? sanitizeName(breed, 50) : null;
-        const sanitizedGender = gender ? sanitizeSelect(gender, ['male', 'female', 'unknown', '']) : null;
-        const sanitizedTreatmentNames = treatmentNames ? sanitizeArray([treatmentNames]).join(', ') : null;
-        const sanitizedPreferredSmsTime = preferredSmsTime ? sanitizeSelect(preferredSmsTime, ['morning', 'afternoon', 'evening', '']) : 'afternoon';
-        const sanitizedSmsFrequency = smsFrequency ? sanitizeSelect(smsFrequency, ['1x_per_week', '2x_per_week', 'daily', '']) : '1x_per_week';
-
-        // Parse birthday format (MM/DD/YYYY or MM/YYYY) to YYYY-MM-DD
-        let formattedBirthday = null;
-        if (birthday) {
-            const parts = birthday.split('/');
-
-            // Helper to convert 2-digit year to 4-digit
-            const formatYear = (yr) => {
-                if (yr.length === 2) {
-                    const numYear = parseInt(yr);
-                    return numYear > 30 ? `19${yr}` : `20${yr}`;
-                }
-                return yr;
-            };
-
-            if (parts.length === 3) {
-                // MM/DD/YYYY format
-                const [month, day, year] = parts;
-                formattedBirthday = `${formatYear(year)}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-            } else if (parts.length === 2) {
-                // MM/YYYY format - assume mid-month
-                const [month, year] = parts;
-                formattedBirthday = `${formatYear(year)}-${month.padStart(2, '0')}-15`;
-            }
-        }
-
-        // ============================================
-        // SERVER-SIDE VALIDATION (SECURITY CRITICAL)
-        // ============================================
-
-        // Validate required fields
-        if (!email || !companionName || !consent) {
-            return res.status(400).json({ error: 'Missing required fields: email, companionName, consent' });
-        }
-
-        // Email validation
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
-            return res.status(400).json({ error: 'Invalid email format' });
-        }
-
-        // Companion name validation
-        if (companionName.trim().length === 0) {
-            return res.status(400).json({ error: 'Companion name cannot be empty' });
-        }
-        if (companionName.length > 100) {
-            return res.status(400).json({ error: 'Companion name must be 100 characters or less' });
-        }
-
-        // Phone validation (if provided)
-        if (phone) {
-            const cleanPhone = phone.replace(/\D/g, '');
-            // Must be 10 digits (US) or 11+ digits (international)
-            if (cleanPhone.length < 10 || cleanPhone.length > 15) {
-                return res.status(400).json({ error: 'Invalid phone number format' });
-            }
-        }
-
-        // Birthday validation (if provided)
-        if (birthday) {
-            const parts = birthday.split('/');
-            if (parts.length !== 2 && parts.length !== 3) {
-                return res.status(400).json({ error: 'Birthday must be MM/YYYY or MM/DD/YYYY format' });
-            }
-
-            const month = parseInt(parts[0]);
-            if (month < 1 || month > 12) {
-                return res.status(400).json({ error: 'Birthday month must be 01-12' });
-            }
-
-            if (parts.length === 3) {
-                const day = parseInt(parts[1]);
-                if (day < 1 || day > 31) {
-                    return res.status(400).json({ error: 'Birthday day must be 01-31' });
-                }
-            }
-
-            // Validate year is reasonable (1900-current year)
-            const year = parts[parts.length - 1];
-            const fourDigitYear = year.length === 2
-                ? (parseInt(year) > 30 ? `19${year}` : `20${year}`)
-                : year;
-            const birthYear = parseInt(fourDigitYear);
-            const currentYear = new Date().getFullYear();
-            if (birthYear < 1900 || birthYear > currentYear) {
-                return res.status(400).json({ error: 'Birthday year must be between 1900 and current year' });
-            }
-        }
-
-        // Breed validation (if provided)
-        if (breed && (typeof breed !== 'string' || breed.trim().length === 0)) {
-            return res.status(400).json({ error: 'Breed must be a non-empty string' });
-        }
-
-        // Gender validation (if provided)
-        const validGenders = ['male', 'female', 'unknown', ''];
-        if (gender && !validGenders.includes(gender.toLowerCase())) {
-            return res.status(400).json({ error: 'Gender must be male, female, or unknown' });
-        }
-
-        // Health score validation (1-8 scale)
-        if (health !== undefined && health !== null) {
-            const healthScore = parseInt(health);
-            if (isNaN(healthScore) || healthScore < 1 || healthScore > 8) {
-                return res.status(400).json({ error: 'Health score must be a number between 1 and 8' });
-            }
-        }
-
-        // Activity score validation (1-8 scale)
-        if (activity !== undefined && activity !== null) {
-            const activityScore = parseInt(activity);
-            if (isNaN(activityScore) || activityScore < 1 || activityScore > 8) {
-                return res.status(400).json({ error: 'Activity score must be a number between 1 and 8' });
-            }
-        }
-
-        // Consent validation (must be true)
-        if (consent !== true && consent !== 'true') {
-            return res.status(400).json({ error: 'Consent must be given to proceed' });
-        }
-
-        // SMS Consent validation (if provided, must be boolean-like)
-        if (smsConsent !== undefined && smsConsent !== null && smsConsent !== true && smsConsent !== false && smsConsent !== 'true' && smsConsent !== 'false') {
-            return res.status(400).json({ error: 'SMS consent must be true or false' });
-        }
-
-        // STEP 1: Create or get user
-        let { data: user, error: userError } = await supabase
-            .from('users')
-            .select('id')
-            .eq('email', sanitizedEmail)
-            .single();
-
-        if (userError && userError.code !== 'PGRST116') {
-            throw userError;
-        }
-
-        let userId;
-        if (!user) {
-            // Create new user
-            const { data: newUser, error: createError } = await supabase
-                .from('users')
-                .insert([{ email: sanitizedEmail, phone: sanitizedPhone, status: 'active' }])
-                .select('id')
-                .single();
-
-            if (createError) throw createError;
-            userId = newUser.id;
-            console.log(`✅ User created: ${email}`);
-        } else {
-            userId = user.id;
-            console.log(`✅ User found: ${email}`);
-        }
-
-        // STEP 2: Create pet profile
-        const { data: pet, error: petError } = await supabase
-            .from('pets')
-            .insert([{
-                user_id: userId,
-                name: sanitizedCompanionName,
-                breed: sanitizedBreed,
-                birthday: formattedBirthday,
-                birthday_estimated: req.body.birthdayEstimated || false,
-                gender: sanitizedGender
-            }])
-            .select('id')
-            .single();
-
-        if (petError) throw petError;
-        const petId = pet.id;
-        console.log(`✅ Pet created: ${companionName}`);
-
-        // STEP 3: Save Phase 0 baseline survey
-        const { error: baselineError } = await supabase
-            .from('survey_baselines')
-            .insert([{
-                pet_id: petId,
-                user_id: userId,
-                health_score: parseInt(health),
-                activity_score: parseInt(activity),
-                treatments: Array.isArray(treatments) ? treatments : [treatments],
-                treatment_names: sanitizedTreatmentNames || null,
-                consent_given: consent === true || consent === 'true',
-                consent_timestamp: new Date().toISOString()
-            }]);
-
-        if (baselineError) throw baselineError;
-        console.log(`✅ Baseline survey saved for pet: ${petId}`);
-
-        // STEP 4: Save SMS preferences (upsert to handle existing users)
-        const { error: smsError } = await supabase
-            .from('sms_preferences')
-            .upsert([{
-                user_id: userId,
-                preferred_time: sanitizedPreferredSmsTime,
-                frequency: sanitizedSmsFrequency,
-                sms_consent_given: smsConsent === true || smsConsent === 'true',
-                sms_consent_timestamp: new Date().toISOString()
-            }], { onConflict: 'user_id' });
-
-        if (smsError) throw smsError;
-        console.log(`✅ SMS preferences saved for user: ${userId}`);
-
-        // STEP 5: Queue first SMS (Week 1 check-in at default time - Wednesday 2pm, THIS WEEK)
-        // For initial signup: send first check-in reminder on upcoming Wednesday at 2:00 PM
-        // After first check-in, reminders personalize to user's actual submission time
-        const today = new Date();
-        const todayDay = today.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
-        const wednesdayDay = 3;
-
-        // Calculate days until next Wednesday (but this week if possible)
-        let daysUntilWednesday = (wednesdayDay - todayDay + 7) % 7;
-        if (daysUntilWednesday === 0) daysUntilWednesday = 7; // If today is Wednesday, schedule for next week
-
-        const firstCheckInReminder = new Date(today);
-        firstCheckInReminder.setDate(firstCheckInReminder.getDate() + daysUntilWednesday);
-        firstCheckInReminder.setHours(14, 0, 0, 0); // 2:00 PM
-
-        const { error: queueError } = await supabase
-            .from('sms_queue')
-            .insert([{
-                user_id: userId,
-                pet_id: petId,
-                message_type: 'week_1_checkin',
-                scheduled_for: firstCheckInReminder.toISOString(),
-                message_body: `Hi! 👋 Welcome to ${sanitizedCompanionName}'s health journey. How is ${sanitizedCompanionName} moving this week? (Reply with a number 1-8, where 1 is very stiff and 8 is moving great)`,
-                status: 'pending'
-            }]);
-
-        if (queueError) throw queueError;
-        console.log(`✅ SMS queued for ${email} at ${firstCheckInReminder.toLocaleString()} (${getDayName(firstCheckInReminder.getDay())} 2:00 PM)`);
-
-        // STEP 6: Send immediate welcome SMS
-        if (sanitizedPhone && (smsConsent === true || smsConsent === 'true')) {
-            // Check SMS rate limit
-            const smsLimit = smsRateLimit(userId);
-            if (!smsLimit.allowed) {
-                console.warn(`⚠️ SMS rate limit exceeded for user ${userId}`);
-            } else {
-                try {
-                    // Personalized welcome message based on whether they selected a preferred time
-                    let welcomeMessage;
-                    if (sanitizedPreferredSmsTime && sanitizedPreferredSmsTime !== '') {
-                        // Message for users who selected a preferred time
-                        welcomeMessage = `Welcome to CompanionCommons! 🐾 We're excited to follow ${sanitizedCompanionName}'s health journey with you. We see you selected ${sanitizedPreferredSmsTime} for ${sanitizedCompanionName}'s health journey update. You should receive the first update request in 7 days!!`;
-                    } else {
-                        // Message for users who didn't select a time
-                        welcomeMessage = `Welcome to CompanionCommons! 🐾 We're excited to follow ${sanitizedCompanionName}'s health journey with you. ${sanitizedCompanionName}'s first health journey reminder should arrive in 7 days. After ${sanitizedCompanionName}'s first update, we personalize the timing to fit your schedule.`;
-                    }
-
-                    await twilioClient.messages.create({
-                        body: welcomeMessage,
-                        from: TWILIO_PHONE_NUMBER,
-                        to: sanitizedPhone
-                    });
-                    console.log(`✅ Welcome SMS sent to ${sanitizedPhone}`);
-                } catch (smsError) {
-                    console.error('Error sending welcome SMS:', smsError);
-                }
-            }
-        }
-
-        // STEP 7: Export survey data to Google Sheets
-        await appendToGoogleSheets({
-            email: sanitizedEmail,
-            petName: sanitizedCompanionName,
-            breed: sanitizedBreed,
-            age: birthday ? new Date().getFullYear() - parseInt(formattedBirthday.split('-')[0]) : '',
-            mobility: health || '',
-            observations: ''
-        });
-
-        // Response
-        res.status(200).json({
-            success: true,
-            message: 'Welcome to CompanionCommons! Your first check-in SMS will arrive on Tuesday.',
-            data: {
-                user_id: userId,
-                pet_id: petId,
-                email: sanitizedEmail,
-                pet_name: sanitizedCompanionName
-            }
-        });
-
-    } catch (error) {
-        console.error('Error processing signup:', error);
-        res.status(500).json({ error: 'Error processing signup', details: error.message });
-    }
-});
 
 // ============================================
 // PHASE 1: WEEKLY CHECK-IN (Weeks 1-12)
@@ -2045,6 +1731,19 @@ app.post('/api/checkin-senior', async (req, res) => {
     // the insight so it reuses the same current/previous data. Doesn't block
     // or affect the response either way — alerts show up on next dashboard load.
     await detectHealthAlerts(dog_id, dog.dog_name, currentScores, previousScores);
+
+    // Export to Google Sheets (CheckIns tab) — real-time, one row per
+    // check-in. Doesn't block or affect the response if this fails.
+    await appendRowToSheet('CheckIns', [
+      new Date().toISOString(),
+      dog.dog_name || '',
+      weekNumber,
+      currentScores.mobility ?? '',
+      currentScores.energy ?? '',
+      currentScores.appetite ?? '',
+      currentScores.cognitive ?? '',
+      observation || ''
+    ]);
 
     console.log(`✅ Week ${weekNumber} check-in saved for ${dog.dog_name}`);
     console.log(`🔥 Current streak: ${currentStreak}, longest: ${longestStreak}`);
@@ -4271,6 +3970,22 @@ app.get('/verify', async (req, res) => {
     }
 
     console.log(`✅ Profile created for ${tokenData.dog_name} (ID: ${dogId})`);
+
+    // Export to Google Sheets (Signups tab) — real signup + baseline data,
+    // fired after everything above is confirmed successful. Doesn't block
+    // or affect the redirect either way if this fails.
+    await appendRowToSheet('Signups', [
+      new Date().toISOString(),
+      tokenData.email || '',
+      tokenData.dog_name || '',
+      tokenData.breed || '',
+      tokenData.age || '',
+      tokenData.gender || '',
+      tokenData.baseline_mobility_score ?? '',
+      tokenData.baseline_energy_score ?? '',
+      tokenData.baseline_appetite_score ?? '',
+      tokenData.baseline_cognitive_score ?? ''
+    ]);
 
     // Redirect to dashboard with the new dog ID
     res.redirect(`/dashboard/${dogId}`);
