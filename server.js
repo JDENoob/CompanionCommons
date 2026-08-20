@@ -3277,11 +3277,11 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                   fill: false,
                   tension: 0.4,
                   pointStyle: 'circle',
-                  pointRadius: 5,
-                  pointBackgroundColor: '#667eea',
+                  pointRadius: 10,
+                  pointBackgroundColor: 'rgba(102, 126, 234, 0.85)',
                   pointBorderColor: '#fff',
                   pointBorderWidth: 2,
-                  pointHoverRadius: 7
+                  pointHoverRadius: 12
                 },
                 {
                   label: 'Energy',
@@ -3294,7 +3294,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                   tension: 0.4,
                   pointStyle: 'triangle',
                   pointRadius: 6,
-                  pointBackgroundColor: '#F5A623',
+                  pointBackgroundColor: 'rgba(245, 166, 35, 0.85)',
                   pointBorderColor: '#fff',
                   pointBorderWidth: 2,
                   pointHoverRadius: 8
@@ -3309,8 +3309,8 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                   fill: false,
                   tension: 0.4,
                   pointStyle: 'rect',
-                  pointRadius: 5,
-                  pointBackgroundColor: '#4CAF50',
+                  pointRadius: 3,
+                  pointBackgroundColor: 'rgba(76, 175, 80, 0.9)',
                   pointBorderColor: '#fff',
                   pointBorderWidth: 2,
                   pointHoverRadius: 7
