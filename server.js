@@ -2761,8 +2761,8 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                         <button type="submit" class="btn-secondary">📷 Update ${dog.dog_name}'s Photo</button>
                       </form>
                       ${isInBaselinePeriod ? `
-                      <button class="btn-primary" disabled style="white-space: nowrap; padding: 8px 16px; opacity: 0.5; cursor: not-allowed;" title="Available in ${daysUntilFirstUpdate} day${daysUntilFirstUpdate === 1 ? '' : 's'}">
-                        Update available soon
+                      <button class="btn-primary" disabled style="white-space: nowrap; padding: 8px 16px; opacity: 0.5; cursor: not-allowed;">
+                        Available in ${daysUntilFirstUpdate} day${daysUntilFirstUpdate === 1 ? '' : 's'}
                       </button>
                       ` : `
                       <button id="openCheckInBtn" class="btn-primary" style="white-space: nowrap; padding: 8px 16px;">
