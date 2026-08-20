@@ -3234,18 +3234,22 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                   <div class="baseline-info-grid">
                     <div class="baseline-info-item">
                       <div class="baseline-info-label">Baseline Score</div>
-                      <div style="display: flex; gap: 12px; margin-top: 4px;">
+                      <div style="display: flex; gap: 8px; margin-top: 4px;">
                         <div style="flex: 1; text-align: center;">
-                          <div style="font-size: 10px; color: #AAA; text-transform: uppercase; letter-spacing: 0.5px;">Mobility</div>
-                          <div class="baseline-info-value" style="font-size: 18px;">${dog.baseline_mobility_score ?? '—'}/8</div>
+                          <div style="font-size: 9px; color: #AAA; text-transform: uppercase; letter-spacing: 0.3px;">Mobility</div>
+                          <div class="baseline-info-value" style="font-size: 15px;">${dog.baseline_mobility_score ?? '—'}/8</div>
                         </div>
                         <div style="flex: 1; text-align: center;">
-                          <div style="font-size: 10px; color: #AAA; text-transform: uppercase; letter-spacing: 0.5px;">Energy</div>
-                          <div class="baseline-info-value" style="font-size: 18px;">${dog.baseline_energy_score ?? '—'}/8</div>
+                          <div style="font-size: 9px; color: #AAA; text-transform: uppercase; letter-spacing: 0.3px;">Energy</div>
+                          <div class="baseline-info-value" style="font-size: 15px;">${dog.baseline_energy_score ?? '—'}/8</div>
                         </div>
                         <div style="flex: 1; text-align: center;">
-                          <div style="font-size: 10px; color: #AAA; text-transform: uppercase; letter-spacing: 0.5px;">Appetite</div>
-                          <div class="baseline-info-value" style="font-size: 18px;">${dog.baseline_appetite_score ?? '—'}/8</div>
+                          <div style="font-size: 9px; color: #AAA; text-transform: uppercase; letter-spacing: 0.3px;">Appetite</div>
+                          <div class="baseline-info-value" style="font-size: 15px;">${dog.baseline_appetite_score ?? '—'}/8</div>
+                        </div>
+                        <div style="flex: 1; text-align: center;">
+                          <div style="font-size: 9px; color: #AAA; text-transform: uppercase; letter-spacing: 0.3px;">Weight</div>
+                          <div class="baseline-info-value" style="font-size: 15px;">${dog.weight_lbs ?? '—'} lb</div>
                         </div>
                       </div>
                     </div>
