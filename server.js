@@ -2965,7 +2965,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
               <div style="display: flex; align-items: flex-start; gap: 12px;">
                 <span style="font-size: 20px; flex-shrink: 0;">❓</span>
                 <div>
-                  <p style="margin: 0 0 8px 0; font-size: 14px; font-weight: 500; color: #2C2C2C;">Prepare for a conversation with [dog_name]'s vet, family, babysitter etc.</p>
+                  <p style="margin: 0 0 8px 0; font-size: 14px; font-weight: 500; color: #2C2C2C;">Prepare for a conversation with ${dog.dog_name}'s vet, family, babysitter etc.</p>
                   <p style="margin: 0; font-size: 13px; color: #2C2C2C;">Review recent notes and highlights to help you share what matters most.</p>
                 </div>
               </div>
@@ -4541,7 +4541,7 @@ async function sendChurnAlertEmail(ownerEmail, dogName, lastScore, lastCheckInDa
             </p>
             <div style="text-align: center; margin-top: 25px;">
               <a href="${BASE_URL}/dashboard/${dogId}" style="display: inline-block; background: #d96f56; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: 600;">
-                View [dog_name]'s Progress and Update
+                View ${dogName}'s Progress and Update
               </a>
             </div>
             <p style="color: #999; font-size: 12px; margin-top: 30px; text-align: center;">
