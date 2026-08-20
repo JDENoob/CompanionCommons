@@ -4269,7 +4269,7 @@ app.post('/api/upload-dog-photo', upload.single('photo'), async (req, res) => {
     // Upload to Supabase Storage
     const { data: uploadData, error: uploadError } = await supabase
       .storage
-      .from('dog-photos')
+      .from('Dog_Photos')
       .upload(filename, req.file.buffer, {
         contentType: req.file.mimetype,
         upsert: false
@@ -4286,7 +4286,7 @@ app.post('/api/upload-dog-photo', upload.single('photo'), async (req, res) => {
     // Get public URL for the uploaded file
     const { data: { publicUrl } } = supabase
       .storage
-      .from('dog-photos')
+      .from('Dog_Photos')
       .getPublicUrl(filename);
 
     console.log(`✅ Photo uploaded: ${publicUrl}`);
