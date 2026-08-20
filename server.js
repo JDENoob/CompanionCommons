@@ -27,6 +27,20 @@ function escapeHtml(text) {
     .replace(/'/g, '&#39;');
 }
 
+// Human-readable labels for the coded baseline-survey values (dashboard
+// display only — the underlying stored values stay exactly as the signup
+// form's allowed lists define them).
+const DIET_TYPE_LABELS = {
+  dry: 'Dry Food', wet: 'Wet Food', raw: 'Raw Diet',
+  prescription: 'Prescription Diet', mixed: 'Mixed Diet', other: 'Other Diet'
+};
+const TREATMENT_CATEGORY_LABELS = {
+  joint_supplement: 'Joint Supplement', nsaid: 'NSAID', steroid: 'Steroid',
+  pain_medication: 'Pain Medication', other_prescription: 'Other Prescription',
+  other_supplement: 'Other Supplement'
+  // 'none' deliberately omitted — handled separately, not shown as a "medication"
+};
+
 // ============================================
 // VALIDATE REQUIRED ENVIRONMENT VARIABLES
 // ============================================
@@ -2786,7 +2800,20 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                   </div>
                   <div style="flex: 1;">
                     <h2 style="margin: 0 0 8px 0; font-size: 22px; font-weight: 500; color: #2C2C2C;">${dog.dog_name}'s Health Journey</h2>
-                    <p style="margin: 0 0 12px 0; font-size: 13px; color: #999; font-weight: 400;">${dog.breed || 'Breed unknown'} • ${dog.age || 'Age unknown'} years old • ${dog.gender || 'Gender unknown'}</p>
+                    <p style="margin: 0 0 4px 0; font-size: 13px; color: #999; font-weight: 400;">
+                      ${dog.breed || 'Breed unknown'} • ${dog.age || 'Age unknown'} years old • ${dog.gender || 'Gender unknown'}
+                      ${dog.spayed_neutered ? ` • ${dog.spayed_neutered === 'yes' ? 'Fixed' : 'Not Fixed'}` : ''}
+                      ${dog.diet_type ? ` • ${DIET_TYPE_LABELS[dog.diet_type] || dog.diet_type}` : ''}
+                      ${dog.pet_insurance ? ` • ${dog.pet_insurance === 'yes' ? 'Insured' : dog.pet_insurance === 'no' ? 'No Insurance' : 'Insurance Unknown'}` : ''}
+                    </p>
+                    ${(() => {
+                      const meds = (dog.treatment_category || [])
+                        .filter(t => t !== 'none' && TREATMENT_CATEGORY_LABELS[t])
+                        .map(t => TREATMENT_CATEGORY_LABELS[t]);
+                      return meds.length > 0
+                        ? `<p style="margin: 0 0 12px 0; font-size: 13px; color: #999; font-weight: 400;">${meds.join(' - ')}</p>`
+                        : '';
+                    })()}
                     <div style="display: flex; gap: 8px; margin-bottom: 12px;">
                       <form id="quickPhotoUpload" style="display: flex; gap: 4px; align-items: center;">
                         <input type="file" id="quickPhotoInput" accept="image/*" style="padding: 4px 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px; width: 100px;">
@@ -2808,7 +2835,20 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                   <div class="baseline-info-grid">
                     <div class="baseline-info-item">
                       <div class="baseline-info-label">Baseline Score</div>
-                      <div class="baseline-info-value">${dog.baseline_mobility_score}/8</div>
+                      <div style="display: flex; gap: 12px; margin-top: 4px;">
+                        <div style="flex: 1; text-align: center;">
+                          <div style="font-size: 10px; color: #AAA; text-transform: uppercase; letter-spacing: 0.5px;">Mobility</div>
+                          <div class="baseline-info-value" style="font-size: 18px;">${dog.baseline_mobility_score ?? '—'}/8</div>
+                        </div>
+                        <div style="flex: 1; text-align: center;">
+                          <div style="font-size: 10px; color: #AAA; text-transform: uppercase; letter-spacing: 0.5px;">Energy</div>
+                          <div class="baseline-info-value" style="font-size: 18px;">${dog.baseline_energy_score ?? '—'}/8</div>
+                        </div>
+                        <div style="flex: 1; text-align: center;">
+                          <div style="font-size: 10px; color: #AAA; text-transform: uppercase; letter-spacing: 0.5px;">Appetite</div>
+                          <div class="baseline-info-value" style="font-size: 18px;">${dog.baseline_appetite_score ?? '—'}/8</div>
+                        </div>
+                      </div>
                     </div>
                     <div class="baseline-info-item">
                       <div class="baseline-info-label">Current Streak</div>
@@ -2912,7 +2952,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
 
           <div style="display: flex; gap: 15px; margin-bottom: 30px;">
             <button id="viewSummaryBtn" style="flex: 1; background: #A89968; color: white; border: none; padding: 16px 20px; border-radius: 8px; font-size: 15px; font-weight: 500; cursor: pointer;">
-              View ${dog.dog_name}'s Journey Summary
+              Click to View ${dog.dog_name}'s Journey Summary
             </button>
           </div>
         </div>
