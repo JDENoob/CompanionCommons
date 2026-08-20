@@ -14,6 +14,19 @@ const multer = require('multer');
 
 const app = express();
 
+// Escapes free-typed user text before it's inserted into HTML templates
+// (e.g. dog notes), so a note containing < > & etc. can't break the page
+// or inject anything.
+function escapeHtml(text) {
+  if (text == null) return '';
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // ============================================
 // VALIDATE REQUIRED ENVIRONMENT VARIABLES
 // ============================================
@@ -1091,6 +1104,36 @@ app.get('/check-in/:dog_id', async (req, res) => {
       `);
     }
 
+    // STEP: Block check-in access during the 7-day baseline period, not just
+    // hide the button. Matches the same rule used on the dashboard — this
+    // closes the side door where someone could reach this page directly
+    // (an old link, a bookmark, etc.) before their first update is due.
+    const daysSinceSignupForCheckin = (new Date() - new Date(dog.created_at)) / (24 * 60 * 60 * 1000);
+    if (Math.floor(daysSinceSignupForCheckin / 7) === 0) {
+      return res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>Not ready yet</title>
+          <style>
+            body { font-family: -apple-system, sans-serif; max-width: 500px; margin: 60px auto; padding: 20px; text-align: center; }
+            .card { background: white; border-radius: 12px; padding: 40px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+            .cta { display: inline-block; margin-top: 20px; background: #A89968; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <p style="font-size: 40px; margin: 0 0 10px 0;">📋</p>
+            <h2 style="margin: 0 0 10px 0;">Not quite ready yet</h2>
+            <p style="color: #666;">${dog.dog_name}'s first weekly update becomes available 7 days after signing up. You'll get a text when it's time.</p>
+            <a href="/dashboard/${dog_id}" class="cta">View Dashboard</a>
+          </div>
+        </body>
+        </html>
+      `);
+    }
+
     // Get the latest check-in for comparison
     const { data: latestCheckin } = await supabase
       .from('mobility_checkins')
@@ -1596,6 +1639,18 @@ app.post('/api/checkin-senior', async (req, res) => {
       return res.status(404).json({
         success: false,
         error: 'Dog not found'
+      });
+    }
+
+    // STEP: Real enforcement of the 7-day baseline gate. Blocking the page
+    // isn't enough on its own — this is the actual save endpoint, so this
+    // is the check that actually matters. Someone POSTing here directly
+    // (bypassing the page) still can't save an early check-in.
+    const daysSinceSignupForSave = (new Date() - new Date(dog.created_at)) / (24 * 60 * 60 * 1000);
+    if (Math.floor(daysSinceSignupForSave / 7) === 0) {
+      return res.status(403).json({
+        success: false,
+        error: `${dog.dog_name}'s first weekly update isn't available yet — it opens up 7 days after signing up.`
       });
     }
 
@@ -2159,6 +2214,34 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
   }
 });
 
+// ============================================
+// STEP: MID-WEEK NOTES (Aug 19)
+// Deliberately NOT gated by the 7-day check-in cycle — owners can add an
+// observation any time. This is what gives people a real reason to open
+// the dashboard between formal weekly updates.
+// ============================================
+app.post('/api/notes/:dog_id', async (req, res) => {
+  try {
+    const { dog_id } = req.params;
+    const { note_text } = req.body;
+
+    if (!note_text || !note_text.trim()) {
+      return res.status(400).json({ error: 'Note text is required' });
+    }
+
+    const { error } = await supabase
+      .from('dog_notes')
+      .insert({ dog_id, note_text: note_text.trim() });
+
+    if (error) throw error;
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error saving note:', error);
+    res.status(500).json({ error: 'Failed to save note' });
+  }
+});
+
 app.get('/dashboard/:dog_id', async (req, res) => {
   try {
     const { dog_id } = req.params;
@@ -2221,37 +2304,26 @@ app.get('/dashboard/:dog_id', async (req, res) => {
 
     const activeAlert = activeAlerts?.[0] || null;
 
-    // If no check-ins yet, show empty state
-    if (!checkins || checkins.length === 0) {
-      return res.send(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta name="viewport" content="width=device-width, initial-scale=1">
-          <title>${dog.dog_name}'s Dashboard</title>
-          <style>
-            body { font-family: -apple-system, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #f5f5f5; }
-            .card { background: white; border-radius: 12px; padding: 40px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-            h1 { color: #333; margin-bottom: 20px; }
-            p { color: #666; font-size: 16px; line-height: 1.6; }
-            .cta { background: #007AFF; color: white; padding: 15px 30px; border-radius: 8px; text-decoration: none; display: inline-block; margin-top: 20px; font-weight: 600; }
-            .cta:hover { background: #0051D5; }
-          </style>
-        </head>
-        <body>
-          <div class="card">
-            <h1>📊 ${dog.dog_name}'s Mobility Dashboard</h1>
-            <p style="font-size: 48px; margin: 20px 0;">📝</p>
-            <p>No check-ins recorded yet. Start tracking ${dog.dog_name}'s mobility to see insights here.</p>
-            <a href="/check-in/${dog_id}" class="cta">Record First Check-In</a>
-          </div>
-        </body>
-        </html>
-      `);
-    }
+    // STEP: Fetch mid-week notes, most recent first
+    const { data: dogNotes } = await supabase
+      .from('dog_notes')
+      .select('*')
+      .eq('dog_id', dog_id)
+      .order('created_at', { ascending: false });
 
-    // Calculate metrics
-    const currentScore = checkins[checkins.length - 1].mobility_score;
+    // Note (Aug 19): dashboard no longer shows a separate placeholder page for
+    // zero check-ins. It always renders the real dashboard, using the dog's
+    // baseline score as the starting data point until a real check-in exists.
+    // This fixes a real UX bug: the old placeholder's only CTA was "Record
+    // First Check-In", which new users clicked thinking it was how you access
+    // the dashboard at all — conflating viewing the dashboard with submitting
+    // a weekly update.
+
+    // Calculate metrics — falls back to baseline score when no check-in
+    // exists yet, so the dashboard always has a real starting data point.
+    const currentScore = checkins.length > 0
+      ? checkins[checkins.length - 1].mobility_score
+      : dog.baseline_mobility_score;
     const previousScore = checkins.length > 1
       ? checkins[checkins.length - 2].mobility_score
       : dog.baseline_mobility_score;
@@ -2259,21 +2331,27 @@ app.get('/dashboard/:dog_id', async (req, res) => {
     const scoreDiff = currentScore - previousScore;
     const trend = scoreDiff > 0 ? 'up' : scoreDiff < 0 ? 'down' : 'flat';
     const trendEmoji = trend === 'up' ? '📈' : trend === 'down' ? '📉' : '➡️';
-    const trendText = trend === 'up' ? 'Improving' : trend === 'down' ? 'Declining' : 'Stable';
+    const trendText = checkins.length === 0
+      ? 'Baseline'
+      : (trend === 'up' ? 'Improving' : trend === 'down' ? 'Declining' : 'Stable');
     const trendColor = trend === 'up' ? '#4CAF50' : trend === 'down' ? '#FF6B6B' : '#FFC107';
 
-    // Calculate streak (consecutive weeks with check-ins)
+    // Calculate streak (consecutive weeks with check-ins) — 0 when there
+    // are no check-ins yet, guarded before touching the array at all so it
+    // can't crash on an empty list.
     let streak = 0;
-    const sortedByWeek = [...checkins].sort((a, b) => b.week_number - a.week_number);
-    // Same defensive floor as calculateCurrentStreak() — a stray week_number
-    // of 0 or less shouldn't make this loop skip entirely.
-    const maxWeek = Math.max(1, sortedByWeek[0].week_number);
-    for (let i = maxWeek; i >= 1; i--) {
-      const hasWeek = checkins.some(c => c.week_number === i);
-      if (hasWeek) {
-        streak++;
-      } else {
-        break;
+    if (checkins.length > 0) {
+      const sortedByWeek = [...checkins].sort((a, b) => b.week_number - a.week_number);
+      // Same defensive floor as calculateCurrentStreak() — a stray week_number
+      // of 0 or less shouldn't make this loop skip entirely.
+      const maxWeek = Math.max(1, sortedByWeek[0].week_number);
+      for (let i = maxWeek; i >= 1; i--) {
+        const hasWeek = checkins.some(c => c.week_number === i);
+        if (hasWeek) {
+          streak++;
+        } else {
+          break;
+        }
       }
     }
 
@@ -2303,8 +2381,14 @@ app.get('/dashboard/:dog_id', async (req, res) => {
     const totalDogs = peerScores.length;
 
     // Prepare chart data
-    const chartScores = checkins.map(c => c.mobility_score);
-    const chartWeeks = checkins.map(c => `W${c.week_number}`);
+    // Chart shows just the baseline point when there's no real check-in yet,
+    // instead of an empty chart.
+    const chartScores = checkins.length > 0
+      ? checkins.map(c => c.mobility_score)
+      : [dog.baseline_mobility_score];
+    const chartWeeks = checkins.length > 0
+      ? checkins.map(c => `W${c.week_number}`)
+      : ['Baseline'];
 
     // Latest scores for pre-filling the check-in modal sliders (STEP P1B: Smart
     // Defaults). Falls back to the dog's baseline score, not a hardcoded 4, so
@@ -2321,6 +2405,21 @@ app.get('/dashboard/:dog_id', async (req, res) => {
     const dashboardNow = new Date();
     const nextCheckinWeekNumber = Math.max(1, Math.floor((dashboardNow - dogCreatedAt) / (7 * 24 * 60 * 60 * 1000)) + 1);
     const showCognitiveThisWeek = nextCheckinWeekNumber % 4 === 0;
+
+    // STEP: Real "update due" calculation, separate from nextCheckinWeekNumber
+    // above (which is used for saving check-ins and the every-4th-week
+    // cognitive question). This one drives what the dashboard actually shows
+    // as due — baseline (signup) doesn't count as week 1; week 1 only
+    // becomes due 7 full days after signup, matching the real weekly cadence.
+    const daysSinceSignup = (dashboardNow - dogCreatedAt) / (24 * 60 * 60 * 1000);
+    const weeksSinceSignup = Math.floor(daysSinceSignup / 7); // 0 during baseline period, 1 from day 7, etc.
+    const mostRecentSubmittedWeek = checkins.length > 0
+      ? Math.max(...checkins.map(c => c.week_number))
+      : 0;
+    const isInBaselinePeriod = weeksSinceSignup === 0;
+    const daysUntilFirstUpdate = isInBaselinePeriod ? Math.max(1, 7 - Math.floor(daysSinceSignup)) : 0;
+    const hasUpdateDue = !isInBaselinePeriod && weeksSinceSignup > mostRecentSubmittedWeek;
+    const dueWeekNumber = weeksSinceSignup; // the week number that's actually due right now, if any
 
     console.log(`✅ Dashboard loaded for ${dog.dog_name}: score=${currentScore}, trend=${trend}, streak=${streak}, rank=${rank}/${totalDogs}`);
 
@@ -2598,16 +2697,32 @@ app.get('/dashboard/:dog_id', async (req, res) => {
             <h1>📊 ${dog.dog_name}'s Mobility Dashboard</h1>
             <p>${dog.breed || ''} • ${dog.age || 'Age unknown'} years old • ${dog.gender || 'Gender unknown'}</p>
             <div class="week-progress">
-              <span>Week ${checkins[checkins.length - 1].week_number} of 12</span>
+              <span>Baseline ✓</span>
+              <span>·</span>
+              <span>Week ${mostRecentSubmittedWeek} of 12</span>
               <div class="week-dots">
                 ${Array.from({length: 12}, (_, i) => {
                   const weekNum = i + 1;
-                  const isCompleted = weekNum <= checkins[checkins.length - 1].week_number;
+                  const isCompleted = weekNum <= mostRecentSubmittedWeek;
                   return `<div class="week-dot ${isCompleted ? 'completed' : ''}"></div>`;
                 }).join('')}
               </div>
             </div>
           </div>
+
+          ${isInBaselinePeriod ? `
+          <div style="background: #EEF2F5; border-left: 4px solid #8B9BA8; border-radius: 8px; padding: 16px 20px; margin: 20px 0;">
+            <p style="margin: 0; color: #4A5A66; font-size: 14px;">📋 ${dog.dog_name}'s first weekly update will be ready in ${daysUntilFirstUpdate} day${daysUntilFirstUpdate === 1 ? '' : 's'}. You'll get a text when it's time.</p>
+          </div>
+          ` : hasUpdateDue ? `
+          <div style="background: #FFF8E7; border-left: 4px solid #A89968; border-radius: 8px; padding: 16px 20px; margin: 20px 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div>
+              <p style="margin: 0 0 4px 0; font-weight: 600; color: #8A7A4F; font-size: 14px;">📝 Week ${dueWeekNumber} update due</p>
+              <p style="margin: 0; color: #5D4E37; font-size: 14px;">Takes about 30 seconds.</p>
+            </div>
+            <a href="/check-in/${dog_id}" style="background: #A89968; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 500; white-space: nowrap;">Complete Week ${dueWeekNumber} Update →</a>
+          </div>
+          ` : ''}
 
           ${activeAlert ? `
           <div style="background: #FFF3E0; border-left: 4px solid #FF9800; border-radius: 8px; padding: 16px 20px; margin: 20px 0;">
@@ -2645,9 +2760,15 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                         <input type="file" id="quickPhotoInput" accept="image/*" style="padding: 4px 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px; width: 100px;">
                         <button type="submit" class="btn-secondary">📷 Update ${dog.dog_name}'s Photo</button>
                       </form>
-                      <button id="openCheckInBtn" class="btn-primary" style="white-space: nowrap; padding: 8px 16px;">
-                        Share This Week's Update
+                      ${isInBaselinePeriod ? `
+                      <button class="btn-primary" disabled style="white-space: nowrap; padding: 8px 16px; opacity: 0.5; cursor: not-allowed;" title="Available in ${daysUntilFirstUpdate} day${daysUntilFirstUpdate === 1 ? '' : 's'}">
+                        Update available soon
                       </button>
+                      ` : `
+                      <button id="openCheckInBtn" class="btn-primary" style="white-space: nowrap; padding: 8px 16px;">
+                        ${hasUpdateDue ? `Complete Week ${dueWeekNumber} Update` : "Share This Week's Update"}
+                      </button>
+                      `}
                     </div>
                   </div>
                 </div>
@@ -2677,6 +2798,26 @@ app.get('/dashboard/:dog_id', async (req, res) => {
               <div class="chart-card">
                 <h2>Mobility observations over time</h2>
                 <canvas id="mobilityChart"></canvas>
+              </div>
+
+              <div class="chart-card">
+                <h2>📝 Notes</h2>
+                <p style="font-size: 13px; color: #999; margin: -8px 0 16px 0;">Jot down anything worth remembering between check-ins — these are saved with ${dog.dog_name}'s health journey.</p>
+                <form id="addNoteForm" style="display: flex; gap: 8px; margin-bottom: 16px;">
+                  <input type="text" id="noteInput" placeholder="e.g. Seemed stiffer after our walk today" maxlength="500" style="flex: 1; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px;" required>
+                  <button type="submit" style="background: #A89968; color: white; border: none; padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; white-space: nowrap;">Add Note</button>
+                </form>
+                <div id="notesList">
+                  ${dogNotes && dogNotes.length > 0
+                    ? dogNotes.map(n => `
+                      <div style="padding: 10px 0; border-bottom: 1px solid #F0EDE5;">
+                        <p style="margin: 0 0 4px 0; font-size: 14px; color: #2C2C2C;">${escapeHtml(n.note_text)}</p>
+                        <p style="margin: 0; font-size: 12px; color: #AAA;">${new Date(n.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
+                      </div>
+                    `).join('')
+                    : `<p style="font-size: 13px; color: #AAA; text-align: center; padding: 10px 0;">No notes yet — add one whenever something's worth remembering.</p>`
+                  }
+                </div>
               </div>
 
               <div class="peer-card">
@@ -2833,9 +2974,43 @@ app.get('/dashboard/:dog_id', async (req, res) => {
             8: "8/8 - Sharp and fully engaged"
           };
 
-          openBtn.addEventListener('click', () => {
-            modal.style.display = 'block';
-          });
+          // openBtn won't exist during the baseline period (disabled button
+          // has no id then) — guard so this doesn't crash the rest of the
+          // page's JS (photo upload, chart rendering, etc.)
+          if (openBtn) {
+            openBtn.addEventListener('click', () => {
+              modal.style.display = 'block';
+            });
+          }
+
+          // Mid-week notes — submits via the API, then reloads to show it
+          // in the list. Simple and reliable; no need for fancier in-place
+          // DOM updates for something used this occasionally.
+          const addNoteForm = document.getElementById('addNoteForm');
+          if (addNoteForm) {
+            addNoteForm.addEventListener('submit', async (e) => {
+              e.preventDefault();
+              const input = document.getElementById('noteInput');
+              const text = input.value.trim();
+              if (!text) return;
+
+              try {
+                const response = await fetch('/api/notes/${dog_id}', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ note_text: text })
+                });
+                if (response.ok) {
+                  window.location.reload();
+                } else {
+                  alert('Could not save note. Please try again.');
+                }
+              } catch (err) {
+                console.error('Error saving note:', err);
+                alert('Could not save note. Please try again.');
+              }
+            });
+          }
 
           closeBtn.addEventListener('click', () => {
             modal.style.display = 'none';
