@@ -486,7 +486,7 @@ app.get('/admin', (req, res) => {
 </head>
 <body>
     <div class="container">
-        <h1>🎯 CompanionCommons Admin</h1>
+        <h1><i data-lucide="target"></i> CompanionCommons Admin</h1>
 
         <div id="login">
             <h2>Login</h2>
@@ -537,7 +537,7 @@ app.get('/admin', (req, res) => {
                 <textarea id="secondary" placeholder="Additional content"></textarea>
             </div>
 
-            <button onclick="savePage()">💾 Save Changes</button>
+            <button onclick="savePage()"><i data-lucide="save"></i> Save Changes</button>
         </div>
     </div>
 
@@ -604,6 +604,8 @@ app.get('/admin', (req, res) => {
             setTimeout(() => { msg.style.display = 'none'; }, 5000);
         }
     </script>
+    <script src="https://unpkg.com/lucide@1.33.0"></script>
+    <script>lucide.createIcons({ attrs: { width: '1em', height: '1em' } });</script>
 </body>
 </html>`);
 });
@@ -1143,11 +1145,13 @@ app.get('/check-in/:dog_id', async (req, res) => {
         </head>
         <body>
           <div class="card">
-            <p style="font-size: 40px; margin: 0 0 10px 0;">📋</p>
+            <p style="font-size: 40px; margin: 0 0 10px 0;"><i data-lucide="clipboard-list"></i></p>
             <h2 style="margin: 0 0 10px 0;">Not quite ready yet</h2>
             <p style="color: #666;">${dog.dog_name}'s first weekly update becomes available 7 days after signing up. You'll get a text when it's time.</p>
             <a href="/dashboard/${dog_id}" class="cta">View Dashboard</a>
           </div>
+          <script src="https://unpkg.com/lucide@1.33.0"></script>
+          <script>lucide.createIcons({ attrs: { width: '1em', height: '1em' } });</script>
         </body>
         </html>
       `);
@@ -1228,7 +1232,7 @@ app.get('/check-in/:dog_id', async (req, res) => {
       </head>
       <body>
         <div class="card">
-          <h2>📱 ${dog.dog_name}'s Check-In</h2>
+          <h2><i data-lucide="clipboard-check"></i> ${dog.dog_name}'s Check-In</h2>
           <p class="subtitle">Week ${weekNumber} Health Tracker</p>
 
           <form id="checkinForm">
@@ -1376,14 +1380,14 @@ app.get('/check-in/:dog_id', async (req, res) => {
               if (result.success) {
                 const streakBadge = result.current_streak > 1 ? \`
                   <div style="background: #FFF3E0; border-radius: 8px; padding: 12px 16px; margin: 16px 0; display: inline-block;">
-                    <span style="font-size: 20px;">🔥</span>
+                    <i data-lucide="flame" style="width: 20px; height: 20px; vertical-align: middle;"></i>
                     <span style="font-size: 16px; font-weight: 600; color: #E65100;">\${result.current_streak} week streak</span>
                   </div>
                 \` : '';
 
                 const milestoneBanner = result.milestone_message ? \`
                   <p style="font-size: 14px; color: #2E7D32; font-weight: 600; margin: 12px 0; background: #E8F5E9; border-radius: 8px; padding: 10px;">
-                    🎉 \${result.milestone_message}
+                    <i data-lucide="award" style="width: 1em; height: 1em; vertical-align: -0.15em;"></i> \${result.milestone_message}
                   </p>
                 \` : '';
 
@@ -1403,6 +1407,7 @@ app.get('/check-in/:dog_id', async (req, res) => {
                     </p>
                   </div>
                 \`;
+                lucide.createIcons({ attrs: { width: '1em', height: '1em' } });
               } else {
                 alert('Error: ' + (result.error || 'Unknown error'));
               }
@@ -1412,6 +1417,8 @@ app.get('/check-in/:dog_id', async (req, res) => {
             }
           });
         </script>
+        <script src="https://unpkg.com/lucide@1.33.0"></script>
+        <script>lucide.createIcons({ attrs: { width: '1em', height: '1em' } });</script>
       </body>
       </html>
     `);
@@ -2145,11 +2152,13 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
         </head>
         <body>
           <div class="card">
-            <p style="font-size: 48px; margin: 0 0 20px 0;">🔒</p>
+            <p style="font-size: 48px; margin: 0 0 20px 0;"><i data-lucide="lock"></i></p>
             <h2 style="margin: 0 0 10px 0;">Not unlocked yet</h2>
             <p style="color: #666;">${dog.dog_name}'s breed guide unlocks after your Week 2 check-in. Keep logging!</p>
             <a href="/dashboard/${dog_id}" style="display: inline-block; margin-top: 20px; background: #007AFF; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none;">Back to Dashboard</a>
           </div>
+          <script src="https://unpkg.com/lucide@1.33.0"></script>
+          <script>lucide.createIcons({ attrs: { width: '1em', height: '1em' } });</script>
         </body>
         </html>
       `);
@@ -2192,14 +2201,14 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
       </head>
       <body>
         <div class="card">
-          <p class="site-brand">🐾 Companion Commons</p>
+          <p class="site-brand">Companion Commons</p>
 
           ${dog.photo_url
             ? `<img src="${dog.photo_url}" alt="${dog.dog_name}" class="dog-photo" />`
-            : `<div class="dog-photo-placeholder">🐕</div>`
+            : `<div class="dog-photo-placeholder"><i data-lucide="paw-print"></i></div>`
           }
 
-          <p style="font-size: 32px; margin: 0 0 10px 0;">🎁</p>
+          <p style="font-size: 32px; margin: 0 0 10px 0;"><i data-lucide="book-open"></i></p>
           <h1>${guide.displayName}: A Health Journey Guide</h1>
           <p class="subtitle">Unlocked for ${dog.dog_name} — Week 2 milestone${guide.typicalWeight ? ` &nbsp;•&nbsp; Typical weight: ${guide.typicalWeight}` : ''}</p>
 
@@ -2224,6 +2233,8 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
 
           <a href="/dashboard/${dog_id}" class="back-link">← Back to Dashboard</a>
         </div>
+        <script src="https://unpkg.com/lucide@1.33.0"></script>
+        <script>lucide.createIcons({ attrs: { width: '1em', height: '1em' } });</script>
       </body>
       </html>
     `);
@@ -2849,7 +2860,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
           <a href="/check-in/${dog_id}" class="back-link">← Back to Check-In</a>
 
           <div class="header">
-            <h1>📊 ${dog.dog_name}'s Mobility Dashboard</h1>
+            <h1><i data-lucide="bar-chart-3"></i> ${dog.dog_name}'s Mobility Dashboard</h1>
             <p>${dog.breed || ''} • ${dog.age || 'Age unknown'} years old • ${dog.gender || 'Gender unknown'}</p>
             <div class="week-progress">
               <span>Baseline ✓</span>
@@ -2867,12 +2878,12 @@ app.get('/dashboard/:dog_id', async (req, res) => {
 
           ${isInBaselinePeriod ? `
           <div style="background: #EEF2F5; border-left: 4px solid #8B9BA8; border-radius: 8px; padding: 16px 20px; margin: 20px 0;">
-            <p style="margin: 0; color: #4A5A66; font-size: 14px;">📋 ${dog.dog_name}'s first weekly update will be ready in ${daysUntilFirstUpdate} day${daysUntilFirstUpdate === 1 ? '' : 's'}. You'll get a text when it's time.</p>
+            <p style="margin: 0; color: #4A5A66; font-size: 14px;"><i data-lucide="clipboard-list"></i> ${dog.dog_name}'s first weekly update will be ready in ${daysUntilFirstUpdate} day${daysUntilFirstUpdate === 1 ? '' : 's'}. You'll get a text when it's time.</p>
           </div>
           ` : hasUpdateDue ? `
           <div style="background: #FFF8E7; border-left: 4px solid #A89968; border-radius: 8px; padding: 16px 20px; margin: 20px 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
             <div>
-              <p style="margin: 0 0 4px 0; font-weight: 600; color: #8A7A4F; font-size: 14px;">📝 Week ${dueWeekNumber} update due</p>
+              <p style="margin: 0 0 4px 0; font-weight: 600; color: #8A7A4F; font-size: 14px;"><i data-lucide="clipboard-edit"></i> Week ${dueWeekNumber} update due</p>
               <p style="margin: 0; color: #5D4E37; font-size: 14px;">Takes about 30 seconds.</p>
             </div>
             <a href="/check-in/${dog_id}" style="background: #A89968; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 500; white-space: nowrap;">Complete Week ${dueWeekNumber} Update →</a>
@@ -2889,7 +2900,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
           ${nextCheckinWeekNumber >= 2 ? `
           <div style="background: #FFF8E7; border-left: 4px solid #A89968; border-radius: 8px; padding: 16px 20px; margin: 20px 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
             <div>
-              <p style="margin: 0 0 4px 0; font-weight: 600; color: #8A7A4F; font-size: 14px;">🎁 Breed guide unlocked</p>
+              <p style="margin: 0 0 4px 0; font-weight: 600; color: #8A7A4F; font-size: 14px;"><i data-lucide="book-open"></i> Breed guide unlocked</p>
               <p style="margin: 0; color: #5D4E37; font-size: 14px;">${dog.dog_name}'s ${dog.breed || 'breed'} guide is ready to read.</p>
             </div>
             <a href="/breed-guide/${dog_id}" style="background: #A89968; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 500; white-space: nowrap;">Read it →</a>
@@ -2904,7 +2915,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                   <div class="baseline-photo">
                     ${dog.photo_url
                       ? `<img src="${dog.photo_url}" alt="${dog.dog_name}" />`
-                      : `<div class="baseline-photo-placeholder">🐕</div>`
+                      : `<div class="baseline-photo-placeholder"><i data-lucide="paw-print"></i></div>`
                     }
                   </div>
                   <div style="flex: 1;">
@@ -2926,7 +2937,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                     <div style="display: flex; gap: 8px; margin-bottom: 12px;">
                       <form id="quickPhotoUpload" style="display: flex; gap: 4px; align-items: center;">
                         <input type="file" id="quickPhotoInput" accept="image/*" style="padding: 4px 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px; width: 100px;">
-                        <button type="submit" class="btn-secondary">📷 Update ${dog.dog_name}'s Photo</button>
+                        <button type="submit" class="btn-secondary"><i data-lucide="camera"></i> Update ${dog.dog_name}'s Photo</button>
                       </form>
                       ${isInBaselinePeriod ? `
                       <button class="btn-primary" disabled style="white-space: nowrap; padding: 8px 16px; opacity: 0.5; cursor: not-allowed;">
@@ -2961,7 +2972,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                     </div>
                     <div class="baseline-info-item">
                       <div class="baseline-info-label">Current Streak</div>
-                      <div class="baseline-info-value">${streak > 0 ? '🔥 ' : ''}${streak}w</div>
+                      <div class="baseline-info-value">${streak > 0 ? '<i data-lucide="flame" style="width:14px;height:14px;vertical-align:-2px;"></i> ' : ''}${streak}w</div>
                     </div>
                     <div class="baseline-info-item">
                       <div class="baseline-info-label">Best Streak</div>
@@ -3007,7 +3018,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
               </div>
 
               <div class="chart-card">
-                <h2>📝 Notes</h2>
+                <h2><i data-lucide="file-text"></i> Notes</h2>
                 <p style="font-size: 13px; color: #999; margin: -8px 0 16px 0;">Jot down anything worth remembering between check-ins — these are saved with ${dog.dog_name}'s health journey.</p>
                 <form id="addNoteForm" style="display: flex; gap: 8px; margin-bottom: 16px;">
                   <input type="text" id="noteInput" placeholder="e.g. Seemed stiffer after our walk today" maxlength="500" style="flex: 1; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px;" required>
@@ -3038,7 +3049,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                 </div>
                 <div class="peer-stat">
                   <span class="peer-stat-label">Status</span>
-                  <span class="peer-stat-value" style="font-size: 14px; color: #A89968; font-weight: 600;">🎯 ${currentScore > peerAverage ? 'Above average!' : currentScore === parseFloat(peerAverage) ? 'At average' : 'Below average'}</span>
+                  <span class="peer-stat-value" style="font-size: 14px; color: #A89968; font-weight: 600;"><i data-lucide="target"></i> ${currentScore > peerAverage ? 'Above average!' : currentScore === parseFloat(peerAverage) ? 'At average' : 'Below average'}</span>
                 </div>
                 <p style="margin: 12px 0 0 0; font-size: 12px; color: #999; line-height: 1.5;">This compares ${dog.dog_name} to all dogs currently logging, not specifically ${dog.breed || 'this breed'} — breed-specific comparisons will be added once enough dogs of the same breed are logging regularly.</p>
               </div>
@@ -3075,7 +3086,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
 
             <div style="background: #FAFAF8; border-radius: 12px; padding: 18px; border-left: 4px solid #D4AF88;">
               <div style="display: flex; align-items: flex-start; gap: 12px;">
-                <span style="font-size: 20px; flex-shrink: 0;">❓</span>
+                <i data-lucide="circle-help" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
                 <div>
                   <p style="margin: 0 0 8px 0; font-size: 14px; font-weight: 500; color: #2C2C2C;">Prepare for a conversation with ${dog.dog_name}'s vet, family, babysitter etc.</p>
                   <p style="margin: 0; font-size: 13px; color: #2C2C2C;">Review recent notes and highlights to help you share what matters most.</p>
@@ -3095,7 +3106,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
         <div id="checkInModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; overflow-y: auto;">
           <div style="background: white; margin: 20px auto; border-radius: 12px; padding: 30px; max-width: 500px; position: relative; top: 50px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-              <h2 style="margin: 0; color: #333;">📝 ${dog.dog_name}'s Check-In</h2>
+              <h2 style="margin: 0; color: #333;"><i data-lucide="clipboard-check"></i> ${dog.dog_name}'s Check-In</h2>
               <button id="closeCheckInBtn" style="background: none; border: none; font-size: 24px; cursor: pointer;">✕</button>
             </div>
 
@@ -3130,17 +3141,17 @@ app.get('/dashboard/:dog_id', async (req, res) => {
         <div id="journeySummaryModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; overflow-y: auto;">
           <div id="journeySummaryPrintArea" style="background: white; margin: 20px auto; border-radius: 12px; padding: 30px; max-width: 650px; position: relative; top: 30px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;" class="no-print">
-              <h2 style="margin: 0; color: #333;">📋 ${dog.dog_name}'s Journey Summary</h2>
+              <h2 style="margin: 0; color: #333;"><i data-lucide="clipboard-list"></i> ${dog.dog_name}'s Journey Summary</h2>
               <button id="closeJourneyBtn" style="background: none; border: none; font-size: 24px; cursor: pointer;">✕</button>
             </div>
 
             <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 16px;">
               ${dog.photo_url
                 ? `<img src="${dog.photo_url}" alt="${dog.dog_name}" style="width: 64px; height: 64px; border-radius: 50%; object-fit: cover; flex-shrink: 0;" />`
-                : `<div style="width: 64px; height: 64px; border-radius: 50%; background: #FFF8E7; display: flex; align-items: center; justify-content: center; font-size: 28px; flex-shrink: 0;">🐕</div>`
+                : `<div style="width: 64px; height: 64px; border-radius: 50%; background: #FFF8E7; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><i data-lucide="paw-print" style="width: 28px; height: 28px;"></i></div>`
               }
               <div>
-                <p style="margin: 0 0 2px 0; font-size: 12px; font-weight: 700; letter-spacing: 0.5px; color: #A89968; text-transform: uppercase;">🐾 Companion Commons</p>
+                <p style="margin: 0 0 2px 0; font-size: 12px; font-weight: 700; letter-spacing: 0.5px; color: #A89968; text-transform: uppercase;">Companion Commons</p>
                 <h3 style="margin: 0; font-size: 18px; color: #2C2C2C;">${dog.dog_name}'s Journey Summary</h3>
               </div>
             </div>
@@ -3199,7 +3210,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
             </p>
 
             <div class="no-print" style="display: flex; gap: 12px; margin-top: 20px;">
-              <button id="printJourneyBtn" style="flex: 1; background: #A89968; color: white; border: none; padding: 12px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer;">🖨️ Print / Save as PDF</button>
+              <button id="printJourneyBtn" style="flex: 1; background: #A89968; color: white; border: none; padding: 12px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer;"><i data-lucide="printer"></i> Print / Save as PDF</button>
             </div>
           </div>
         </div>
@@ -3505,6 +3516,8 @@ app.get('/dashboard/:dog_id', async (req, res) => {
             }
           });
         </script>
+        <script src="https://unpkg.com/lucide@1.33.0"></script>
+        <script>lucide.createIcons({ attrs: { width: '1em', height: '1em' } });</script>
       </body>
       </html>
     `);
@@ -4389,10 +4402,12 @@ app.get('/verify', async (req, res) => {
           </head>
           <body>
             <div class="error-box">
-              <h1>⏰ Link Expired</h1>
+              <h1><i data-lucide="clock"></i> Link Expired</h1>
               <p>This verification link expired after 15 minutes. Complete the Baseline Health Journey again to get a new link.</p>
               <a href="/baseline-health-journey.html">Start Over</a>
             </div>
+            <script src="https://unpkg.com/lucide@1.33.0"></script>
+            <script>lucide.createIcons({ attrs: { width: '1em', height: '1em' } });</script>
           </body>
         </html>
       `);

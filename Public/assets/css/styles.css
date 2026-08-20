@@ -2157,6 +2157,12 @@ body.copy-editing [data-copy]:focus {
   color: #eef0e9;
   font-size: 18px;
 }
+.lucide {
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.125em;
+  stroke-width: 2;
+}
 .mission-section p + p {
   margin-top: 22px;
 }

@@ -26,7 +26,7 @@
         data-copy-toggle
         aria-expanded="false"
       >
-        <span aria-hidden="true">✎</span> Edit wording
+        <i data-lucide="pencil" aria-hidden="true"></i> Edit wording
       </button>
       <div class="copy-editor-panel" data-copy-panel hidden>
         <strong>Copy Editor</strong>
@@ -92,7 +92,7 @@
               >
             </div>
             <ul class="trust-list" aria-label="Participation promises">
-              <li><span aria-hidden="true">♡</span> Always Free</li>
+              <li><i data-lucide="infinity" aria-hidden="true"></i> Always Free</li>
               <li><span aria-hidden="true">◇</span> One 30 Second Update Per Week</li>
               <li><span aria-hidden="true">✓</span> Independent by Design</li>
             </ul>
@@ -221,7 +221,7 @@
             </div>
           </div>
           <div class="impact-item">
-            <span class="impact-icon" aria-hidden="true">♧</span>
+            <i data-lucide="sparkles" class="impact-icon" aria-hidden="true"></i>
             <div>
               <small>New features</small><strong>You'll see first</strong>
             </div>
@@ -240,8 +240,8 @@
           <div class="value-grid">
             <article class="value-card personal-card">
               <div class="value-art" aria-hidden="true">
-                <span>♡</span>
-                <div class="art-dog">🐕</div>
+                <i data-lucide="heart"></i>
+                <div class="art-dog"><i data-lucide="paw-print"></i></div>
               </div>
               <div class="value-content">
                 <span class="card-kicker">Personal value</span>
@@ -262,7 +262,6 @@
             </article>
             <article class="value-card collective-card">
               <div class="value-art network-art" aria-hidden="true">
-                <span>✦</span>
                 <div class="network-dots">
                   <i></i><i></i><i></i><i></i><i></i>
                 </div>
@@ -303,7 +302,7 @@
                   <i></i><i></i><i></i>
                 </div>
                 <div class="pet-summary">
-                  <div class="pet-avatar" aria-hidden="true">🐕</div>
+                  <div class="pet-avatar" aria-hidden="true"><i data-lucide="paw-print"></i></div>
                   <div class="pet-identity">
                     <h3>Bailey’s Health Journey</h3>
                     <p>Golden Retriever · 11 years old · Male</p>
@@ -445,7 +444,7 @@
                   </p>
                 </article>
                 <article class="vet-prep">
-                  <div aria-hidden="true">♡</div>
+                  <div aria-hidden="true"><i data-lucide="stethoscope"></i></div>
                   <p>
                     <strong>Prepare for a veterinarian conversation</strong
                     ><br />Review recent notes and highlights to help you share
@@ -467,7 +466,7 @@
                     </div>
                   </li>
                   <li>
-                    <span>⌁</span>
+                    <i data-lucide="activity"></i>
                     <div>
                       <strong>See your own reported patterns</strong>
                       <p>Spot trends in the ways that matter most to you.</p>
@@ -566,5 +565,9 @@
         </p>
       </div>
     </footer>
+    <script src="https://unpkg.com/lucide@1.33.0"></script>
+    <script>
+      lucide.createIcons();
+    </script>
   </body>
 </html>

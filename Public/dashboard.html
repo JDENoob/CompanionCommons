@@ -50,7 +50,7 @@
 
     <main id="main">
       <div id="loading" class="dashboard-loading">
-        <p>📊 Loading your dashboard...</p>
+        <p><i data-lucide="bar-chart-3" aria-hidden="true"></i> Loading your dashboard...</p>
       </div>
 
       <div id="error" class="dashboard-error" style="display: none;"></div>
@@ -65,7 +65,7 @@
 
               <!-- Pet Summary -->
               <div class="pet-summary">
-                <div class="pet-avatar" aria-hidden="true">🐕</div>
+                <div class="pet-avatar" aria-hidden="true"><i data-lucide="paw-print"></i></div>
                 <div class="pet-identity">
                   <h3 id="dogName">Dog Name</h3>
                   <p id="dogInfo">Breed · Age · Gender</p>
@@ -130,7 +130,7 @@
 
               <!-- Vet Prep -->
               <article class="vet-prep">
-                <div aria-hidden="true">♡</div>
+                <div aria-hidden="true"><i data-lucide="stethoscope"></i></div>
                 <p>
                   <strong>Prepare for a veterinarian conversation</strong><br />
                   Review your observations to help you share what matters most.
@@ -153,7 +153,7 @@
                   </div>
                 </li>
                 <li>
-                  <span>⌁</span>
+                  <i data-lucide="activity"></i>
                   <div>
                     <strong>See your own reported patterns</strong>
                     <p>Spot trends in the ways that matter most to you.</p>
@@ -376,6 +376,10 @@
             `;
           });
       }
+    </script>
+    <script src="https://unpkg.com/lucide@1.33.0"></script>
+    <script>
+      lucide.createIcons();
     </script>
   </body>
 </html>
