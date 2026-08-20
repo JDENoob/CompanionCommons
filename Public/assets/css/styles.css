@@ -682,7 +682,7 @@ body.copy-editing [data-copy]:focus {
 }
 
 .community-message h2 {
-  font-family: 'Newsreader', serif;
+  font-family: var(--serif);
   font-size: 3rem;
   font-weight: 600;
   line-height: 1.1;
@@ -1470,7 +1470,8 @@ body.copy-editing [data-copy]:focus {
   margin-bottom: 6px;
   color: var(--sage-dark);
 }
-.independence-callout h3 {
+.independence-callout h3,
+.independence-callout .disclaimer-lead {
   margin: 0 0 7px;
   font-family: var(--serif);
   font-size: 28px;

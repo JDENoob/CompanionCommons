@@ -4,6 +4,12 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Begin the Baseline Health Journey | Companion Commons</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="assets/css/styles.css" />
     <script src="assets/js/main.js" defer></script>
   </head>
@@ -488,7 +494,7 @@
 
           if (result.success) {
             document.body.innerHTML = `
-              <div style="max-width: 500px; margin: 50px auto; text-align: center; font-family: -apple-system, sans-serif; padding: 20px;">
+              <div style="max-width: 500px; margin: 50px auto; text-align: center; font-family: var(--sans); padding: 20px;">
                 <h1 style="color: #4CAF50; margin-bottom: 10px;">✓ Check Your Phone!</h1>
                 <p style="font-size: 18px; color: #333; margin: 20px 0;">
                   We've sent a secure link to <strong>${data.phone}</strong>
