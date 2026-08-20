@@ -3027,19 +3027,20 @@ app.get('/dashboard/:dog_id', async (req, res) => {
               </div>
 
               <div class="peer-card">
-                <h2>How ${dog.dog_name} compares with similar ${dog.breed || 'dogs'}</h2>
+                <h2>How ${dog.dog_name} compares across the community</h2>
                 <div class="peer-stat">
                   <span class="peer-stat-label">Your dog's rank</span>
                   <span class="peer-stat-value">#${rank} / ${totalDogs}</span>
                 </div>
                 <div class="peer-stat">
-                  <span class="peer-stat-label">Peer average score</span>
+                  <span class="peer-stat-label">Community average score</span>
                   <span class="peer-stat-value">${peerAverage}/8</span>
                 </div>
                 <div class="peer-stat">
                   <span class="peer-stat-label">Status</span>
                   <span class="peer-stat-value" style="font-size: 14px; color: #A89968; font-weight: 600;">🎯 ${currentScore > peerAverage ? 'Above average!' : currentScore === parseFloat(peerAverage) ? 'At average' : 'Below average'}</span>
                 </div>
+                <p style="margin: 12px 0 0 0; font-size: 12px; color: #999; line-height: 1.5;">This compares ${dog.dog_name} to all dogs currently logging, not specifically ${dog.breed || 'this breed'} — breed-specific comparisons will be added once enough dogs of the same breed are logging regularly.</p>
               </div>
             </div>
 
@@ -3068,8 +3069,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px;">
             <div style="background: #FAFAF8; border-radius: 12px; padding: 18px; border-left: 4px solid #D4AF88;">
               <p style="margin: 0; font-size: 13px; color: #2C2C2C; line-height: 1.6;">
-                Based on anonymized observations from participating ${dog.breed || 'dogs'} of a similar age. For context only—not a diagnosis or veterinary assessment.<br>
-                For context only—not a diagnosis or veterinary assessment.
+                Based on anonymized observations from all dogs currently logging on Companion Commons, not specifically ${dog.breed || 'this breed'}. For context only — not a diagnosis or veterinary assessment.
               </p>
             </div>
 
@@ -3133,6 +3133,31 @@ app.get('/dashboard/:dog_id', async (req, res) => {
               <h2 style="margin: 0; color: #333;">📋 ${dog.dog_name}'s Journey Summary</h2>
               <button id="closeJourneyBtn" style="background: none; border: none; font-size: 24px; cursor: pointer;">✕</button>
             </div>
+
+            <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 16px;">
+              ${dog.photo_url
+                ? `<img src="${dog.photo_url}" alt="${dog.dog_name}" style="width: 64px; height: 64px; border-radius: 50%; object-fit: cover; flex-shrink: 0;" />`
+                : `<div style="width: 64px; height: 64px; border-radius: 50%; background: #FFF8E7; display: flex; align-items: center; justify-content: center; font-size: 28px; flex-shrink: 0;">🐕</div>`
+              }
+              <div>
+                <p style="margin: 0 0 2px 0; font-size: 12px; font-weight: 700; letter-spacing: 0.5px; color: #A89968; text-transform: uppercase;">🐾 Companion Commons</p>
+                <h3 style="margin: 0; font-size: 18px; color: #2C2C2C;">${dog.dog_name}'s Journey Summary</h3>
+              </div>
+            </div>
+            <p style="margin: 0 0 4px 0; font-size: 13px; color: #666;">
+              ${dog.breed || 'Breed unknown'} • ${dog.age || 'Age unknown'} years old • ${dog.gender || 'Gender unknown'}
+              ${dog.spayed_neutered ? ` • ${dog.spayed_neutered === 'yes' ? 'Fixed' : 'Not Fixed'}` : ''}
+              ${dog.diet_type ? ` • ${DIET_TYPE_LABELS[dog.diet_type] || dog.diet_type}` : ''}
+              ${dog.pet_insurance ? ` • ${dog.pet_insurance === 'yes' ? 'Insured' : dog.pet_insurance === 'no' ? 'No Insurance' : 'Insurance Unknown'}` : ''}
+            </p>
+            ${(() => {
+              const journeyMeds = (dog.treatment_category || [])
+                .filter(t => t !== 'none' && TREATMENT_CATEGORY_LABELS[t])
+                .map(t => TREATMENT_CATEGORY_LABELS[t]);
+              return journeyMeds.length > 0
+                ? `<p style="margin: 0 0 20px 0; font-size: 13px; color: #666;">Medications/treatments: ${journeyMeds.join(', ')}</p>`
+                : `<p style="margin: 0 0 20px 0; font-size: 13px; color: #666;"></p>`;
+            })()}
             <p style="margin: 0 0 20px 0; font-size: 13px; color: #888;">Prepared ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} · Baseline ✓ · Week ${weeksSinceSignup} of 12</p>
 
             ${journeyAlertHtml}
@@ -3166,8 +3191,11 @@ app.get('/dashboard/:dog_id', async (req, res) => {
               ${journeyNotesHtml}
             </div>
 
-            <p style="font-size: 12px; color: #999; border-top: 1px solid #eee; padding-top: 14px;">
-              Based on ${dog.dog_name}'s own logged check-ins and baseline survey. For context only — not a diagnosis or veterinary assessment.
+            <p style="font-size: 12px; color: #999; border-top: 1px solid #eee; padding-top: 14px; margin: 0;">
+              Companion Commons is not a veterinary service and does not diagnose, treat, prescribe, or provide veterinary advice. Always consult a licensed veterinarian about your companion's health and care. Think this may be an emergency? Contact your veterinarian or the nearest emergency veterinary hospital immediately.
+            </p>
+            <p style="font-size: 12px; color: #999; margin: 10px 0 0 0;">
+              As community grows, comparisons will also print on this summary as well.
             </p>
 
             <div class="no-print" style="display: flex; gap: 12px; margin-top: 20px;">
