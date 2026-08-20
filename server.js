@@ -2336,6 +2336,32 @@ app.get('/dashboard/:dog_id', async (req, res) => {
       : (trend === 'up' ? 'Improving' : trend === 'down' ? 'Declining' : 'Stable');
     const trendColor = trend === 'up' ? '#4CAF50' : trend === 'down' ? '#FF6B6B' : '#FFC107';
 
+    // STEP: Real "This Week at a Glance" data — this section used to be
+    // hardcoded static text ("has been more difficult for two weeks") shown
+    // identically on every dog's dashboard regardless of their real data.
+    // That's a real accuracy problem worth fixing properly, not just
+    // cosmetically — these lines now reflect actual score changes.
+    const currentEnergyScore = checkins.length > 0
+      ? checkins[checkins.length - 1].energy_score
+      : dog.baseline_energy_score;
+    const previousEnergyScore = checkins.length > 1
+      ? checkins[checkins.length - 2].energy_score
+      : dog.baseline_energy_score;
+    const currentAppetiteScore = checkins.length > 0
+      ? checkins[checkins.length - 1].appetite_score
+      : dog.baseline_appetite_score;
+    const previousAppetiteScore = checkins.length > 1
+      ? checkins[checkins.length - 2].appetite_score
+      : dog.baseline_appetite_score;
+
+    function describeTrendForGlance(current, previous) {
+      if (current == null || previous == null) return 'Not enough data yet';
+      const diff = current - previous;
+      if (diff > 0) return `improved (+${diff})`;
+      if (diff < 0) return `declined (${diff})`;
+      return 'held steady';
+    }
+
     // Calculate streak (consecutive weeks with check-ins) — 0 when there
     // are no check-ins yet, guarded before touching the array at all so it
     // can't crash on an empty list.
@@ -2842,16 +2868,16 @@ app.get('/dashboard/:dog_id', async (req, res) => {
               <div class="peer-card">
                 <h2>This week at a glance</h2>
                 <div class="peer-stat">
-                  <span class="peer-stat-label">Walking comfort</span>
-                  <span class="peer-stat-value" style="font-size: 14px; color: #555;">has remained consistent</span>
+                  <span class="peer-stat-label">Mobility</span>
+                  <span class="peer-stat-value" style="font-size: 14px; color: #555;">${describeTrendForGlance(currentScore, previousScore)}</span>
                 </div>
                 <div class="peer-stat">
-                  <span class="peer-stat-label">Getting up after rest</span>
-                  <span class="peer-stat-value" style="font-size: 14px; color: #555;">has been more difficult for two weeks</span>
+                  <span class="peer-stat-label">Energy</span>
+                  <span class="peer-stat-value" style="font-size: 14px; color: #555;">${describeTrendForGlance(currentEnergyScore, previousEnergyScore)}</span>
                 </div>
                 <div class="peer-stat">
-                  <span class="peer-stat-label">Active days</span>
-                  <span class="peer-stat-value" style="font-size: 14px; color: #555;">fewer this week</span>
+                  <span class="peer-stat-label">Appetite</span>
+                  <span class="peer-stat-value" style="font-size: 14px; color: #555;">${describeTrendForGlance(currentAppetiteScore, previousAppetiteScore)}</span>
                 </div>
               </div>
             </div>
