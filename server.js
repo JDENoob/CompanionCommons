@@ -3278,7 +3278,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                   tension: 0.4,
                   pointStyle: 'circle',
                   pointRadius: 10,
-                  pointBackgroundColor: 'rgba(102, 126, 234, 0.85)',
+                  pointBackgroundColor: 'rgba(102, 126, 234, 0.45)',
                   pointBorderColor: '#fff',
                   pointBorderWidth: 2,
                   pointHoverRadius: 12
@@ -3294,7 +3294,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                   tension: 0.4,
                   pointStyle: 'triangle',
                   pointRadius: 6,
-                  pointBackgroundColor: 'rgba(245, 166, 35, 0.85)',
+                  pointBackgroundColor: 'rgba(245, 166, 35, 0.7)',
                   pointBorderColor: '#fff',
                   pointBorderWidth: 2,
                   pointHoverRadius: 8
@@ -3310,7 +3310,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                   tension: 0.4,
                   pointStyle: 'rect',
                   pointRadius: 3,
-                  pointBackgroundColor: 'rgba(76, 175, 80, 0.9)',
+                  pointBackgroundColor: 'rgba(76, 175, 80, 0.95)',
                   pointBorderColor: '#fff',
                   pointBorderWidth: 2,
                   pointHoverRadius: 7
