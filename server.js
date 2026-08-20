@@ -3277,11 +3277,11 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                   fill: false,
                   tension: 0.4,
                   pointStyle: 'circle',
-                  pointRadius: 10,
-                  pointBackgroundColor: 'rgba(102, 126, 234, 0.45)',
+                  pointRadius: 3,
+                  pointBackgroundColor: '#667eea',
                   pointBorderColor: '#fff',
                   pointBorderWidth: 2,
-                  pointHoverRadius: 12
+                  pointHoverRadius: 6
                 },
                 {
                   label: 'Energy',
@@ -3293,11 +3293,11 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                   fill: false,
                   tension: 0.4,
                   pointStyle: 'triangle',
-                  pointRadius: 6,
-                  pointBackgroundColor: 'rgba(245, 166, 35, 0.7)',
+                  pointRadius: 3,
+                  pointBackgroundColor: '#F5A623',
                   pointBorderColor: '#fff',
                   pointBorderWidth: 2,
-                  pointHoverRadius: 8
+                  pointHoverRadius: 6
                 },
                 {
                   label: 'Appetite',
@@ -3310,10 +3310,10 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                   tension: 0.4,
                   pointStyle: 'rect',
                   pointRadius: 3,
-                  pointBackgroundColor: 'rgba(76, 175, 80, 0.95)',
+                  pointBackgroundColor: '#4CAF50',
                   pointBorderColor: '#fff',
                   pointBorderWidth: 2,
-                  pointHoverRadius: 7
+                  pointHoverRadius: 6
                 }
               ]
             },
