@@ -2412,6 +2412,12 @@ app.get('/dashboard/:dog_id', async (req, res) => {
     const chartScores = checkins.length > 0
       ? checkins.map(c => c.mobility_score)
       : [dog.baseline_mobility_score];
+    const chartEnergyScores = checkins.length > 0
+      ? checkins.map(c => c.energy_score)
+      : [dog.baseline_energy_score];
+    const chartAppetiteScores = checkins.length > 0
+      ? checkins.map(c => c.appetite_score)
+      : [dog.baseline_appetite_score];
     const chartWeeks = checkins.length > 0
       ? checkins.map(c => `W${c.week_number}`)
       : ['Baseline'];
@@ -2822,7 +2828,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
               </div>
 
               <div class="chart-card">
-                <h2>Mobility observations over time</h2>
+                <h2>Health observations over time</h2>
                 <canvas id="mobilityChart"></canvas>
               </div>
 
@@ -3148,20 +3154,50 @@ app.get('/dashboard/:dog_id', async (req, res) => {
             type: 'line',
             data: {
               labels: ${JSON.stringify(chartWeeks)},
-              datasets: [{
-                label: '${dog.dog_name} Mobility Score',
-                data: ${JSON.stringify(chartScores)},
-                borderColor: '#667eea',
-                backgroundColor: 'rgba(102, 126, 234, 0.1)',
-                borderWidth: 2,
-                fill: true,
-                tension: 0.4,
-                pointRadius: 5,
-                pointBackgroundColor: '#667eea',
-                pointBorderColor: '#fff',
-                pointBorderWidth: 2,
-                pointHoverRadius: 7
-              }]
+              datasets: [
+                {
+                  label: 'Mobility',
+                  data: ${JSON.stringify(chartScores)},
+                  borderColor: '#667eea',
+                  backgroundColor: 'rgba(102, 126, 234, 0.08)',
+                  borderWidth: 2,
+                  fill: false,
+                  tension: 0.4,
+                  pointRadius: 4,
+                  pointBackgroundColor: '#667eea',
+                  pointBorderColor: '#fff',
+                  pointBorderWidth: 2,
+                  pointHoverRadius: 6
+                },
+                {
+                  label: 'Energy',
+                  data: ${JSON.stringify(chartEnergyScores)},
+                  borderColor: '#F5A623',
+                  backgroundColor: 'rgba(245, 166, 35, 0.08)',
+                  borderWidth: 2,
+                  fill: false,
+                  tension: 0.4,
+                  pointRadius: 4,
+                  pointBackgroundColor: '#F5A623',
+                  pointBorderColor: '#fff',
+                  pointBorderWidth: 2,
+                  pointHoverRadius: 6
+                },
+                {
+                  label: 'Appetite',
+                  data: ${JSON.stringify(chartAppetiteScores)},
+                  borderColor: '#4CAF50',
+                  backgroundColor: 'rgba(76, 175, 80, 0.08)',
+                  borderWidth: 2,
+                  fill: false,
+                  tension: 0.4,
+                  pointRadius: 4,
+                  pointBackgroundColor: '#4CAF50',
+                  pointBorderColor: '#fff',
+                  pointBorderWidth: 2,
+                  pointHoverRadius: 6
+                }
+              ]
             },
             options: {
               responsive: true,
@@ -3169,8 +3205,17 @@ app.get('/dashboard/:dog_id', async (req, res) => {
               plugins: {
                 legend: {
                   display: true,
-                  labels: { font: { size: 12 } }
+                  position: 'top',
+                  labels: { font: { size: 12 }, usePointStyle: true, boxWidth: 8 }
+                },
+                tooltip: {
+                  mode: 'index',
+                  intersect: false
                 }
+              },
+              interaction: {
+                mode: 'index',
+                intersect: false
               },
               scales: {
                 y: {
