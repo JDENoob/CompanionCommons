@@ -695,18 +695,18 @@ async function ensureGoogleSheetTabsExist() {
       // Add header rows to any newly-created tabs
       if (tabsToCreate.includes('Signups')) {
         await appendRowToSheet('Signups', [
-          'Timestamp', 'Email', 'Dog Name', 'Breed', 'Age', 'Gender',
+          'Timestamp', 'Dog ID', 'Email', 'Dog Name', 'Breed', 'Age', 'Gender',
           'Baseline Mobility', 'Baseline Energy', 'Baseline Appetite', 'Baseline Cognitive'
         ]);
       }
       if (tabsToCreate.includes('CheckIns')) {
         await appendRowToSheet('CheckIns', [
-          'Timestamp', 'Dog Name', 'Week Number', 'Mobility', 'Energy', 'Appetite', 'Cognitive', 'Notes'
+          'Timestamp', 'Dog ID', 'Dog Name', 'Week Number', 'Mobility', 'Energy', 'Appetite', 'Cognitive', 'Notes'
         ]);
       }
       if (tabsToCreate.includes('Notes')) {
         await appendRowToSheet('Notes', [
-          'Timestamp', 'Dog Name', 'Note'
+          'Timestamp', 'Dog ID', 'Dog Name', 'Note'
         ]);
       }
     }
@@ -1810,6 +1810,7 @@ app.post('/api/checkin-senior', async (req, res) => {
     // check-in. Doesn't block or affect the response if this fails.
     await appendRowToSheet('CheckIns', [
       new Date().toISOString(),
+      dog_id,
       dog.dog_name || '',
       weekNumber,
       currentScores.mobility ?? '',
@@ -2265,6 +2266,7 @@ app.post('/api/notes/:dog_id', async (req, res) => {
 
     await appendRowToSheet('Notes', [
       new Date().toISOString(),
+      dog_id,
       dogForNote?.dog_name || '',
       note_text.trim()
     ]);
@@ -4280,8 +4282,13 @@ app.get('/verify', async (req, res) => {
     // Export to Google Sheets (Signups tab) — real signup + baseline data,
     // fired after everything above is confirmed successful. Doesn't block
     // or affect the redirect either way if this fails.
+    // Dog ID is the real join key across all three tabs — dog names aren't
+    // unique (two people can both name their dog "Max"), and email isn't a
+    // reliable per-dog key either. This is the same UUID already used
+    // throughout the app itself (dashboard/check-in URLs).
     await appendRowToSheet('Signups', [
       new Date().toISOString(),
+      dogId,
       tokenData.email || '',
       tokenData.dog_name || '',
       tokenData.breed || '',
