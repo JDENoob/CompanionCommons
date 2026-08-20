@@ -2550,6 +2550,32 @@ app.get('/dashboard/:dog_id', async (req, res) => {
               grid-template-columns: 1fr;
             }
           }
+          @media (max-width: 600px) {
+            body { padding: 10px; }
+            .header { padding: 14px; }
+            .header h1 { font-size: 18px; }
+            /* Several buttons/links were built with white-space: nowrap,
+               which is fine on desktop but forces horizontal overflow on a
+               narrow phone screen since the text can't wrap or shrink.
+               Letting them wrap and go full-width on small screens fixes
+               the "page is too wide" problem on mobile. */
+            a[style*="white-space: nowrap"],
+            button[style*="white-space: nowrap"] {
+              white-space: normal !important;
+              width: 100%;
+              text-align: center;
+              box-sizing: border-box;
+            }
+            /* Banners that put a label and a button side-by-side need to
+               stack on narrow screens instead of squeezing both onto one
+               line. Deliberately specific (matches flex-wrap:wrap too) so
+               this doesn't also catch the check-in modal's title/close-
+               button row, which should stay side-by-side on mobile too. */
+            div[style*="justify-content: space-between"][style*="flex-wrap: wrap"] {
+              flex-direction: column;
+              align-items: stretch !important;
+            }
+          }
           .metrics-grid {
             display: grid;
             grid-template-columns: 1fr;
@@ -2892,6 +2918,31 @@ app.get('/dashboard/:dog_id', async (req, res) => {
               <div class="chart-card">
                 <h2>Health observations over time</h2>
                 <canvas id="mobilityChart"></canvas>
+                <p style="font-size: 12px; color: #999; margin: 16px 0 6px 0;">Exact values by week (scroll sideways if needed):</p>
+                <div style="overflow-x: auto; -webkit-overflow-scrolling: touch;">
+                  <table style="border-collapse: collapse; width: 100%; min-width: ${Math.max(300, chartWeeks.length * 55)}px; font-size: 13px;">
+                    <thead>
+                      <tr>
+                        <th style="text-align: left; padding: 6px 10px; border-bottom: 2px solid #EEE; color: #999; font-weight: 500; white-space: nowrap;"></th>
+                        ${chartWeeks.map(w => `<th style="text-align: center; padding: 6px 10px; border-bottom: 2px solid #EEE; color: #999; font-weight: 500; white-space: nowrap;">${escapeHtml(w)}</th>`).join('')}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td style="padding: 6px 10px; color: #667eea; font-weight: 600; white-space: nowrap;">Mobility</td>
+                        ${chartScores.map(v => `<td style="text-align: center; padding: 6px 10px;">${v ?? '—'}</td>`).join('')}
+                      </tr>
+                      <tr>
+                        <td style="padding: 6px 10px; color: #F5A623; font-weight: 600; white-space: nowrap;">Energy</td>
+                        ${chartEnergyScores.map(v => `<td style="text-align: center; padding: 6px 10px;">${v ?? '—'}</td>`).join('')}
+                      </tr>
+                      <tr>
+                        <td style="padding: 6px 10px; color: #4CAF50; font-weight: 600; white-space: nowrap;">Appetite</td>
+                        ${chartAppetiteScores.map(v => `<td style="text-align: center; padding: 6px 10px;">${v ?? '—'}</td>`).join('')}
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
               </div>
 
               <div class="chart-card">
