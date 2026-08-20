@@ -784,13 +784,13 @@ async function ensureGoogleSheetTabsExist() {
       // Add header rows to any newly-created tabs
       if (tabsToCreate.includes('Signups')) {
         await appendRowToSheet('Signups', [
-          'Timestamp', 'Dog ID', 'Email', 'Dog Name', 'Breed', 'Age', 'Gender',
+          'Timestamp', 'Dog ID', 'Email', 'Dog Name', 'Breed', 'Age', 'Gender', 'Baseline Weight',
           'Baseline Mobility', 'Baseline Energy', 'Baseline Appetite', 'Baseline Cognitive'
         ]);
       }
       if (tabsToCreate.includes('CheckIns')) {
         await appendRowToSheet('CheckIns', [
-          'Timestamp', 'Dog ID', 'Dog Name', 'Week Number', 'Mobility', 'Energy', 'Appetite', 'Cognitive', 'Notes'
+          'Timestamp', 'Dog ID', 'Dog Name', 'Week Number', 'Mobility', 'Energy', 'Appetite', 'Cognitive', 'Weight', 'Notes'
         ]);
       }
       if (tabsToCreate.includes('Notes')) {
@@ -1244,18 +1244,20 @@ app.get('/check-in/:dog_id', async (req, res) => {
       `);
     }
 
-    // Get the latest check-in for comparison
-    const { data: latestCheckin } = await supabase
+    // Get check-in history for comparison. No .limit(1) — weight isn't
+    // recorded every week (only every 4th, same as cognitive), so the full
+    // history is fetched to find the latest check-in that actually has one.
+    const { data: latestCheckins } = await supabase
       .from('mobility_checkins')
-      .select('mobility_score, energy_score, appetite_score, cognitive_score, week_number')
+      .select('mobility_score, energy_score, appetite_score, cognitive_score, weight_lbs, week_number')
       .eq('dog_id', dog_id)
-      .order('created_at', { ascending: false })
-      .limit(1);
+      .order('created_at', { ascending: false });
 
-    const latestScore = latestCheckin?.[0]?.mobility_score ?? dog.baseline_mobility_score ?? null;
-    const latestEnergy = latestCheckin?.[0]?.energy_score ?? dog.baseline_energy_score ?? null;
-    const latestAppetite = latestCheckin?.[0]?.appetite_score ?? dog.baseline_appetite_score ?? null;
-    const latestCognitive = latestCheckin?.[0]?.cognitive_score ?? dog.baseline_cognitive_score ?? null;
+    const latestScore = latestCheckins?.[0]?.mobility_score ?? dog.baseline_mobility_score ?? null;
+    const latestEnergy = latestCheckins?.[0]?.energy_score ?? dog.baseline_energy_score ?? null;
+    const latestAppetite = latestCheckins?.[0]?.appetite_score ?? dog.baseline_appetite_score ?? null;
+    const latestCognitive = latestCheckins?.[0]?.cognitive_score ?? dog.baseline_cognitive_score ?? null;
+    const latestWeight = latestCheckins?.find(c => c.weight_lbs != null)?.weight_lbs ?? dog.weight_lbs ?? null;
 
     // Calculate the actual current week based on when the dog was enrolled
     // (matches the same calculation used at submission time in /api/checkin-senior)
@@ -1291,6 +1293,15 @@ app.get('/check-in/:dog_id', async (req, res) => {
           .subtitle { color: #666; margin: 0 0 20px 0; font-size: 14px; }
           label { display: block; margin: 15px 0 5px 0; font-weight: 600; color: #333; }
           input[type=range] { width: 100%; cursor: pointer; }
+          input[type=number] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 14px;
+            box-sizing: border-box;
+          }
           .hint { font-size: 12px; color: #666; margin: 5px 0 0 0; }
           textarea {
             width: 100%;
@@ -1367,6 +1378,20 @@ app.get('/check-in/:dog_id', async (req, res) => {
               value="${latestCognitive || 4}"
             >
             <div class="hint" id="cognitiveHint">4/8 - Average alertness</div>
+            ` : ''}
+
+            ${showCognitive ? `
+            <label for="weight" style="margin-top: 20px;">${dog.dog_name}'s weight this week (lbs)</label>
+            <input
+              type="number"
+              id="weight"
+              name="weight_lbs"
+              min="1"
+              max="250"
+              value="${latestWeight || ''}"
+              placeholder="e.g. 62"
+            >
+            <div class="hint">Optional — tracked alongside mobility, energy, and appetite.</div>
             ` : ''}
 
             <label for="observation" style="margin-top: 20px;">Any notes? (optional)</label>
@@ -1458,6 +1483,7 @@ app.get('/check-in/:dog_id', async (req, res) => {
                   energy_score: parseInt(formData.get('energy_score')),
                   appetite_score: parseInt(formData.get('appetite_score')),
                   cognitive_score: formData.get('cognitive_score') ? parseInt(formData.get('cognitive_score')) : null,
+                  weight_lbs: formData.get('weight_lbs') ? parseInt(formData.get('weight_lbs')) : null,
                   observation: formData.get('observation') || null
                 })
               });
@@ -1695,7 +1721,7 @@ async function detectHealthAlerts(dog_id, dogName, current, previous) {
 
 app.post('/api/checkin-senior', async (req, res) => {
   try {
-    const { dog_id, mobility_score, energy_score, appetite_score, cognitive_score, observation } = req.body;
+    const { dog_id, mobility_score, energy_score, appetite_score, cognitive_score, weight_lbs, observation } = req.body;
 
     // Validation
     if (!dog_id || !mobility_score || !energy_score || !appetite_score) {
@@ -1737,6 +1763,20 @@ app.post('/api/checkin-senior', async (req, res) => {
         return res.status(400).json({
           success: false,
           error: 'Cognitive score must be between 1 and 8'
+        });
+      }
+    }
+
+    // Weight is also only asked every 4th week, same trigger as cognitive —
+    // optional here too, and validated against the same 1-250 range used
+    // for the one-time baseline weight at signup.
+    let weightLbsInt = null;
+    if (weight_lbs !== undefined && weight_lbs !== null && weight_lbs !== '') {
+      weightLbsInt = parseInt(weight_lbs);
+      if (isNaN(weightLbsInt) || weightLbsInt < 1 || weightLbsInt > 250) {
+        return res.status(400).json({
+          success: false,
+          error: 'Weight must be a number between 1 and 250 lbs'
         });
       }
     }
@@ -1828,6 +1868,7 @@ app.post('/api/checkin-senior', async (req, res) => {
         energy_score: energyScoreInt,
         appetite_score: appetiteScoreInt,
         cognitive_score: cognitiveScoreInt,
+        weight_lbs: weightLbsInt,
         observation: observation || null,
         segment: segment
       });
@@ -1911,6 +1952,7 @@ app.post('/api/checkin-senior', async (req, res) => {
       currentScores.energy ?? '',
       currentScores.appetite ?? '',
       currentScores.cognitive ?? '',
+      weightLbsInt ?? '',
       observation || ''
     ]);
 
@@ -1920,6 +1962,7 @@ app.post('/api/checkin-senior', async (req, res) => {
     res.json({
       success: true,
       mobility_score: mobilityScoreInt,
+      weight_lbs: weightLbsInt,
       change_text: changeText,
       week_number: weekNumber,
       segment: segment,
@@ -2196,6 +2239,87 @@ function getBreedGuide(breedName) {
   return BREED_GUIDES[normalized] || GENERIC_BREED_GUIDE;
 }
 
+// ============================================
+// SENIOR-BY-BREED-SIZE + WEIGHT-RANGE HELPERS
+// Nothing here is stored — both the size tier and the senior flag are
+// derived live from a breed's existing typicalWeight string, same pattern
+// as the live week-number/streak calculations elsewhere in this file.
+// Real vet-consensus senior-age ranges (larger/giant breeds age faster):
+//   Giant  (avg >115 lb): senior at 5
+//   Large  (avg 50-115 lb): senior at 6
+//   Medium (avg 25-50 lb): senior at 8
+//   Small/Toy (avg <25 lb): senior at 10
+// Giant cutoff is 115, not the naive 90 lb midpoint of the large/giant gap —
+// Rottweiler/Cane Corso/Bernese Mountain Dog average 92.5-107.5 lb but are
+// standard-classified as large breed, not giant, so 90 misclassified them.
+// 115 keeps them Large while still catching genuinely giant breeds (Great
+// Dane, Mastiff, Newfoundland all average 125+ lb).
+// ============================================
+
+// Parses a typicalWeight string like "55–80 lb" into {min, max}. Returns
+// null for the two non-numeric cases ('Varies widely' for mixed breed,
+// 'Varies by breed' for the generic fallback) — callers use that null to
+// skip tier-specific behavior gracefully rather than showing a broken range.
+function parseWeightRange(typicalWeight) {
+  if (!typicalWeight) return null;
+  const match = typicalWeight.match(/(\d+)\s*[–-]\s*(\d+)/);
+  if (!match) return null;
+  const min = parseInt(match[1], 10);
+  const max = parseInt(match[2], 10);
+  if (isNaN(min) || isNaN(max)) return null;
+  return { min, max };
+}
+
+const SENIOR_AGE_BY_TIER = { giant: 5, large: 6, medium: 8, small: 10 };
+
+// Mixed breed and the generic fallback have no real weight data, so they
+// default to 'medium' — the safest middle-ground guess (matches the
+// Medium threshold of 8, per the instructions this was built from).
+function getBreedSizeTier(breedName) {
+  const guide = getBreedGuide(breedName);
+  const range = parseWeightRange(guide.typicalWeight);
+  if (!range) return 'medium';
+  const avg = (range.min + range.max) / 2;
+  if (avg > 115) return 'giant';
+  if (avg >= 50) return 'large';
+  if (avg >= 25) return 'medium';
+  return 'small';
+}
+
+function isSeniorForBreed(age, breedName) {
+  if (age == null || isNaN(age)) return false;
+  const tier = getBreedSizeTier(breedName);
+  return age >= SENIOR_AGE_BY_TIER[tier];
+}
+
+// Forward-looking copy shown on the breed guide for dogs NOT YET flagged
+// senior — one per size tier (not per breed), same non-diagnostic register
+// as each breed's own seniorPatterns copy above. Deliberately doesn't state
+// the exact senior-age threshold, so this copy doesn't need updating if
+// SENIOR_AGE_BY_TIER is ever retuned.
+const NOT_YET_SENIOR_COPY = {
+  giant: `Giant breeds are known for reaching their senior years earlier than smaller dogs, so it's worth starting to pay attention to joint comfort, mobility, and energy well before any real changes show up. Weight management and gentle, consistent exercise earlier in life are commonly discussed as ways to support comfort as giant breeds get older. Tracking your dog's own patterns now — while they're still young for their size — builds a clear picture that makes any future shift much easier to spot.`,
+  large: `Large breeds tend to show the effects of aging a bit sooner than medium or small dogs, so it's worth keeping an eye on mobility, stamina, and joint comfort as the years pass, even well ahead of typical senior age. Consistent exercise and healthy weight management earlier in life are commonly discussed among large-breed owners as ways to support long-term comfort. Regular tracking now is the best way to know what's actually normal for your dog, so a real change stands out later.`,
+  medium: `Medium-sized breeds generally age a bit more gradually than larger dogs, but it's still worth watching for early shifts in mobility, energy, and appetite as the years go by. Staying consistent with exercise and a healthy weight through adulthood is commonly discussed as good preparation for a smoother transition into the senior years. Tracking your dog's patterns now, well before any real change appears, makes it far easier to notice one later.`,
+  small: `Small and toy breeds often stay playful and energetic well past the age that would be considered senior for a larger dog, and they typically reach that stage later too. It's still worth keeping an eye on dental health, joint comfort, and activity level as the years add up, since these are commonly discussed topics for small breeds at any age. Because small dogs are easier to observe closely day to day, owners often find it simple to notice subtle changes early — tracking now builds the baseline that makes that possible.`
+};
+
+function getNotYetSeniorCopy(breedName) {
+  return NOT_YET_SENIOR_COPY[getBreedSizeTier(breedName)];
+}
+
+// Non-diagnostic weight-vs-breed comparison — "within/above/below," never a
+// health judgment. Returns null when there's no weight yet, or when the
+// breed has no real numeric range to compare against (mixed breed / generic).
+function compareWeightToBreedRange(weightLbs, guide) {
+  if (weightLbs == null) return null;
+  const range = parseWeightRange(guide.typicalWeight);
+  if (!range) return null;
+  if (weightLbs < range.min) return `below the typical range for ${guide.displayName}s (${guide.typicalWeight})`;
+  if (weightLbs > range.max) return `above the typical range for ${guide.displayName}s (${guide.typicalWeight})`;
+  return `within the typical range for ${guide.displayName}s (${guide.typicalWeight})`;
+}
+
 app.get('/breed-guide/:dog_id', async (req, res) => {
   try {
     const { dog_id } = req.params;
@@ -2255,13 +2379,27 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
 
     // Show the dog's own current score neutrally — deliberately NOT compared
     // to other dogs, breed averages, or percentiles (see note at top of section).
+    // No .limit(1) here (unlike before) — weight isn't recorded every week,
+    // so the full history is fetched to find the latest entry that has one.
     const { data: latestCheckins } = await supabase
       .from('mobility_checkins')
-      .select('mobility_score')
+      .select('mobility_score, weight_lbs')
       .eq('dog_id', dog_id)
-      .order('created_at', { ascending: false })
-      .limit(1);
+      .order('created_at', { ascending: false });
     const currentMobility = latestCheckins?.[0]?.mobility_score ?? dog.baseline_mobility_score;
+
+    // Senior-by-breed-size flag — live, nothing stored (see helpers above getBreedGuide).
+    const isSenior = isSeniorForBreed(dog.age, dog.breed);
+    const seniorSectionHeading = isSenior ? 'Senior Health Patterns' : 'Looking Ahead';
+    const seniorSectionCopy = isSenior ? guide.seniorPatterns : getNotYetSeniorCopy(dog.breed);
+
+    // Most recent weight — a check-in weight if one exists yet, else the
+    // baseline weight from signup. Compared non-diagnostically against the
+    // breed's typical range; null (and hidden entirely) for mixed breed /
+    // the generic fallback, which have no real range to compare against.
+    const latestWeightCheckin = latestCheckins?.find(c => c.weight_lbs != null);
+    const currentWeight = latestWeightCheckin?.weight_lbs ?? dog.weight_lbs ?? null;
+    const weightComparisonText = compareWeightToBreedRange(currentWeight, guide);
 
     res.send(`
       <!DOCTYPE html>
@@ -2305,13 +2443,20 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
           <h2>Temperament</h2>
           <p>${guide.temperament}</p>
 
-          <h2>Senior Health Patterns</h2>
-          <p>${guide.seniorPatterns}</p>
+          <h2>${seniorSectionHeading}</h2>
+          <p>${seniorSectionCopy}</p>
 
           <div class="dog-snapshot">
             <strong>${dog.dog_name}'s current mobility:</strong> ${currentMobility}/8
             <p style="margin: 8px 0 0 0; font-size: 13px; color: #888;">This is just ${dog.dog_name}'s own number — not a comparison to other dogs. Keep logging to build a clearer picture over time.</p>
           </div>
+
+          ${weightComparisonText ? `
+          <div class="dog-snapshot" style="margin-top: 12px;">
+            <strong>${dog.dog_name}'s current weight:</strong> ${currentWeight} lb
+            <p style="margin: 8px 0 0 0; font-size: 13px; color: #888;">This is ${weightComparisonText}.</p>
+          </div>
+          ` : ''}
 
           <div class="disclaimer">
             <p style="margin: 0;">Companion Commons is not a veterinary service and does not diagnose, treat, prescribe, or provide veterinary advice. Always consult a licensed veterinarian about your companion's health and care. Think this may be an emergency? Contact your veterinarian or the nearest emergency veterinary hospital immediately.</p>
@@ -2488,12 +2633,35 @@ app.get('/dashboard/:dog_id', async (req, res) => {
       ? checkins[checkins.length - 2].appetite_score
       : dog.baseline_appetite_score;
 
+    // Weight isn't recorded every week (only on the every-4th-week check-in,
+    // same trigger as cognitive/behavior), so unlike the 3 scores above this
+    // filters down to just the check-ins that actually have a weight first.
+    const weightCheckins = checkins.filter(c => c.weight_lbs != null);
+    const currentWeightValue = weightCheckins.length > 0
+      ? weightCheckins[weightCheckins.length - 1].weight_lbs
+      : dog.weight_lbs;
+    const previousWeightValue = weightCheckins.length > 1
+      ? weightCheckins[weightCheckins.length - 2].weight_lbs
+      : dog.weight_lbs;
+
     function describeTrendForGlance(current, previous) {
       if (current == null || previous == null) return 'Not enough data yet';
       const diff = current - previous;
       if (diff > 0) return `improved (+${diff})`;
       if (diff < 0) return `declined (${diff})`;
       return 'held steady';
+    }
+
+    // Separate from describeTrendForGlance above on purpose: weight going up
+    // or down isn't inherently "improved" or "declined" the way a higher
+    // mobility/energy/appetite score is, so this uses neutral up/down/steady
+    // language instead — no health judgment either way.
+    function describeWeightTrendForGlance(current, previous) {
+      if (current == null || previous == null) return 'Not enough data yet';
+      const diff = current - previous;
+      if (diff > 0) return `up ${diff} lb since last recorded`;
+      if (diff < 0) return `down ${Math.abs(diff)} lb since last recorded`;
+      return 'steady since last recorded';
     }
 
     // Calculate streak (consecutive weeks with check-ins) — 0 when there
@@ -2564,6 +2732,16 @@ app.get('/dashboard/:dog_id', async (req, res) => {
     const latestEnergyScore = latestCheckinRow?.energy_score ?? dog.baseline_energy_score ?? 4;
     const latestAppetiteScore = latestCheckinRow?.appetite_score ?? dog.baseline_appetite_score ?? 4;
     const latestCognitiveScore = latestCheckinRow?.cognitive_score ?? dog.baseline_cognitive_score ?? 4;
+    // Weight pre-fill uses the same weightCheckins list computed above (not
+    // latestCheckinRow), since the most recent check-in overall often won't
+    // be the one that actually recorded a weight.
+    const latestWeightScore = weightCheckins.length > 0
+      ? weightCheckins[weightCheckins.length - 1].weight_lbs
+      : (dog.weight_lbs ?? '');
+
+    // Senior-by-breed-size flag — live, nothing stored (see helpers defined
+    // near getBreedGuide/BREED_GUIDES above).
+    const isSenior = isSeniorForBreed(dog.age, dog.breed);
 
     // Calculate the actual current week (matches /api/checkin-senior's calculation)
     // so we know whether to show the every-4th-week cognitive/behavior slider.
@@ -2606,12 +2784,25 @@ app.get('/dashboard/:dog_id', async (req, res) => {
       return `${label}: ${baseline}/8 → ${latest}/8 (steady since baseline)`;
     }
 
+    // Weight-specific variant of describeJourneyTrend — "lb" instead of "/8",
+    // otherwise identical neutral up/down/steady phrasing (no "improved" /
+    // "declined" — see describeWeightTrendForGlance above for why).
+    function describeWeightJourneyTrend(baseline, latest) {
+      if (baseline == null && latest == null) return 'Weight: not enough data yet';
+      if (baseline == null || latest == null) return `Weight: ${latest ?? baseline} lb (baseline only — no check-in weight yet)`;
+      const diff = latest - baseline;
+      if (diff > 0) return `Weight: ${baseline} lb → ${latest} lb (up ${diff} lb since baseline)`;
+      if (diff < 0) return `Weight: ${baseline} lb → ${latest} lb (down ${Math.abs(diff)} lb since baseline)`;
+      return `Weight: ${baseline} lb → ${latest} lb (steady since baseline)`;
+    }
+
     const latestCognitiveCheckin = [...checkins].reverse().find(c => c.cognitive_score != null);
     const journeyTrendLines = [
       describeJourneyTrend('Mobility', dog.baseline_mobility_score, checkins.length > 0 ? currentScore : null),
       describeJourneyTrend('Energy', dog.baseline_energy_score, checkins.length > 0 ? currentEnergyScore : null),
       describeJourneyTrend('Appetite', dog.baseline_appetite_score, checkins.length > 0 ? currentAppetiteScore : null),
-      describeJourneyTrend('Cognitive/Behavior', dog.baseline_cognitive_score, latestCognitiveCheckin?.cognitive_score ?? null)
+      describeJourneyTrend('Cognitive/Behavior', dog.baseline_cognitive_score, latestCognitiveCheckin?.cognitive_score ?? null),
+      describeWeightJourneyTrend(dog.weight_lbs, weightCheckins.length > 0 ? currentWeightValue : null)
     ];
 
     // Weekly table rows, most recent first
@@ -2961,6 +3152,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                 }).join('')}
               </div>
             </div>
+            ${isSenior ? `<p style="margin: 8px 0 0 0; font-size: 13px; color: #666;">${dog.dog_name} is considered a senior for their breed.</p>` : ''}
           </div>
 
           ${isInBaselinePeriod ? `
@@ -3158,6 +3350,10 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                   <span class="peer-stat-label">Appetite</span>
                   <span class="peer-stat-value" style="font-size: 14px; color: #555;">${describeTrendForGlance(currentAppetiteScore, previousAppetiteScore)}</span>
                 </div>
+                <div class="peer-stat">
+                  <span class="peer-stat-label">Weight</span>
+                  <span class="peer-stat-value" style="font-size: 14px; color: #555;">${describeWeightTrendForGlance(currentWeightValue, previousWeightValue)}</span>
+                </div>
               </div>
             </div>
 
@@ -3214,6 +3410,12 @@ app.get('/dashboard/:dog_id', async (req, res) => {
               <label style="display: block; margin: 20px 0 5px 0; font-weight: 500; color: #333;">How's ${dog.dog_name}'s alertness &amp; behavior this week?</label>
               <input type="range" id="cognitive" name="cognitive_score" min="1" max="8" value="${latestCognitiveScore}" style="width: 100%; cursor: pointer;">
               <div id="cognitiveHint" style="font-size: 12px; color: #666; margin: 5px 0 0 0;">4/8 - Average alertness</div>
+              ` : ''}
+
+              ${showCognitiveThisWeek ? `
+              <label style="display: block; margin: 20px 0 5px 0; font-weight: 500; color: #333;">${dog.dog_name}'s weight this week (lbs)</label>
+              <input type="number" id="weight" name="weight_lbs" min="1" max="250" value="${latestWeightScore}" placeholder="e.g. 62" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-family: inherit; font-size: 14px; box-sizing: border-box;">
+              <div style="font-size: 12px; color: #666; margin: 5px 0 0 0;">Optional — tracked alongside mobility, energy, and appetite.</div>
               ` : ''}
 
               <label style="display: block; margin: 20px 0 5px 0; font-weight: 500; color: #333;">Any notes? (optional)</label>
@@ -3455,6 +3657,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                   energy_score: parseInt(formData.get('energy_score')),
                   appetite_score: parseInt(formData.get('appetite_score')),
                   cognitive_score: formData.get('cognitive_score') ? parseInt(formData.get('cognitive_score')) : null,
+                  weight_lbs: formData.get('weight_lbs') ? parseInt(formData.get('weight_lbs')) : null,
                   observation: formData.get('observation') || null
                 })
               });
@@ -4611,6 +4814,7 @@ app.get('/verify', async (req, res) => {
       tokenData.breed || '',
       tokenData.age || '',
       tokenData.gender || '',
+      tokenData.weight_lbs ?? '',
       tokenData.baseline_mobility_score ?? '',
       tokenData.baseline_energy_score ?? '',
       tokenData.baseline_appetite_score ?? '',
