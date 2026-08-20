@@ -2489,6 +2489,67 @@ app.get('/dashboard/:dog_id', async (req, res) => {
     const hasUpdateDue = !isInBaselinePeriod && weeksSinceSignup > mostRecentSubmittedWeek;
     const dueWeekNumber = weeksSinceSignup; // the week number that's actually due right now, if any
 
+    // ============================================
+    // JOURNEY SUMMARY — real data, built from what's already loaded above.
+    // Purpose (per the button's own copy): help an owner prep for a
+    // conversation with a vet, family member, or sitter. Reuses checkins,
+    // dogNotes, activeAlert, and dog — no new queries needed.
+    // ============================================
+    function describeJourneyTrend(label, baseline, latest) {
+      if (baseline == null && latest == null) {
+        return `${label}: not enough data yet`;
+      }
+      if (baseline == null || latest == null || checkins.length === 0) {
+        return `${label}: ${latest ?? baseline}/8 (baseline only — no check-ins yet)`;
+      }
+      const diff = latest - baseline;
+      if (diff > 0) return `${label}: ${baseline}/8 → ${latest}/8 (up ${diff} since baseline)`;
+      if (diff < 0) return `${label}: ${baseline}/8 → ${latest}/8 (down ${Math.abs(diff)} since baseline)`;
+      return `${label}: ${baseline}/8 → ${latest}/8 (steady since baseline)`;
+    }
+
+    const latestCognitiveCheckin = [...checkins].reverse().find(c => c.cognitive_score != null);
+    const journeyTrendLines = [
+      describeJourneyTrend('Mobility', dog.baseline_mobility_score, checkins.length > 0 ? currentScore : null),
+      describeJourneyTrend('Energy', dog.baseline_energy_score, checkins.length > 0 ? currentEnergyScore : null),
+      describeJourneyTrend('Appetite', dog.baseline_appetite_score, checkins.length > 0 ? currentAppetiteScore : null),
+      describeJourneyTrend('Cognitive/Behavior', dog.baseline_cognitive_score, latestCognitiveCheckin?.cognitive_score ?? null)
+    ];
+
+    // Weekly table rows, most recent first
+    const journeyTableRows = [...checkins]
+      .sort((a, b) => b.week_number - a.week_number)
+      .map(c => {
+        const dateStr = new Date(c.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        return `<tr>
+          <td style="padding: 8px 10px; border-bottom: 1px solid #eee;">Week ${c.week_number}</td>
+          <td style="padding: 8px 10px; border-bottom: 1px solid #eee;">${dateStr}</td>
+          <td style="padding: 8px 10px; border-bottom: 1px solid #eee; text-align: center;">${c.mobility_score ?? '—'}</td>
+          <td style="padding: 8px 10px; border-bottom: 1px solid #eee; text-align: center;">${c.energy_score ?? '—'}</td>
+          <td style="padding: 8px 10px; border-bottom: 1px solid #eee; text-align: center;">${c.appetite_score ?? '—'}</td>
+          <td style="padding: 8px 10px; border-bottom: 1px solid #eee; text-align: center;">${c.cognitive_score ?? '—'}</td>
+        </tr>`;
+      }).join('');
+
+    // Notes, most recent first (dogNotes already ordered that way from the query above)
+    const journeyNotesHtml = (dogNotes && dogNotes.length > 0)
+      ? dogNotes.map(n => {
+          const noteDate = new Date(n.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+          return `<div style="padding: 10px 0; border-bottom: 1px solid #eee;">
+            <div style="font-size: 12px; color: #888; margin-bottom: 3px;">${noteDate}</div>
+            <div style="font-size: 14px; color: #2C2C2C;">${n.note_text}</div>
+          </div>`;
+        }).join('')
+      : `<p style="font-size: 14px; color: #888;">No notes logged yet.</p>`;
+
+    // Active alert, if any (reuses the same activeAlert already fetched for the dashboard banner)
+    const journeyAlertHtml = activeAlert
+      ? `<div style="background: #FFF8E1; border-left: 4px solid #F5A623; border-radius: 8px; padding: 14px 16px; margin-bottom: 20px;">
+          <p style="margin: 0; font-size: 14px; color: #2C2C2C; font-weight: 500;">⚠️ ${activeAlert.message || 'A recent change was flagged for this dog.'}</p>
+          <p style="margin: 6px 0 0 0; font-size: 12px; color: #888;">This is not a diagnosis — worth mentioning to your vet.</p>
+        </div>`
+      : '';
+
     console.log(`✅ Dashboard loaded for ${dog.dog_name}: score=${currentScore}, trend=${trend}, streak=${streak}, rank=${rank}/${totalDogs}`);
 
     // Send dashboard HTML with Chart.js visualization
@@ -3065,6 +3126,65 @@ app.get('/dashboard/:dog_id', async (req, res) => {
           </div>
         </div>
 
+        <!-- JOURNEY SUMMARY MODAL -->
+        <div id="journeySummaryModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; overflow-y: auto;">
+          <div id="journeySummaryPrintArea" style="background: white; margin: 20px auto; border-radius: 12px; padding: 30px; max-width: 650px; position: relative; top: 30px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;" class="no-print">
+              <h2 style="margin: 0; color: #333;">📋 ${dog.dog_name}'s Journey Summary</h2>
+              <button id="closeJourneyBtn" style="background: none; border: none; font-size: 24px; cursor: pointer;">✕</button>
+            </div>
+            <p style="margin: 0 0 20px 0; font-size: 13px; color: #888;">Prepared ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} · Baseline ✓ · Week ${weeksSinceSignup} of 12</p>
+
+            ${journeyAlertHtml}
+
+            <h3 style="font-size: 15px; margin-bottom: 10px; color: #2C2C2C;">Trends since baseline</h3>
+            <div style="background: #FAFAF8; border-radius: 8px; padding: 14px 16px; margin-bottom: 24px;">
+              ${journeyTrendLines.map(line => `<p style="margin: 0 0 6px 0; font-size: 14px; color: #2C2C2C;">${line}</p>`).join('')}
+            </div>
+
+            <h3 style="font-size: 15px; margin-bottom: 10px; color: #2C2C2C;">Weekly log</h3>
+            ${journeyTableRows ? `
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px; font-size: 13px;">
+              <thead>
+                <tr style="background: #FAFAF8;">
+                  <th style="padding: 8px 10px; text-align: left; font-weight: 600; color: #666;">Week</th>
+                  <th style="padding: 8px 10px; text-align: left; font-weight: 600; color: #666;">Date</th>
+                  <th style="padding: 8px 10px; text-align: center; font-weight: 600; color: #666;">Mobility</th>
+                  <th style="padding: 8px 10px; text-align: center; font-weight: 600; color: #666;">Energy</th>
+                  <th style="padding: 8px 10px; text-align: center; font-weight: 600; color: #666;">Appetite</th>
+                  <th style="padding: 8px 10px; text-align: center; font-weight: 600; color: #666;">Cognitive</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${journeyTableRows}
+              </tbody>
+            </table>
+            ` : `<p style="font-size: 14px; color: #888; margin-bottom: 24px;">No weekly check-ins yet — this will fill in after ${dog.dog_name}'s first update.</p>`}
+
+            <h3 style="font-size: 15px; margin-bottom: 10px; color: #2C2C2C;">Notes</h3>
+            <div style="margin-bottom: 24px;">
+              ${journeyNotesHtml}
+            </div>
+
+            <p style="font-size: 12px; color: #999; border-top: 1px solid #eee; padding-top: 14px;">
+              Based on ${dog.dog_name}'s own logged check-ins and baseline survey. For context only — not a diagnosis or veterinary assessment.
+            </p>
+
+            <div class="no-print" style="display: flex; gap: 12px; margin-top: 20px;">
+              <button id="printJourneyBtn" style="flex: 1; background: #A89968; color: white; border: none; padding: 12px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer;">🖨️ Print / Save as PDF</button>
+            </div>
+          </div>
+        </div>
+
+        <style>
+          @media print {
+            body * { visibility: hidden; }
+            #journeySummaryPrintArea, #journeySummaryPrintArea * { visibility: visible; }
+            #journeySummaryPrintArea { position: absolute; top: 0; left: 0; width: 100%; margin: 0; box-shadow: none; }
+            .no-print { display: none !important; }
+          }
+        </style>
+
         <script>
           // Modal controls
           const modal = document.getElementById('checkInModal');
@@ -3182,9 +3302,17 @@ app.get('/dashboard/:dog_id', async (req, res) => {
             });
           }
 
-          // Journey summary button - TODO: Build summary page pulling health data/criteria
+          // Journey Summary — opens a real modal built from actual check-in
+          // history, notes, and any active alert (see journeySummaryModal below).
+          const journeyModal = document.getElementById('journeySummaryModal');
           document.getElementById('viewSummaryBtn').addEventListener('click', () => {
-            alert('Journey Summary feature coming soon - will display health trends, patterns, and insights for vet conversation');
+            journeyModal.style.display = 'block';
+          });
+          document.getElementById('closeJourneyBtn').addEventListener('click', () => {
+            journeyModal.style.display = 'none';
+          });
+          document.getElementById('printJourneyBtn').addEventListener('click', () => {
+            window.print();
           });
 
           // Form submission
