@@ -3607,8 +3607,11 @@ app.post('/api/test-churn-detection', async (req, res) => {
     for (const dog of allDogs) {
       try {
         // Calculate current week number
+        // Defensive floor: a created_at slightly in the future (timezone quirk,
+        // clock skew) can make (now - created) negative, which would floor to
+        // week 0 without this guard — same bug class as the streak week-0 issue.
         const created = new Date(dog.created_at);
-        const currentWeek = Math.floor((now - created) / (7 * 24 * 60 * 60 * 1000)) + 1;
+        const currentWeek = Math.max(1, Math.floor((now - created) / (7 * 24 * 60 * 60 * 1000)) + 1);
 
         // Check if dog has a check-in for this week
         const { data: thisWeekCheckin } = await supabase
@@ -4715,9 +4718,14 @@ setInterval(async () => {
     for (const dog of allDogs) {
       try {
         // Calculate current week number
+        // Defensive floor: a created_at slightly in the future (timezone quirk,
+        // clock skew) can make (now - created) negative, which would floor to
+        // week 0 without this guard — this is what produced the real "Week #0"
+        // text a user received. Same bug class as the streak week-0 issue from
+        // the 27C session.
         const created = new Date(dog.created_at);
         const now = new Date();
-        const currentWeek = Math.floor((now - created) / (7 * 24 * 60 * 60 * 1000)) + 1;
+        const currentWeek = Math.max(1, Math.floor((now - created) / (7 * 24 * 60 * 60 * 1000)) + 1);
 
         // Check if dog has a check-in for this week
         const { data: thisWeekCheckin } = await supabase
