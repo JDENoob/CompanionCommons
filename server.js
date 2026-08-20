@@ -680,7 +680,7 @@ async function ensureGoogleSheetTabsExist() {
     const spreadsheet = await sheetsClient.spreadsheets.get({ spreadsheetId: SHEET_ID });
     const existingTitles = spreadsheet.data.sheets.map(s => s.properties.title);
 
-    const neededTabs = ['Signups', 'CheckIns'];
+    const neededTabs = ['Signups', 'CheckIns', 'Notes'];
     const tabsToCreate = neededTabs.filter(t => !existingTitles.includes(t));
 
     if (tabsToCreate.length > 0) {
@@ -702,6 +702,11 @@ async function ensureGoogleSheetTabsExist() {
       if (tabsToCreate.includes('CheckIns')) {
         await appendRowToSheet('CheckIns', [
           'Timestamp', 'Dog Name', 'Week Number', 'Mobility', 'Energy', 'Appetite', 'Cognitive', 'Notes'
+        ]);
+      }
+      if (tabsToCreate.includes('Notes')) {
+        await appendRowToSheet('Notes', [
+          'Timestamp', 'Dog Name', 'Note'
         ]);
       }
     }
@@ -2248,6 +2253,21 @@ app.post('/api/notes/:dog_id', async (req, res) => {
       .insert({ dog_id, note_text: note_text.trim() });
 
     if (error) throw error;
+
+    // Export to Google Sheets (Notes tab) — real-time, same as signups and
+    // check-ins. Needs the dog's name, which the notes table itself doesn't
+    // store, so fetch it here.
+    const { data: dogForNote } = await supabase
+      .from('senior_dogs')
+      .select('dog_name')
+      .eq('id', dog_id)
+      .single();
+
+    await appendRowToSheet('Notes', [
+      new Date().toISOString(),
+      dogForNote?.dog_name || '',
+      note_text.trim()
+    ]);
 
     res.json({ success: true });
   } catch (error) {
