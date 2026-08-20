@@ -206,6 +206,58 @@ app.use((req, res, next) => {
 app.use(express.static('Public'));
 
 // ============================================
+// ADMIN PANEL AUTH
+// ============================================
+// Same server-side password + hashed-cookie pattern as the SITE_PASSWORD
+// gate above, but a separate, independent lock scoped to just /admin and
+// the /api/page/* content API it uses. Set ADMIN_PASSWORD in your .env
+// (locally) or your hosting provider's environment variables (e.g.
+// Railway) — never hardcode it in this file.
+//
+// Unlike SITE_PASSWORD, leaving ADMIN_PASSWORD unset does NOT open the
+// gate — it locks the admin panel out entirely (returns 503). Admin is a
+// sensitive internal tool, not something that should ever be reachable by
+// default the way the public "Coming Soon" splash is designed to be.
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+const ADMIN_UNLOCK_COOKIE = 'cc_admin_access';
+
+function isAdminUnlocked(req) {
+  if (!ADMIN_PASSWORD) return false;
+  const cookies = parseCookies(req);
+  return cookies[ADMIN_UNLOCK_COOKIE] === siteUnlockHash(ADMIN_PASSWORD);
+}
+
+app.post('/api/admin-unlock', (req, res) => {
+  if (!ADMIN_PASSWORD) return res.status(503).json({ success: false, error: 'Admin panel is not configured' });
+  const { password } = req.body || {};
+  if (password && password === ADMIN_PASSWORD) {
+    res.cookie(ADMIN_UNLOCK_COOKIE, siteUnlockHash(ADMIN_PASSWORD), {
+      httpOnly: true,
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      sameSite: 'lax'
+    });
+    return res.json({ success: true });
+  }
+  return res.status(401).json({ success: false });
+});
+
+app.post('/api/admin-logout', (req, res) => {
+  res.clearCookie(ADMIN_UNLOCK_COOKIE);
+  res.json({ success: true });
+});
+
+// Guards the page-content API the admin panel reads/writes through — this
+// is the endpoint that actually mutates site content, so it needs the same
+// server-side check as the /admin page itself (previously this had NO
+// authentication at all, regardless of what /admin showed in the browser).
+app.use('/api/page', (req, res, next) => {
+  if (!isAdminUnlocked(req)) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+  next();
+});
+
+// ============================================
 // SUPABASE SETUP
 // ============================================
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -465,6 +517,56 @@ app.post('*', apiRateLimit);
 // ADMIN PANEL - EMBEDDED (UNCHANGED)
 // ============================================
 app.get('/admin', (req, res) => {
+    if (!isAdminUnlocked(req)) {
+        return res.send(`<!DOCTYPE html>
+<html>
+<head>
+    <title>CompanionCommons Admin — Login</title>
+    <style>
+        body { font-family: Arial; background: #f0f0f0; padding: 20px; margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; box-sizing: border-box; }
+        .container { max-width: 340px; width: 100%; background: white; padding: 40px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #333; margin: 0 0 20px 0; font-size: 20px; }
+        input { width: 100%; padding: 10px; margin-bottom: 14px; border: 1px solid #ddd; font-family: Arial; font-size: 14px; box-sizing: border-box; }
+        button { width: 100%; background: #4CAF50; color: white; padding: 12px 24px; border: none; cursor: pointer; font-size: 16px; font-weight: bold; border-radius: 4px; }
+        button:hover { background: #45a049; }
+        .error { color: #c33; font-size: 14px; margin-top: 10px; min-height: 18px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>CompanionCommons Admin</h1>
+        <form id="loginForm">
+            <input type="password" id="password" placeholder="Admin password" autofocus required>
+            <button type="submit">Login</button>
+            <div class="error" id="err"></div>
+        </form>
+    </div>
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const password = document.getElementById('password').value;
+            const errEl = document.getElementById('err');
+            errEl.textContent = '';
+            try {
+                const res = await fetch('/api/admin-unlock', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password })
+                });
+                if (res.ok) {
+                    window.location.reload();
+                } else {
+                    errEl.textContent = 'Incorrect password.';
+                }
+            } catch (error) {
+                errEl.textContent = 'Something went wrong, try again.';
+            }
+        });
+    </script>
+</body>
+</html>`);
+    }
+
     res.send(`<!DOCTYPE html>
 <html>
 <head>
@@ -487,83 +589,61 @@ app.get('/admin', (req, res) => {
 <body>
     <div class="container">
         <h1><i data-lucide="target"></i> CompanionCommons Admin</h1>
+        <button onclick="logout()" style="float:right;">Logout</button>
+        <div style="clear:both;"></div>
 
-        <div id="login">
-            <h2>Login</h2>
-            <input type="password" id="password" placeholder="Enter admin password">
-            <button onclick="checkPassword()">Login</button>
+        <div id="message" class="message"></div>
+
+        <div class="form-group">
+            <label>Select Page:</label>
+            <select id="page" onchange="loadPage()">
+                <option value="home">Home</option>
+                <option value="about">About</option>
+                <option value="independent">Independent</option>
+                <option value="privacy">Privacy</option>
+                <option value="faq">FAQ</option>
+                <option value="founding">Founding</option>
+            </select>
         </div>
 
-        <div id="admin" style="display:none;">
-            <button onclick="logout()" style="float:right;">Logout</button>
-            <div style="clear:both;"></div>
-
-            <div id="message" class="message"></div>
-
-            <div class="form-group">
-                <label>Select Page:</label>
-                <select id="page" onchange="loadPage()">
-                    <option value="home">Home</option>
-                    <option value="about">About</option>
-                    <option value="independent">Independent</option>
-                    <option value="privacy">Privacy</option>
-                    <option value="faq">FAQ</option>
-                    <option value="founding">Founding</option>
-                </select>
-            </div>
-
-            <div class="form-group">
-                <label>Headline:</label>
-                <input type="text" id="headline" placeholder="Page headline">
-            </div>
-
-            <div class="form-group">
-                <label>Subheading:</label>
-                <input type="text" id="subheading" placeholder="Page subheading">
-            </div>
-
-            <div class="form-group">
-                <label>CTA Button Text:</label>
-                <input type="text" id="cta" placeholder="Button text">
-            </div>
-
-            <div class="form-group">
-                <label>Body Content:</label>
-                <textarea id="body" placeholder="Main content"></textarea>
-            </div>
-
-            <div class="form-group">
-                <label>Secondary Text:</label>
-                <textarea id="secondary" placeholder="Additional content"></textarea>
-            </div>
-
-            <button onclick="savePage()"><i data-lucide="save"></i> Save Changes</button>
+        <div class="form-group">
+            <label>Headline:</label>
+            <input type="text" id="headline" placeholder="Page headline">
         </div>
+
+        <div class="form-group">
+            <label>Subheading:</label>
+            <input type="text" id="subheading" placeholder="Page subheading">
+        </div>
+
+        <div class="form-group">
+            <label>CTA Button Text:</label>
+            <input type="text" id="cta" placeholder="Button text">
+        </div>
+
+        <div class="form-group">
+            <label>Body Content:</label>
+            <textarea id="body" placeholder="Main content"></textarea>
+        </div>
+
+        <div class="form-group">
+            <label>Secondary Text:</label>
+            <textarea id="secondary" placeholder="Additional content"></textarea>
+        </div>
+
+        <button onclick="savePage()"><i data-lucide="save"></i> Save Changes</button>
     </div>
 
     <script>
-        const PASSWORD = 'Beauregard123110!!';
-
-        function checkPassword() {
-            if (document.getElementById('password').value === PASSWORD) {
-                document.getElementById('login').style.display = 'none';
-                document.getElementById('admin').style.display = 'block';
-                loadPage();
-            } else {
-                alert('Incorrect password');
-            }
-        }
-
         function logout() {
-            document.getElementById('login').style.display = 'block';
-            document.getElementById('admin').style.display = 'none';
-            document.getElementById('password').value = '';
+            fetch('/api/admin-logout', { method: 'POST' }).then(() => window.location.reload());
         }
 
         async function loadPage() {
             const page = document.getElementById('page').value;
             try {
                 const res = await fetch('/api/page/' + page);
+                if (res.status === 401) return window.location.reload();
                 const data = await res.json();
                 document.getElementById('headline').value = data.hero_headline || '';
                 document.getElementById('subheading').value = data.hero_subheading || '';
@@ -589,7 +669,12 @@ app.get('/admin', (req, res) => {
                         secondary_text: document.getElementById('secondary').value
                     })
                 });
-                showMessage('Saved successfully!', 'success');
+                if (res.status === 401) return window.location.reload();
+                if (res.ok) {
+                    showMessage('Saved successfully!', 'success');
+                } else {
+                    showMessage('Error saving page', 'error');
+                }
             } catch (error) {
                 console.error('Error saving:', error);
                 showMessage('Error saving page', 'error');
@@ -603,6 +688,8 @@ app.get('/admin', (req, res) => {
             msg.style.display = 'block';
             setTimeout(() => { msg.style.display = 'none'; }, 5000);
         }
+
+        loadPage();
     </script>
     <script src="https://unpkg.com/lucide@1.33.0"></script>
     <script>lucide.createIcons({ attrs: { width: '1em', height: '1em' } });</script>
@@ -611,7 +698,7 @@ app.get('/admin', (req, res) => {
 });
 
 // ============================================
-// PAGE CONTENT API (UNCHANGED)
+// PAGE CONTENT API (admin-only — guarded by the /api/page auth middleware above)
 // ============================================
 app.get('/api/page/:slug', async (req, res) => {
     try {
