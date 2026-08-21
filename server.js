@@ -4101,69 +4101,16 @@ app.post('/api/test-churn-detection', async (req, res) => {
     dogsChecked = allDogs.length;
     const now = new Date();
 
-    // For each dog, check if they're missing this week's check-in
+    // For each dog, run the exact same shared churn-check the real cron
+    // uses (see processDogForChurn) — no SMS reminders (a manual trigger
+    // shouldn't have SMS side effects), and always emails SENDGRID_FROM_EMAIL
+    // instead of the real owner, so a test run never emails an actual user.
     for (const dog of allDogs) {
       try {
-        // Calculate current week number
-        // Defensive floor: a created_at slightly in the future (timezone quirk,
-        // clock skew) can make (now - created) negative, which would floor to
-        // week 0 without this guard — same bug class as the streak week-0 issue.
-        const created = new Date(dog.created_at);
-        const currentWeek = Math.max(1, Math.floor((now - created) / (7 * 24 * 60 * 60 * 1000)) + 1);
-
-        // Check if dog has a check-in for this week
-        const { data: thisWeekCheckin } = await supabase
-          .from('mobility_checkins')
-          .select('id')
-          .eq('dog_id', dog.id)
-          .eq('week_number', currentWeek)
-          .limit(1);
-
-        if (thisWeekCheckin && thisWeekCheckin.length > 0) {
-          continue; // Has check-in this week, skip
+        const result = await processDogForChurn(dog, { emailOverride: SENDGRID_FROM_EMAIL });
+        if (!result.skipped && result.alertSent) {
+          alertsSent++;
         }
-
-        // Check if already alerted recently
-        const { data: recentAlert } = await supabase
-          .from('churn_flags')
-          .select('id, created_at')
-          .eq('dog_id', dog.id)
-          .eq('week_number', currentWeek)
-          .order('created_at', { ascending: false })
-          .limit(1);
-
-        if (recentAlert && recentAlert.length > 0) {
-          const alertedAt = new Date(recentAlert[0].created_at);
-          const hoursSinceAlert = (now - alertedAt) / (1000 * 60 * 60);
-          if (hoursSinceAlert < 24) {
-            continue; // Already alerted recently
-          }
-        }
-
-        // Get last check-in
-        const { data: lastCheckin } = await supabase
-          .from('mobility_checkins')
-          .select('mobility_score, created_at')
-          .eq('dog_id', dog.id)
-          .order('created_at', { ascending: false })
-          .limit(1);
-
-        const lastScore = lastCheckin?.[0]?.mobility_score || dog.baseline_mobility_score;
-        const lastCheckInDate = lastCheckin?.[0]?.created_at || dog.created_at;
-
-        // Send alert
-        const ownerEmail = SENDGRID_FROM_EMAIL; // Test email (sends to whatever's configured as the from-address, for easy manual testing)
-        await sendChurnAlertEmail(ownerEmail, dog.dog_name, lastScore, lastCheckInDate, dog.id);
-
-        // Log flag
-        await supabase.from('churn_flags').insert({
-          dog_id: dog.id,
-          week_number: currentWeek
-        });
-
-        alertsSent++;
-        console.log(`✅ Churn alert sent for ${dog.dog_name}`);
-
       } catch (dogError) {
         console.error(`Error processing dog ${dog.id}:`, dogError.message);
       }
@@ -5121,6 +5068,240 @@ async function sendChurnAlertEmail(ownerEmail, dogName, lastScore, lastCheckInDa
   }
 }
 
+// ============================================
+// SHARED CHURN-DETECTION LOGIC FOR ONE DOG
+// Used by both the real hourly cron and the manual /api/test-churn-detection
+// endpoint, so there's exactly one implementation to fix going forward —
+// this is exactly why the baseline-period fix from earlier today lived in
+// the cron but not the test endpoint until this refactor: two copies of the
+// same logic had already started to drift.
+//
+// options:
+//   sendSmsReminders (bool) — the real cron queues SMS check-in reminders;
+//     the manual test endpoint never has, on purpose — a manual trigger
+//     shouldn't have SMS side effects.
+//   emailOverride (string|null) — the manual test endpoint always sends to
+//     SENDGRID_FROM_EMAIL instead of the real owner's address, so running a
+//     test never emails an actual user. The real cron leaves this null and
+//     falls back to the dog's own email on file.
+//
+// Returns { skipped: true, reason, currentWeek? } or
+//         { skipped: false, alertSent: true, currentWeek }
+// so each caller can log/count in whatever style it already uses.
+// ============================================
+async function processDogForChurn(dog, options = {}) {
+  const { sendSmsReminders = false, emailOverride = null } = options;
+
+  // Defensive floor: a created_at slightly in the future (timezone quirk,
+  // clock skew) can make (now - created) negative, which would floor to
+  // week 0 without this guard — this is what produced the real "Week #0"
+  // text a user received. Same bug class as the streak week-0 issue from
+  // the 27C session.
+  const created = new Date(dog.created_at);
+  const now = new Date();
+
+  // Baseline-period gate — same pattern already used by the check-in
+  // submission routes (daysSinceSignupForCheckin / daysSinceSignupForSave)
+  // and the dashboard (isInBaselinePeriod): a dog's first check-in isn't
+  // even available until 7 full days after signup, so they can't be
+  // "missing" one before then. Skip entirely — no email, no SMS reminder
+  // queue, no churn_flags record — there's nothing to flag yet.
+  const daysSinceSignupForChurn = (now - created) / (24 * 60 * 60 * 1000);
+  const isInBaselinePeriod = Math.floor(daysSinceSignupForChurn / 7) === 0;
+  if (isInBaselinePeriod) {
+    return { skipped: true, reason: 'baseline_period' };
+  }
+
+  const currentWeek = Math.max(1, Math.floor((now - created) / (7 * 24 * 60 * 60 * 1000)) + 1);
+
+  // Check if dog has a check-in for this week
+  const { data: thisWeekCheckin } = await supabase
+    .from('mobility_checkins')
+    .select('id')
+    .eq('dog_id', dog.id)
+    .eq('week_number', currentWeek)
+    .limit(1);
+
+  // If they DO have a check-in this week, skip them
+  if (thisWeekCheckin && thisWeekCheckin.length > 0) {
+    return { skipped: true, reason: 'has_checkin_this_week', currentWeek };
+  }
+
+  if (sendSmsReminders) {
+    // ============================================
+    // FLOW 2: AUTO SMS REMINDERS (Missing check-in notifications)
+    // Sends SMS at 2pm (Day 7), 7pm (+4h), and 7:30am next day
+    // ============================================
+
+    // Calculate reminder times based on CURRENT WEEK (not creation date)
+    // Week 1 starts on creation date
+    // Week 2 starts 7 days after creation
+    // Week X starts on (creation + (7 * (X-1)) days)
+    const weekStartDate = new Date(created);
+    weekStartDate.setDate(weekStartDate.getDate() + (7 * (currentWeek - 1)));
+
+    // Reminder #1: Start of week at 2pm
+    const reminderDay1 = new Date(weekStartDate);
+    reminderDay1.setHours(14, 0, 0, 0); // 2pm
+
+    // Reminder #2: Same day at 7pm (+4 hours)
+    const reminderDay2At7pm = new Date(reminderDay1);
+    reminderDay2At7pm.setHours(19, 0, 0, 0); // 7pm
+
+    // Reminder #3: Next day at 7:30am (weekday) or 2pm (weekend)
+    const reminderDay3 = new Date(reminderDay1);
+    reminderDay3.setDate(reminderDay3.getDate() + 1);
+    const day3OfWeek = reminderDay3.getDay();
+    const day3Time = (day3OfWeek === 0 || day3OfWeek === 6) ? '14:00' : '07:30'; // 2pm weekend, 7:30am weekday
+    const [day3Hours, day3Mins] = day3Time.split(':').map(Number);
+    reminderDay3.setHours(day3Hours, day3Mins, 0, 0);
+
+    // Check what SMS reminders have been queued/sent for this dog/week
+    const { data: sentSms } = await supabase
+      .from('sms_queue')
+      .select('id, scheduled_for, status, message_type')
+      .eq('pet_id', dog.id)
+      .like('message_type', `week_${currentWeek}%`)
+      .order('scheduled_for', { ascending: true });
+
+    // Check if specific reminders have been sent
+    const reminder1Sent = sentSms?.some(s => s.message_type.includes('reminder_1'));
+    const reminder2Sent = sentSms?.some(s => s.message_type.includes('reminder_2'));
+    const reminder3Sent = sentSms?.some(s => s.message_type.includes('reminder_3'));
+
+    // Debug: Show reminder timing
+    if (currentWeek >= 2) {
+      console.log(`  ⏰ ${dog.dog_name}: Reminder #1 fires at ${reminderDay1.toLocaleString()}, Reminder #2 at ${reminderDay2At7pm.toLocaleString()}, Reminder #3 at ${reminderDay3.toLocaleString()}`);
+    }
+
+    const reminderCheckinLink = `${BASE_URL}/check-in/${dog.id}`;
+    const canTextThisDog = !!(dog.phone && dog.sms_consent);
+
+    if (!dog.phone) {
+      console.warn(`⚠️ ${dog.dog_name} has no phone on file — skipping reminder queue (they signed up before phone numbers were saved to the profile)`);
+    } else if (!dog.sms_consent) {
+      console.log(`ℹ️ ${dog.dog_name}'s owner didn't opt in to SMS reminders — skipping`);
+    }
+
+    // REMINDER #1 (2pm): Queue if it's time and hasn't been sent yet
+    if (now >= reminderDay1 && !reminder1Sent && canTextThisDog) {
+      const { error: queueError1 } = await supabase
+        .from('sms_queue')
+        .insert({
+          pet_id: dog.id,
+          phone: dog.phone,
+          message_type: `week_${currentWeek}_reminder_1`,
+          scheduled_for: reminderDay1.toISOString(),
+          message_body: `${dog.dog_name}'s #${currentWeek} week check-in time! Click here to complete a 30-second update: ${reminderCheckinLink}`,
+          status: 'pending'
+        });
+      if (queueError1) {
+        console.error(`❌ Error queueing reminder #1 for ${dog.dog_name}:`, queueError1.message);
+      } else {
+        console.log(`📱 Queued reminder #1 (2pm) for ${dog.dog_name}`);
+      }
+    }
+
+    // REMINDER #2 (7pm): Queue if it's time and hasn't been sent yet
+    if (now >= reminderDay2At7pm && !reminder2Sent && canTextThisDog) {
+      const { error: queueError2 } = await supabase
+        .from('sms_queue')
+        .insert({
+          pet_id: dog.id,
+          phone: dog.phone,
+          message_type: `week_${currentWeek}_reminder_2`,
+          scheduled_for: reminderDay2At7pm.toISOString(),
+          message_body: `${dog.dog_name}'s #${currentWeek} week check-in reminder! We know life gets busy, so when you have a chance, click here to update: ${reminderCheckinLink}`,
+          status: 'pending'
+        });
+      if (queueError2) {
+        console.error(`❌ Error queueing reminder #2 for ${dog.dog_name}:`, queueError2.message);
+      } else {
+        console.log(`📱 Queued reminder #2 (7pm) for ${dog.dog_name}`);
+      }
+    }
+
+    // REMINDER #3 (7:30am/2pm next day): Queue if it's time and hasn't been sent yet
+    if (now >= reminderDay3 && !reminder3Sent && canTextThisDog) {
+      const { error: queueError3 } = await supabase
+        .from('sms_queue')
+        .insert({
+          pet_id: dog.id,
+          phone: dog.phone,
+          message_type: `week_${currentWeek}_reminder_3`,
+          scheduled_for: reminderDay3.toISOString(),
+          message_body: `${dog.dog_name}'s #${currentWeek} week check-in reminder! Our community really depends on building a large community of health journeys. If you can, click here to update: ${reminderCheckinLink}`,
+          status: 'pending'
+        });
+      if (queueError3) {
+        console.error(`❌ Error queueing reminder #3 for ${dog.dog_name}:`, queueError3.message);
+      } else {
+        console.log(`📱 Queued reminder #3 (${day3Time}) for ${dog.dog_name}`);
+      }
+    }
+  }
+
+  // Dog is missing this week's check-in. Check if we've already alerted recently.
+  const { data: recentAlert } = await supabase
+    .from('churn_flags')
+    .select('id, created_at')
+    .eq('dog_id', dog.id)
+    .eq('week_number', currentWeek)
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  // Skip if already alerted this week
+  if (recentAlert && recentAlert.length > 0) {
+    const alertedAt = new Date(recentAlert[0].created_at);
+    const hoursSinceAlert = (now - alertedAt) / (1000 * 60 * 60);
+    if (hoursSinceAlert < 24) {
+      console.log(`⏭️  ${dog.dog_name}: already emailed ${Math.round(hoursSinceAlert)}h ago`);
+      return { skipped: true, reason: 'recently_alerted', currentWeek };
+    }
+  }
+
+  // Resolve who gets the email — the manual test endpoint overrides this to
+  // SENDGRID_FROM_EMAIL, so a real dog's owner is never emailed by a test
+  // run. The real cron leaves this null and falls back to the dog's own
+  // email on file, skipping (dogs created before the email field existed
+  // won't have one) rather than sending to nobody.
+  const ownerEmail = emailOverride || dog.email;
+  if (!ownerEmail) {
+    console.warn(`⚠️ ${dog.dog_name} has no email on file — skipping churn alert email`);
+    return { skipped: true, reason: 'no_email', currentWeek };
+  }
+
+  // Get last check-in to show context
+  const { data: lastCheckin } = await supabase
+    .from('mobility_checkins')
+    .select('mobility_score, created_at')
+    .eq('dog_id', dog.id)
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  const lastScore = lastCheckin?.[0]?.mobility_score || dog.baseline_mobility_score;
+  const lastCheckInDate = lastCheckin?.[0]?.created_at || dog.created_at;
+
+  // Send churn alert email
+  await sendChurnAlertEmail(ownerEmail, dog.dog_name, lastScore, lastCheckInDate, dog.id);
+
+  // Log the alert to churn_flags table
+  const { error: flagError } = await supabase
+    .from('churn_flags')
+    .insert({
+      dog_id: dog.id,
+      week_number: currentWeek
+    });
+
+  if (flagError) {
+    console.error(`Error logging churn flag for ${dog.dog_name}:`, flagError);
+  } else {
+    console.log(`✅ Churn alert email sent for ${dog.dog_name} (week ${currentWeek})`);
+  }
+
+  return { skipped: false, alertSent: true, currentWeek };
+}
+
 // Get next Tuesday at a specific time
 function getNextTuesday() {
     const now = new Date();
@@ -5215,215 +5396,12 @@ setInterval(async () => {
 
     console.log(`📊 Checking ${allDogs.length} dogs for missing check-ins...`);
 
-    // For each dog, check if they have a check-in this week
+    // For each dog, run the shared churn-check (baseline-period fix,
+    // this-week-checkin check, SMS reminders, dedup, and email) — see
+    // processDogForChurn above.
     for (const dog of allDogs) {
       try {
-        // Calculate current week number
-        // Defensive floor: a created_at slightly in the future (timezone quirk,
-        // clock skew) can make (now - created) negative, which would floor to
-        // week 0 without this guard — this is what produced the real "Week #0"
-        // text a user received. Same bug class as the streak week-0 issue from
-        // the 27C session.
-        const created = new Date(dog.created_at);
-        const now = new Date();
-
-        // Same baseline-period gate already used by the check-in submission
-        // routes (daysSinceSignupForCheckin / daysSinceSignupForSave) and the
-        // dashboard (isInBaselinePeriod): a dog's first check-in isn't even
-        // available until 7 full days after signup, so they can't be
-        // "missing" one before then. Skip entirely — no email, no SMS
-        // reminder queue, no churn_flags record — there's nothing to flag
-        // yet. Without this, a dog could get a "we haven't heard from you"
-        // email hours after signing up, using their own signup timestamp as
-        // if it were a real prior check-in that went quiet.
-        const daysSinceSignupForChurn = (now - created) / (24 * 60 * 60 * 1000);
-        const isInBaselinePeriod = Math.floor(daysSinceSignupForChurn / 7) === 0;
-        if (isInBaselinePeriod) {
-          continue;
-        }
-
-        const currentWeek = Math.max(1, Math.floor((now - created) / (7 * 24 * 60 * 60 * 1000)) + 1);
-
-        // Check if dog has a check-in for this week
-        const { data: thisWeekCheckin } = await supabase
-          .from('mobility_checkins')
-          .select('id')
-          .eq('dog_id', dog.id)
-          .eq('week_number', currentWeek)
-          .limit(1);
-
-        // If they DO have a check-in this week, skip them
-        if (thisWeekCheckin && thisWeekCheckin.length > 0) {
-          continue;
-        }
-
-        // ============================================
-        // FLOW 2: AUTO SMS REMINDERS (Missing check-in notifications)
-        // Sends SMS at 2pm (Day 7), 7pm (+4h), and 7:30am next day
-        // ============================================
-
-        // Calculate reminder times based on CURRENT WEEK (not creation date)
-        // Week 1 starts on creation date
-        // Week 2 starts 7 days after creation
-        // Week X starts on (creation + (7 * (X-1)) days)
-        const weekStartDate = new Date(created);
-        weekStartDate.setDate(weekStartDate.getDate() + (7 * (currentWeek - 1)));
-
-        // Reminder #1: Start of week at 2pm
-        const reminderDay1 = new Date(weekStartDate);
-        reminderDay1.setHours(14, 0, 0, 0); // 2pm
-
-        // Reminder #2: Same day at 7pm (+4 hours)
-        const reminderDay2At7pm = new Date(reminderDay1);
-        reminderDay2At7pm.setHours(19, 0, 0, 0); // 7pm
-
-        // Reminder #3: Next day at 7:30am (weekday) or 2pm (weekend)
-        const reminderDay3 = new Date(reminderDay1);
-        reminderDay3.setDate(reminderDay3.getDate() + 1);
-        const day3OfWeek = reminderDay3.getDay();
-        const day3Time = (day3OfWeek === 0 || day3OfWeek === 6) ? '14:00' : '07:30'; // 2pm weekend, 7:30am weekday
-        const [day3Hours, day3Mins] = day3Time.split(':').map(Number);
-        reminderDay3.setHours(day3Hours, day3Mins, 0, 0);
-
-        // Check what SMS reminders have been queued/sent for this dog/week
-        const { data: sentSms } = await supabase
-          .from('sms_queue')
-          .select('id, scheduled_for, status, message_type')
-          .eq('pet_id', dog.id)
-          .like('message_type', `week_${currentWeek}%`)
-          .order('scheduled_for', { ascending: true });
-
-        // Check if specific reminders have been sent
-        const reminder1Sent = sentSms?.some(s => s.message_type.includes('reminder_1'));
-        const reminder2Sent = sentSms?.some(s => s.message_type.includes('reminder_2'));
-        const reminder3Sent = sentSms?.some(s => s.message_type.includes('reminder_3'));
-
-        // Debug: Show reminder timing
-        if (currentWeek >= 2) {
-          console.log(`  ⏰ ${dog.dog_name}: Reminder #1 fires at ${reminderDay1.toLocaleString()}, Reminder #2 at ${reminderDay2At7pm.toLocaleString()}, Reminder #3 at ${reminderDay3.toLocaleString()}`);
-        }
-
-        const reminderCheckinLink = `${BASE_URL}/check-in/${dog.id}`;
-        const canTextThisDog = !!(dog.phone && dog.sms_consent);
-
-        if (!dog.phone) {
-          console.warn(`⚠️ ${dog.dog_name} has no phone on file — skipping reminder queue (they signed up before phone numbers were saved to the profile)`);
-        } else if (!dog.sms_consent) {
-          console.log(`ℹ️ ${dog.dog_name}'s owner didn't opt in to SMS reminders — skipping`);
-        }
-
-        // REMINDER #1 (2pm): Queue if it's time and hasn't been sent yet
-        if (now >= reminderDay1 && !reminder1Sent && canTextThisDog) {
-          const { error: queueError1 } = await supabase
-            .from('sms_queue')
-            .insert({
-              pet_id: dog.id,
-              phone: dog.phone,
-              message_type: `week_${currentWeek}_reminder_1`,
-              scheduled_for: reminderDay1.toISOString(),
-              message_body: `${dog.dog_name}'s #${currentWeek} week check-in time! Click here to complete a 30-second update: ${reminderCheckinLink}`,
-              status: 'pending'
-            });
-          if (queueError1) {
-            console.error(`❌ Error queueing reminder #1 for ${dog.dog_name}:`, queueError1.message);
-          } else {
-            console.log(`📱 Queued reminder #1 (2pm) for ${dog.dog_name}`);
-          }
-        }
-
-        // REMINDER #2 (7pm): Queue if it's time and hasn't been sent yet
-        if (now >= reminderDay2At7pm && !reminder2Sent && canTextThisDog) {
-          const { error: queueError2 } = await supabase
-            .from('sms_queue')
-            .insert({
-              pet_id: dog.id,
-              phone: dog.phone,
-              message_type: `week_${currentWeek}_reminder_2`,
-              scheduled_for: reminderDay2At7pm.toISOString(),
-              message_body: `${dog.dog_name}'s #${currentWeek} week check-in reminder! We know life gets busy, so when you have a chance, click here to update: ${reminderCheckinLink}`,
-              status: 'pending'
-            });
-          if (queueError2) {
-            console.error(`❌ Error queueing reminder #2 for ${dog.dog_name}:`, queueError2.message);
-          } else {
-            console.log(`📱 Queued reminder #2 (7pm) for ${dog.dog_name}`);
-          }
-        }
-
-        // REMINDER #3 (7:30am/2pm next day): Queue if it's time and hasn't been sent yet
-        if (now >= reminderDay3 && !reminder3Sent && canTextThisDog) {
-          const { error: queueError3 } = await supabase
-            .from('sms_queue')
-            .insert({
-              pet_id: dog.id,
-              phone: dog.phone,
-              message_type: `week_${currentWeek}_reminder_3`,
-              scheduled_for: reminderDay3.toISOString(),
-              message_body: `${dog.dog_name}'s #${currentWeek} week check-in reminder! Our community really depends on building a large community of health journeys. If you can, click here to update: ${reminderCheckinLink}`,
-              status: 'pending'
-            });
-          if (queueError3) {
-            console.error(`❌ Error queueing reminder #3 for ${dog.dog_name}:`, queueError3.message);
-          } else {
-            console.log(`📱 Queued reminder #3 (${day3Time}) for ${dog.dog_name}`);
-          }
-        }
-
-        // Dog is missing this week's check-in. Check if we've already alerted recently.
-        const { data: recentAlert } = await supabase
-          .from('churn_flags')
-          .select('id, created_at')
-          .eq('dog_id', dog.id)
-          .eq('week_number', currentWeek)
-          .order('created_at', { ascending: false })
-          .limit(1);
-
-        // Skip if already alerted this week
-        if (recentAlert && recentAlert.length > 0) {
-          const alertedAt = new Date(recentAlert[0].created_at);
-          const hoursSinceAlert = (now - alertedAt) / (1000 * 60 * 60);
-          if (hoursSinceAlert < 24) {
-            console.log(`⏭️  ${dog.dog_name}: already emailed ${Math.round(hoursSinceAlert)}h ago`);
-            continue;
-          }
-        }
-
-        // Get owner's email from their profile - skip if we don't have one on file
-        // (dogs created before the email field was added won't have this)
-        if (!dog.email) {
-          console.warn(`⚠️ ${dog.dog_name} has no email on file — skipping churn alert email`);
-          continue;
-        }
-        const ownerEmail = dog.email;
-
-        // Get last check-in to show context
-        const { data: lastCheckin } = await supabase
-          .from('mobility_checkins')
-          .select('mobility_score, created_at')
-          .eq('dog_id', dog.id)
-          .order('created_at', { ascending: false })
-          .limit(1);
-
-        const lastScore = lastCheckin?.[0]?.mobility_score || dog.baseline_mobility_score;
-        const lastCheckInDate = lastCheckin?.[0]?.created_at || dog.created_at;
-
-        // Send churn alert email
-        await sendChurnAlertEmail(ownerEmail, dog.dog_name, lastScore, lastCheckInDate, dog.id);
-
-        // Log the alert to churn_flags table
-        const { error: flagError } = await supabase
-          .from('churn_flags')
-          .insert({
-            dog_id: dog.id,
-            week_number: currentWeek
-          });
-
-        if (flagError) {
-          console.error(`Error logging churn flag for ${dog.dog_name}:`, flagError);
-        } else {
-          console.log(`✅ Churn alert email sent for ${dog.dog_name} (week ${currentWeek})`);
-        }
-
+        await processDogForChurn(dog, { sendSmsReminders: true });
       } catch (dogError) {
         console.error(`Error processing dog ${dog.id}:`, dogError.message);
       }
