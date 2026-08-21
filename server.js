@@ -2774,7 +2774,14 @@ app.get('/dashboard/:dog_id', async (req, res) => {
     // as due — baseline (signup) doesn't count as week 1; week 1 only
     // becomes due 7 full days after signup, matching the real weekly cadence.
     const daysSinceSignup = (dashboardNow - dogCreatedAt) / (24 * 60 * 60 * 1000);
-    const weeksSinceSignup = Math.floor(daysSinceSignup / 7); // 0 during baseline period, 1 from day 7, etc.
+    // Defensive floor: without this, a created_at that's marginally in the
+    // future relative to server time (clock skew, a TZ-less timestamp
+    // misparsed as local time — the same bug class as the original "Week
+    // #0" fix) sends daysSinceSignup slightly negative, which floors to -1
+    // instead of 0 — showing "Week -1 of 12" on a real owner's Journey
+    // Summary and, since isInBaselinePeriod checks === 0, incorrectly
+    // flipping a genuinely-in-baseline dog to "not in baseline" too.
+    const weeksSinceSignup = Math.max(0, Math.floor(daysSinceSignup / 7)); // 0 during baseline period, 1 from day 7, etc.
     const mostRecentSubmittedWeek = checkins.length > 0
       ? Math.max(...checkins.map(c => c.week_number))
       : 0;
@@ -2882,7 +2889,8 @@ app.get('/dashboard/:dog_id', async (req, res) => {
             padding: 20px;
             border-radius: 12px;
             margin-bottom: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            border: 1.5px solid #D4CDB8;
+            box-shadow: 0 2px 8px rgba(44, 44, 44, 0.06);
           }
           .header h1 { font-size: 28px; margin-bottom: 8px; color: #2C2C2C; font-weight: 600; }
           .header p { font-size: 14px; color: #888; font-weight: 400; }
@@ -2997,7 +3005,8 @@ app.get('/dashboard/:dog_id', async (req, res) => {
             background: #FAFAF8;
             border-radius: 12px;
             padding: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            border: 1.5px solid #D4CDB8;
+            box-shadow: 0 2px 8px rgba(44, 44, 44, 0.06);
           }
           .chart-card h2 { font-size: 16px; color: #2C2C2C; margin-bottom: 15px; font-weight: 500; }
           #mobilityChart { max-height: 280px; }
@@ -3020,7 +3029,8 @@ app.get('/dashboard/:dog_id', async (req, res) => {
             background: #FAFAF8;
             border-radius: 12px;
             padding: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            border: 1.5px solid #D4CDB8;
+            box-shadow: 0 2px 8px rgba(44, 44, 44, 0.06);
           }
           .peer-card h2 { font-size: 16px; color: #2C2C2C; margin-bottom: 15px; font-weight: 500; }
           .peer-stat {
@@ -3057,7 +3067,8 @@ app.get('/dashboard/:dog_id', async (req, res) => {
             background: #FAFAF8;
             border-radius: 12px;
             padding: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            border: 1.5px solid #D4CDB8;
+            box-shadow: 0 2px 8px rgba(44, 44, 44, 0.06);
             margin-bottom: 30px;
           }
           button {
@@ -3112,8 +3123,9 @@ app.get('/dashboard/:dog_id', async (req, res) => {
           .baseline-info-item {
             padding: 12px;
             background: #FAFAF8;
-            border-radius: 8px;
-            border: 1px solid #E8E4DA;
+            border-radius: 12px;
+            border: 1.5px solid #D4CDB8;
+            box-shadow: 0 2px 8px rgba(44, 44, 44, 0.06);
           }
           .baseline-info-label {
             font-size: 11px;
@@ -3131,9 +3143,10 @@ app.get('/dashboard/:dog_id', async (req, res) => {
           .baseline-notes {
             padding: 12px;
             background: #FAFAF8;
-            border-radius: 8px;
+            border-radius: 12px;
             margin-top: 15px;
-            border: 1px solid #E8E4DA;
+            border: 1.5px solid #D4CDB8;
+            box-shadow: 0 2px 8px rgba(44, 44, 44, 0.06);
           }
           .baseline-notes p {
             font-size: 13px;
@@ -3159,9 +3172,9 @@ app.get('/dashboard/:dog_id', async (req, res) => {
             background: #D4AF88;
             color: white;
             border: none;
-            padding: 4px 10px;
-            border-radius: 4px;
-            font-size: 11px;
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 13px;
             font-weight: 500;
             cursor: pointer;
             transition: opacity 0.2s;
@@ -3253,7 +3266,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                     })()}
                     <div class="photo-and-checkin-row" style="display: flex; gap: 8px; margin-bottom: 12px;">
                       <form id="quickPhotoUpload" style="display: flex; gap: 4px; align-items: center;">
-                        <input type="file" id="quickPhotoInput" accept="image/*" style="padding: 4px 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px; width: 100px;">
+                        <input type="file" id="quickPhotoInput" accept="image/*" style="padding: 8px 10px; border: 1.5px solid #D4CDB8; border-radius: 8px; font-size: 12px; width: 130px;">
                         <button type="submit" class="btn-secondary"><i data-lucide="camera"></i> Update ${dog.dog_name}'s Photo</button>
                       </form>
                       ${isInBaselinePeriod ? `
@@ -3475,7 +3488,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
 
         <!-- JOURNEY SUMMARY MODAL -->
         <div id="journeySummaryModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; overflow-y: auto;">
-          <div id="journeySummaryPrintArea" style="background: white; margin: 20px auto; border-radius: 12px; padding: 30px; max-width: 650px; position: relative; top: 30px;">
+          <div id="journeySummaryPrintArea" style="background: white; margin: 20px auto; border-radius: 12px; padding: 30px; max-width: 650px; position: relative; top: 30px; border: 2px solid #D4CDB8;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;" class="no-print">
               <h2 style="margin: 0; color: #333;"><i data-lucide="clipboard-list"></i> ${dog.dog_name}'s Journey Summary</h2>
               <button id="closeJourneyBtn" style="background: none; border: none; font-size: 24px; cursor: pointer;">✕</button>
@@ -3505,7 +3518,9 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                 ? `<p style="margin: 0 0 20px 0; font-size: 13px; color: #666;">Medications/treatments: ${journeyMeds.join(', ')}</p>`
                 : `<p style="margin: 0 0 20px 0; font-size: 13px; color: #666;"></p>`;
             })()}
-            <p style="margin: 0 0 20px 0; font-size: 13px; color: #888;">Prepared ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} · Baseline ✓ · Week ${weeksSinceSignup} of 12</p>
+            <p style="margin: 0 0 16px 0; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: #999;">Prepared ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} · Baseline ✓ · Week ${weeksSinceSignup} of 12</p>
+
+            <hr style="border: none; border-top: 1.5px solid #D4CDB8; margin: 0 0 20px 0;">
 
             ${journeyAlertHtml}
 
@@ -3513,6 +3528,8 @@ app.get('/dashboard/:dog_id', async (req, res) => {
             <div style="background: #FAFAF8; border-radius: 8px; padding: 14px 16px; margin-bottom: 24px;">
               ${journeyTrendLines.map(line => `<p style="margin: 0 0 6px 0; font-size: 14px; color: #2C2C2C;">${line}</p>`).join('')}
             </div>
+
+            <hr style="border: none; border-top: 1px solid #eee; margin: 0 0 20px 0;">
 
             <h3 style="font-size: 15px; margin-bottom: 10px; color: #2C2C2C;">Weekly log</h3>
             ${journeyTableRows ? `
@@ -3532,6 +3549,8 @@ app.get('/dashboard/:dog_id', async (req, res) => {
               </tbody>
             </table>
             ` : `<p style="font-size: 14px; color: #888; margin-bottom: 24px;">No weekly check-ins yet — this will fill in after ${dog.dog_name}'s first update.</p>`}
+
+            <hr style="border: none; border-top: 1px solid #eee; margin: 0 0 20px 0;">
 
             <h3 style="font-size: 15px; margin-bottom: 10px; color: #2C2C2C;">Notes</h3>
             <div style="margin-bottom: 24px;">
