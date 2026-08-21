@@ -3488,13 +3488,13 @@ app.get('/dashboard/:dog_id', async (req, res) => {
 
         <!-- JOURNEY SUMMARY MODAL -->
         <div id="journeySummaryModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; overflow-y: auto;">
-          <div id="journeySummaryPrintArea" style="background: white; margin: 20px auto; border-radius: 12px; padding: 30px; max-width: 650px; position: relative; top: 30px; border: 2px solid #D4CDB8;">
+          <div id="journeySummaryPrintArea" style="background: white; margin: 20px auto; border-radius: 12px; padding: 14px; max-width: 650px; position: relative; top: 30px; border: 2px solid #D4CDB8;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;" class="no-print">
               <h2 style="margin: 0; color: #333;"><i data-lucide="clipboard-list"></i> ${dog.dog_name}'s Journey Summary</h2>
               <button id="closeJourneyBtn" style="background: none; border: none; font-size: 24px; cursor: pointer;">✕</button>
             </div>
 
-            <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 16px;">
+            <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 12px;">
               ${dog.photo_url
                 ? `<img src="${dog.photo_url}" alt="${dog.dog_name}" style="width: 64px; height: 64px; border-radius: 50%; object-fit: cover; flex-shrink: 0;" />`
                 : `<div style="width: 64px; height: 64px; border-radius: 50%; background: #FFF8E7; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><i data-lucide="paw-print" style="width: 28px; height: 28px;"></i></div>`
@@ -3515,17 +3515,17 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                 .filter(t => t !== 'none' && TREATMENT_CATEGORY_LABELS[t])
                 .map(t => TREATMENT_CATEGORY_LABELS[t]);
               return journeyMeds.length > 0
-                ? `<p style="margin: 0 0 20px 0; font-size: 13px; color: #666;">Medications/treatments: ${journeyMeds.join(', ')}</p>`
-                : `<p style="margin: 0 0 20px 0; font-size: 13px; color: #666;"></p>`;
+                ? `<p style="margin: 0 0 8px 0; font-size: 13px; color: #666;">Medications/treatments: ${journeyMeds.join(', ')}</p>`
+                : `<p style="margin: 0 0 8px 0; font-size: 13px; color: #666;"></p>`;
             })()}
-            <p style="margin: 0 0 16px 0; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: #999;">Prepared ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} · Baseline ✓ · Week ${weeksSinceSignup} of 12</p>
+            <p style="margin: 0 0 6px 0; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: #999;">Prepared ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} · Baseline ✓ · Week ${weeksSinceSignup} of 12</p>
 
-            <hr style="border: none; border-top: 1.5px solid #D4CDB8; margin: 0 0 20px 0;">
+            <hr style="border: none; border-top: 1.5px solid #D4CDB8; margin: 0 0 8px 0;">
 
             ${journeyAlertHtml}
 
-            <h3 style="font-size: 15px; margin-bottom: 10px; color: #2C2C2C;">Trends since baseline</h3>
-            <div style="background: #FAFAF8; border-radius: 8px; padding: 14px 16px; margin-bottom: 24px;">
+            <h3 style="font-size: 15px; margin-bottom: 8px; color: #2C2C2C;">Trends since baseline</h3>
+            <div style="background: #FAFAF8; border-radius: 8px; padding: 6px 16px; margin-bottom: 10px; break-inside: avoid; page-break-inside: avoid;">
               ${journeyTrendLines.map(line => `<p style="margin: 0 0 6px 0; font-size: 14px; color: #2C2C2C;">${line}</p>`).join('')}
             </div>
 
@@ -3534,17 +3534,21 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                  toDataURL right before window.print() fires (see
                  printJourneyBtn's click handler) — reuses the exact same
                  chart already rendered on the dashboard instead of
-                 maintaining a second one. -->
-            <div id="journeyChartPrintOnly" style="display: none; margin-bottom: 24px;">
-              <img id="journeyChartImg" style="width: 100%; max-width: 100%; display: block;" alt="${dog.dog_name}'s mobility, energy, and appetite chart" />
-              <p style="margin: 8px 0 0 0; font-size: 11px; color: #999; line-height: 1.5;">As ${dog.dog_name}'s weekly health journey updates are submitted, this chart will contain more information, giving you a better health journey picture.</p>
+                 maintaining a second one. Height is capped (with
+                 object-fit:contain so nothing distorts) since the on-screen
+                 canvas can render fairly tall on a wide desktop viewport —
+                 this keeps the printed summary from growing past one page
+                 for a typical baseline-only case. -->
+            <div id="journeyChartPrintOnly" style="display: none; margin-bottom: 10px; break-inside: avoid; page-break-inside: avoid;">
+              <img id="journeyChartImg" style="width: 100%; max-width: 100%; max-height: 160px; object-fit: contain; display: block;" alt="${dog.dog_name}'s mobility, energy, and appetite chart" />
+              <p style="margin: 4px 0 0 0; font-size: 11px; color: #999; line-height: 1.4;">As ${dog.dog_name}'s weekly health journey updates are submitted, this chart will contain more information, giving you a better health journey picture.</p>
             </div>
 
-            <hr style="border: none; border-top: 1px solid #eee; margin: 0 0 20px 0;">
+            <hr style="border: none; border-top: 1px solid #eee; margin: 0 0 8px 0;">
 
-            <h3 style="font-size: 15px; margin-bottom: 10px; color: #2C2C2C;">Weekly log</h3>
+            <h3 style="font-size: 15px; margin-bottom: 8px; color: #2C2C2C;">Weekly log</h3>
             ${journeyTableRows ? `
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px; font-size: 13px;">
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 13px; break-inside: avoid; page-break-inside: avoid;">
               <thead>
                 <tr style="background: #FAFAF8;">
                   <th style="padding: 8px 10px; text-align: left; font-weight: 600; color: #666;">Week</th>
@@ -3559,19 +3563,19 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                 ${journeyTableRows}
               </tbody>
             </table>
-            ` : `<p style="font-size: 14px; color: #888; margin-bottom: 24px;">No weekly check-ins yet — this will fill in after ${dog.dog_name}'s first update.</p>`}
+            ` : `<p style="font-size: 14px; color: #888; margin-bottom: 10px;">No weekly check-ins yet — this will fill in after ${dog.dog_name}'s first update.</p>`}
 
-            <hr style="border: none; border-top: 1px solid #eee; margin: 0 0 20px 0;">
+            <hr style="border: none; border-top: 1px solid #eee; margin: 0 0 8px 0;">
 
-            <h3 style="font-size: 15px; margin-bottom: 10px; color: #2C2C2C;">Notes</h3>
-            <div style="margin-bottom: 24px;">
+            <h3 style="font-size: 15px; margin-bottom: 8px; color: #2C2C2C;">Notes</h3>
+            <div style="margin-bottom: 10px; break-inside: avoid; page-break-inside: avoid;">
               ${journeyNotesHtml}
             </div>
 
-            <p style="font-size: 12px; color: #999; border-top: 1px solid #eee; padding-top: 14px; margin: 0;">
+            <p style="font-size: 12px; color: #999; border-top: 1px solid #eee; padding-top: 8px; margin: 0; break-inside: avoid; page-break-inside: avoid;">
               Companion Commons is not a veterinary service and does not diagnose, treat, prescribe, or provide veterinary advice. Always consult a licensed veterinarian about your companion's health and care. Think this may be an emergency? Contact your veterinarian or the nearest emergency veterinary hospital immediately.
             </p>
-            <p style="font-size: 12px; color: #999; margin: 10px 0 0 0;">
+            <p style="font-size: 12px; color: #999; margin: 4px 0 0 0;">
               As community grows, comparisons will also print on this summary as well.
             </p>
 
