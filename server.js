@@ -5226,6 +5226,22 @@ setInterval(async () => {
         // the 27C session.
         const created = new Date(dog.created_at);
         const now = new Date();
+
+        // Same baseline-period gate already used by the check-in submission
+        // routes (daysSinceSignupForCheckin / daysSinceSignupForSave) and the
+        // dashboard (isInBaselinePeriod): a dog's first check-in isn't even
+        // available until 7 full days after signup, so they can't be
+        // "missing" one before then. Skip entirely — no email, no SMS
+        // reminder queue, no churn_flags record — there's nothing to flag
+        // yet. Without this, a dog could get a "we haven't heard from you"
+        // email hours after signing up, using their own signup timestamp as
+        // if it were a real prior check-in that went quiet.
+        const daysSinceSignupForChurn = (now - created) / (24 * 60 * 60 * 1000);
+        const isInBaselinePeriod = Math.floor(daysSinceSignupForChurn / 7) === 0;
+        if (isInBaselinePeriod) {
+          continue;
+        }
+
         const currentWeek = Math.max(1, Math.floor((now - created) / (7 * 24 * 60 * 60 * 1000)) + 1);
 
         // Check if dog has a check-in for this week
