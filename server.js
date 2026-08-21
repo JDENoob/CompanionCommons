@@ -3529,6 +3529,17 @@ app.get('/dashboard/:dog_id', async (req, res) => {
               ${journeyTrendLines.map(line => `<p style="margin: 0 0 6px 0; font-size: 14px; color: #2C2C2C;">${line}</p>`).join('')}
             </div>
 
+            <!-- Print-only chart snapshot: hidden on screen, only shown under
+                 @media print. Populated from the live Chart.js canvas via
+                 toDataURL right before window.print() fires (see
+                 printJourneyBtn's click handler) — reuses the exact same
+                 chart already rendered on the dashboard instead of
+                 maintaining a second one. -->
+            <div id="journeyChartPrintOnly" style="display: none; margin-bottom: 24px;">
+              <img id="journeyChartImg" style="width: 100%; max-width: 100%; display: block;" alt="${dog.dog_name}'s mobility, energy, and appetite chart" />
+              <p style="margin: 8px 0 0 0; font-size: 11px; color: #999; line-height: 1.5;">As ${dog.dog_name}'s weekly health journey updates are submitted, this chart will contain more information, giving you a better health journey picture.</p>
+            </div>
+
             <hr style="border: none; border-top: 1px solid #eee; margin: 0 0 20px 0;">
 
             <h3 style="font-size: 15px; margin-bottom: 10px; color: #2C2C2C;">Weekly log</h3>
@@ -3572,10 +3583,19 @@ app.get('/dashboard/:dog_id', async (req, res) => {
 
         <style>
           @media print {
-            body * { visibility: hidden; }
-            #journeySummaryPrintArea, #journeySummaryPrintArea * { visibility: visible; }
+            /* display:none (not visibility:hidden) actually removes hidden
+               content from the layout flow. visibility:hidden kept
+               .container's full multi-page height even while invisible, so
+               the browser generated that many pages and repeated the
+               absolutely-positioned print area on each one. Hiding every
+               direct body child except the modal (the real ancestor of
+               #journeySummaryPrintArea) collapses the printed page down to
+               the print area's actual height. */
+            body > *:not(#journeySummaryModal) { display: none !important; }
+            #journeySummaryModal { position: static !important; background: none !important; overflow: visible !important; z-index: auto !important; }
             #journeySummaryPrintArea { position: absolute; top: 0; left: 0; width: 100%; margin: 0; box-shadow: none; }
             .no-print { display: none !important; }
+            #journeyChartPrintOnly { display: block !important; }
           }
         </style>
 
@@ -3706,6 +3726,16 @@ app.get('/dashboard/:dog_id', async (req, res) => {
             journeyModal.style.display = 'none';
           });
           document.getElementById('printJourneyBtn').addEventListener('click', () => {
+            // Snapshot the live Chart.js canvas as a static image right
+            // before printing, instead of maintaining a second chart just
+            // for the printout. The <img> stays hidden on screen
+            // (#journeyChartPrintOnly) and is only revealed by the
+            // @media print rule below.
+            const mobilityCanvas = document.getElementById('mobilityChart');
+            const journeyChartImg = document.getElementById('journeyChartImg');
+            if (mobilityCanvas && journeyChartImg) {
+              journeyChartImg.src = mobilityCanvas.toDataURL('image/png');
+            }
             window.print();
           });
 
