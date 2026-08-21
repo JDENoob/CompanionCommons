@@ -5283,7 +5283,20 @@ async function processDogForChurn(dog, options = {}) {
   const lastCheckInDate = lastCheckin?.[0]?.created_at || dog.created_at;
 
   // Send churn alert email
-  await sendChurnAlertEmail(ownerEmail, dog.dog_name, lastScore, lastCheckInDate, dog.id);
+  const emailResult = await sendChurnAlertEmail(ownerEmail, dog.dog_name, lastScore, lastCheckInDate, dog.id);
+
+  // sendChurnAlertEmail returns undefined if SendGrid isn't configured at
+  // all, or { success: false, error } if the send itself failed (e.g. the
+  // SendGrid 403s seen during today's testing). Either way, this must not
+  // be logged as a success and must NOT write a churn_flags row — a failed
+  // send isn't "already alerted," and writing the flag anyway would block a
+  // legitimate retry on the next churn-detection pass, i.e. a real owner
+  // could silently never get re-engaged while the system insists it worked.
+  if (!emailResult || !emailResult.success) {
+    const reason = emailResult?.error || 'SendGrid not configured';
+    console.error(`❌ Churn alert email FAILED for ${dog.dog_name}: ${reason}`);
+    return { skipped: false, alertSent: false, reason: 'email_failed', currentWeek };
+  }
 
   // Log the alert to churn_flags table
   const { error: flagError } = await supabase
