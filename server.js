@@ -2925,6 +2925,26 @@ app.get('/dashboard/:dog_id', async (req, res) => {
               flex-direction: column;
               align-items: stretch !important;
             }
+            /* Photo-upload mini-form + primary CTA button row (above the
+               Baseline Score box): the file input has a fixed 100px width
+               and the button's text can't fit alongside it in the space
+               left on a narrow phone. Letting the row wrap — combined with
+               the white-space:normal + width:100% rule above, which already
+               applies to this button — drops the button cleanly onto its
+               own line under the photo form instead of forcing both onto
+               one line and overflowing the card. */
+            .photo-and-checkin-row {
+              flex-wrap: wrap;
+            }
+            /* Baseline Score shares .baseline-info-grid's 2-column row with
+               Current Streak on desktop, which only leaves it half the
+               card's width — cramped for 4 mini-columns (Mobility/Energy/
+               Appetite/Weight) on a narrow phone. Spanning it across both
+               grid columns gives it the full row; Current Streak and Best
+               Streak then auto-flow onto their own 2-column row beneath it. */
+            .baseline-score-item {
+              grid-column: 1 / -1;
+            }
           }
           .metrics-grid {
             display: grid;
@@ -3213,7 +3233,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                         ? `<p style="margin: 0 0 12px 0; font-size: 13px; color: #999; font-weight: 400;">${meds.join(' - ')}</p>`
                         : '';
                     })()}
-                    <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                    <div class="photo-and-checkin-row" style="display: flex; gap: 8px; margin-bottom: 12px;">
                       <form id="quickPhotoUpload" style="display: flex; gap: 4px; align-items: center;">
                         <input type="file" id="quickPhotoInput" accept="image/*" style="padding: 4px 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px; width: 100px;">
                         <button type="submit" class="btn-secondary"><i data-lucide="camera"></i> Update ${dog.dog_name}'s Photo</button>
@@ -3232,7 +3252,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                 </div>
                 <div class="baseline-info">
                   <div class="baseline-info-grid">
-                    <div class="baseline-info-item">
+                    <div class="baseline-info-item baseline-score-item">
                       <div class="baseline-info-label">Baseline Score</div>
                       <div style="display: flex; gap: 8px; margin-top: 4px;">
                         <div style="flex: 1; text-align: center;">
