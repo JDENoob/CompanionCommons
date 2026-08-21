@@ -1504,6 +1504,12 @@ app.get('/check-in/:dog_id', async (req, res) => {
                   </p>
                 \` : '';
 
+                const cognitiveWeekNote = result.was_cognitive_week ? \`
+                  <p style="font-size: 13px; color: #555; margin: 12px 0; background: #F5F5F5; border-radius: 8px; padding: 8px 10px;">
+                    Also logged: weight and cognitive/behavior — thanks for the extra detail this week.
+                  </p>
+                \` : '';
+
                 document.body.innerHTML = \`
                   <div class="card" style="text-align: center;">
                     <h2 style="color: green;">✅ Check-In Submitted!</h2>
@@ -1512,6 +1518,7 @@ app.get('/check-in/:dog_id', async (req, res) => {
                     </p>
                     \${streakBadge}
                     \${milestoneBanner}
+                    \${cognitiveWeekNote}
                     <p style="font-size: 14px; color: #666; margin: 20px 0;">
                       \${result.change_text}
                     </p>
@@ -1907,7 +1914,7 @@ app.post('/api/checkin-senior', async (req, res) => {
           phone: dog.phone,
           message_type: `week_${weekNumber + 1}_checkin`,
           scheduled_for: nextReminderDate.toISOString(),
-          message_body: `${dog.dog_name}'s #${weekNumber + 1} week check-in time! Click here to complete a 30-second update: ${nextCheckinLink}`,
+          message_body: `${dog.dog_name}'s week #${weekNumber + 1} check-in: ${nextCheckinLink}`,
           status: 'pending'
         }]);
 
@@ -1968,7 +1975,8 @@ app.post('/api/checkin-senior', async (req, res) => {
       segment: segment,
       current_streak: currentStreak,
       longest_streak: longestStreak,
-      milestone_message: milestoneMessage
+      milestone_message: milestoneMessage,
+      was_cognitive_week: weekNumber % 4 === 0
     });
 
   } catch (error) {
@@ -4254,7 +4262,11 @@ app.post('/api/send-magic-link', async (req, res) => {
     }
 
     // Sanitize inputs
-    const cleanName = sanitizeName(dog_name);
+    // dog_name capped at 40 (tighter than sanitizeName's 100 default) so a
+    // long name can't push any SMS template — verification, reminders, the
+    // churn email — past a single 160-char GSM-7 segment. See the SMS
+    // length audit this cap was added for.
+    const cleanName = sanitizeName(dog_name, 40);
     const cleanBreed = sanitizeName(breed);
     const cleanAge = parseInt(age);
     const cleanGender = sanitizeSelect(gender, ['male', 'female', 'unknown']);
@@ -4433,7 +4445,7 @@ app.post('/api/send-magic-link', async (req, res) => {
     // Send SMS with magic link via Twilio
     try {
       const smsMessage = await twilioClient.messages.create({
-        body: `Welcome to Companion Commons! Click here to complete ${cleanName}'s profile: ${verifyUrl}\n\nThis link expires in 15 minutes.`,
+        body: `${cleanName}'s profile - tap to finish: ${verifyUrl} (15 min)`,
         from: TWILIO_PHONE_NUMBER,
         to: cleanPhone
       });
@@ -5027,7 +5039,14 @@ async function sendChurnAlertEmail(ownerEmail, dogName, lastScore, lastCheckInDa
   }
 
   try {
-    const daysAgo = Math.floor((Date.now() - new Date(lastCheckInDate).getTime()) / (1000 * 60 * 60 * 24));
+    // lastCheckInDate is null when the dog has never had a real check-in —
+    // in that case there's no real date to cite (the caller no longer
+    // falls back to the signup date, which used to make this line stay
+    // stuck on the same stale date forever). Only cite an actual date when
+    // we have one.
+    const sinceLine = lastCheckInDate
+      ? `We noticed we haven't heard from you since <strong>${new Date(lastCheckInDate).toLocaleDateString()}</strong>. No pressure — we know life gets busy.`
+      : `We noticed you haven't logged a check-in yet. No pressure — we know life gets busy.`;
 
     const msg = {
       to: ownerEmail,
@@ -5038,13 +5057,13 @@ async function sendChurnAlertEmail(ownerEmail, dogName, lastScore, lastCheckInDa
           <div style="background: #f5f5f5; border-radius: 12px; padding: 30px;">
             <h2 style="color: #333; margin-bottom: 20px; text-align: center;">Hey there! 👋</h2>
             <p style="color: #666; font-size: 16px; margin: 15px 0; line-height: 1.6;">
-              We noticed we haven't heard from you since <strong>${new Date(lastCheckInDate).toLocaleDateString()}</strong>. No pressure — we know life gets busy.
+              ${sinceLine}
             </p>
             <p style="color: #666; font-size: 16px; margin: 15px 0; line-height: 1.6;">
-              When you get a moment, we'd love to know how ${dogName}'s doing this week. One quick check-in takes 30 seconds and helps build a clear picture of ${dogName} and all pets families participating
+              When you get a moment, we'd love to know how ${dogName}'s doing this week. One quick check-in takes 30 seconds and helps build a clear picture of ${dogName} and all the pet families participating.
             </p>
             <p style="color: #666; font-size: 14px; margin: 15px 0; line-height: 1.6;">
-              <strong>Bonus:</strong> Every check-in helps us build information with the intentions to provide insights to the entire community. 🐾
+              <strong>Bonus:</strong> Every check-in helps us build a clearer picture of pet health for the whole community. 🐾
             </p>
             <div style="text-align: center; margin-top: 25px;">
               <a href="${BASE_URL}/dashboard/${dogId}" style="display: inline-block; background: #d96f56; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: 600;">
@@ -5127,22 +5146,25 @@ async function processDogForChurn(dog, options = {}) {
     return { skipped: true, reason: 'has_checkin_this_week', currentWeek };
   }
 
+  // Calculate reminder times based on CURRENT WEEK (not creation date).
+  // Computed unconditionally (not just inside the sendSmsReminders block
+  // below) because the churn-email gate further down also needs
+  // reminderDay1, regardless of whether this call is queueing SMS.
+  // Week 1 starts on creation date
+  // Week 2 starts 7 days after creation
+  // Week X starts on (creation + (7 * (X-1)) days)
+  const weekStartDate = new Date(created);
+  weekStartDate.setDate(weekStartDate.getDate() + (7 * (currentWeek - 1)));
+
+  // Reminder #1: Start of week at 2pm
+  const reminderDay1 = new Date(weekStartDate);
+  reminderDay1.setHours(14, 0, 0, 0); // 2pm
+
   if (sendSmsReminders) {
     // ============================================
     // FLOW 2: AUTO SMS REMINDERS (Missing check-in notifications)
     // Sends SMS at 2pm (Day 7), 7pm (+4h), and 7:30am next day
     // ============================================
-
-    // Calculate reminder times based on CURRENT WEEK (not creation date)
-    // Week 1 starts on creation date
-    // Week 2 starts 7 days after creation
-    // Week X starts on (creation + (7 * (X-1)) days)
-    const weekStartDate = new Date(created);
-    weekStartDate.setDate(weekStartDate.getDate() + (7 * (currentWeek - 1)));
-
-    // Reminder #1: Start of week at 2pm
-    const reminderDay1 = new Date(weekStartDate);
-    reminderDay1.setHours(14, 0, 0, 0); // 2pm
 
     // Reminder #2: Same day at 7pm (+4 hours)
     const reminderDay2At7pm = new Date(reminderDay1);
@@ -5211,7 +5233,7 @@ async function processDogForChurn(dog, options = {}) {
           phone: dog.phone,
           message_type: `week_${currentWeek}_reminder_2`,
           scheduled_for: reminderDay2At7pm.toISOString(),
-          message_body: `${dog.dog_name}'s #${currentWeek} week check-in reminder! We know life gets busy, so when you have a chance, click here to update: ${reminderCheckinLink}`,
+          message_body: `${dog.dog_name}'s week #${currentWeek} check-in - no rush, update when you can: ${reminderCheckinLink}`,
           status: 'pending'
         });
       if (queueError2) {
@@ -5230,7 +5252,7 @@ async function processDogForChurn(dog, options = {}) {
           phone: dog.phone,
           message_type: `week_${currentWeek}_reminder_3`,
           scheduled_for: reminderDay3.toISOString(),
-          message_body: `${dog.dog_name}'s #${currentWeek} week check-in reminder! Our community really depends on building a large community of health journeys. If you can, click here to update: ${reminderCheckinLink}`,
+          message_body: `${dog.dog_name}'s week #${currentWeek} check-in - every update helps the community: ${reminderCheckinLink}`,
           status: 'pending'
         });
       if (queueError3) {
@@ -5239,6 +5261,15 @@ async function processDogForChurn(dog, options = {}) {
         console.log(`📱 Queued reminder #3 (${day3Time}) for ${dog.dog_name}`);
       }
     }
+  }
+
+  // Don't send the churn email before Reminder #1 would have gone out
+  // (2pm on the first day of the missed week) — same time-check pattern
+  // already used for the SMS reminders themselves, just above. Without
+  // this, the email had no gate at all and could fire on the very first
+  // cron tick after midnight, hours before any SMS reminder went out.
+  if (now < reminderDay1) {
+    return { skipped: true, reason: 'before_first_reminder_time', currentWeek };
   }
 
   // Dog is missing this week's check-in. Check if we've already alerted recently.
@@ -5280,7 +5311,10 @@ async function processDogForChurn(dog, options = {}) {
     .limit(1);
 
   const lastScore = lastCheckin?.[0]?.mobility_score || dog.baseline_mobility_score;
-  const lastCheckInDate = lastCheckin?.[0]?.created_at || dog.created_at;
+  // null (not dog.created_at) when there's no real check-in yet — see
+  // sendChurnAlertEmail, which now branches on this instead of citing the
+  // signup date as if it were a check-in date.
+  const lastCheckInDate = lastCheckin?.[0]?.created_at || null;
 
   // Send churn alert email
   const emailResult = await sendChurnAlertEmail(ownerEmail, dog.dog_name, lastScore, lastCheckInDate, dog.id);
