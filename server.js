@@ -2603,9 +2603,15 @@ app.get('/dashboard/:dog_id', async (req, res) => {
     const currentScore = checkins.length > 0
       ? checkins[checkins.length - 1].mobility_score
       : dog.baseline_mobility_score;
+    // previous falls back to baseline only when exactly 1 real check-in exists
+    // (comparing it against baseline is meaningful) — with 0 check-ins there's
+    // no real prior data point at all, so this stays null rather than
+    // defaulting to the same baseline value as currentScore, which used to
+    // make describeTrendForGlance see two identical numbers and falsely
+    // report "held steady" during the baseline-only period.
     const previousScore = checkins.length > 1
       ? checkins[checkins.length - 2].mobility_score
-      : dog.baseline_mobility_score;
+      : checkins.length === 1 ? dog.baseline_mobility_score : null;
 
     const scoreDiff = currentScore - previousScore;
     const trend = scoreDiff > 0 ? 'up' : scoreDiff < 0 ? 'down' : 'flat';
@@ -2625,13 +2631,13 @@ app.get('/dashboard/:dog_id', async (req, res) => {
       : dog.baseline_energy_score;
     const previousEnergyScore = checkins.length > 1
       ? checkins[checkins.length - 2].energy_score
-      : dog.baseline_energy_score;
+      : checkins.length === 1 ? dog.baseline_energy_score : null;
     const currentAppetiteScore = checkins.length > 0
       ? checkins[checkins.length - 1].appetite_score
       : dog.baseline_appetite_score;
     const previousAppetiteScore = checkins.length > 1
       ? checkins[checkins.length - 2].appetite_score
-      : dog.baseline_appetite_score;
+      : checkins.length === 1 ? dog.baseline_appetite_score : null;
 
     // Weight isn't recorded every week (only on the every-4th-week check-in,
     // same trigger as cognitive/behavior), so unlike the 3 scores above this
@@ -2642,10 +2648,14 @@ app.get('/dashboard/:dog_id', async (req, res) => {
       : dog.weight_lbs;
     const previousWeightValue = weightCheckins.length > 1
       ? weightCheckins[weightCheckins.length - 2].weight_lbs
-      : dog.weight_lbs;
+      : weightCheckins.length === 1 ? dog.weight_lbs : null;
 
     function describeTrendForGlance(current, previous) {
-      if (current == null || previous == null) return 'Not enough data yet';
+      // previous is only ever null now during the baseline-only period (see
+      // the null fallback above) — current is never null (baseline scores
+      // are required at signup), so this branch is effectively "no real
+      // check-in yet," not a generic missing-data case.
+      if (current == null || previous == null) return "Baseline recorded — first weekly update will show your dog's trend";
       const diff = current - previous;
       if (diff > 0) return `improved (+${diff})`;
       if (diff < 0) return `declined (${diff})`;
@@ -2657,7 +2667,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
     // mobility/energy/appetite score is, so this uses neutral up/down/steady
     // language instead — no health judgment either way.
     function describeWeightTrendForGlance(current, previous) {
-      if (current == null || previous == null) return 'Not enough data yet';
+      if (current == null || previous == null) return "Baseline recorded — first weekly update will show your dog's trend";
       const diff = current - previous;
       if (diff > 0) return `up ${diff} lb since last recorded`;
       if (diff < 0) return `down ${Math.abs(diff)} lb since last recorded`;
@@ -3276,6 +3286,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                     <div class="baseline-info-item">
                       <div class="baseline-info-label">Current Streak</div>
                       <div class="baseline-info-value">${streak > 0 ? '<i data-lucide="flame" style="width:14px;height:14px;vertical-align:-2px;"></i> ' : ''}${streak}w</div>
+                      <p style="margin: 4px 0 0 0; font-size: 11px; color: #999;">${streak > 0 ? 'Keep it going!' : 'Complete your first check-in to start a streak'}</p>
                     </div>
                     <div class="baseline-info-item">
                       <div class="baseline-info-label">Best Streak</div>
@@ -3284,7 +3295,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                   </div>
                   ${dog.baseline_notes ? `
                   <div class="baseline-notes">
-                    <p><strong>Notes:</strong> ${dog.baseline_notes}</p>
+                    <p><strong>Baseline Notes:</strong> ${dog.baseline_notes}</p>
                   </div>
                   ` : ''}
                 </div>
@@ -3407,6 +3418,10 @@ app.get('/dashboard/:dog_id', async (req, res) => {
               Click to View ${dog.dog_name}'s Journey Summary
             </button>
           </div>
+
+          <p style="font-size: 12px; color: #999; border-top: 1px solid #eee; padding-top: 14px; margin: 0;">
+            Companion Commons is not a veterinary service and does not diagnose, treat, prescribe, or provide veterinary advice. Always consult a licensed veterinarian about your companion's health and care. Think this may be an emergency? Contact your veterinarian or the nearest emergency veterinary hospital immediately.
+          </p>
         </div>
 
         <!-- CHECK-IN MODAL -->
