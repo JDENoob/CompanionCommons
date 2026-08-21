@@ -3187,6 +3187,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
       <body>
         <div class="container">
           <a href="/check-in/${dog_id}" class="back-link">← Back to Check-In</a>
+          ${dog.owner_id ? `<a href="/add-dog.html?owner_id=${dog.owner_id}" class="back-link" style="margin-left: 16px;">+ Add Another Dog</a>` : ''}
 
           <div class="header">
             <h1><i data-lucide="bar-chart-3"></i> ${dog.dog_name}'s Mobility Dashboard</h1>
@@ -4305,7 +4306,8 @@ app.post('/api/send-magic-link', async (req, res) => {
       email,
       phone,
       consent,
-      sms_consent,
+      owner_name,
+      contact_preference,
       weight_lbs,
       spayed_neutered,
       zip_code,
@@ -4322,6 +4324,16 @@ app.post('/api/send-magic-link', async (req, res) => {
       });
     }
 
+    // Stage 3: contact_preference replaces the old sms_consent checkbox
+    // with a real 3-way choice, matching owners.preferred_contact_method's
+    // CHECK constraint exactly.
+    if (!['sms', 'email', 'both'].includes(contact_preference)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Please choose how we should contact you (SMS, email, or both)'
+      });
+    }
+
     // Sanitize inputs
     // dog_name capped at 40 (tighter than sanitizeName's 100 default) so a
     // long name can't push any SMS template — verification, reminders, the
@@ -4329,6 +4341,10 @@ app.post('/api/send-magic-link', async (req, res) => {
     // length audit this cap was added for.
     const cleanName = sanitizeName(dog_name, 40);
     const cleanBreed = sanitizeName(breed);
+    // Optional — matches the Stage 3 design decision to not require a
+    // human name. Empty string when omitted, not null, matching how the
+    // rest of this route already handles optional fields (e.g. observations).
+    const cleanOwnerName = owner_name ? sanitizeName(owner_name, 100) : '';
     const cleanAge = parseInt(age);
     const cleanGender = sanitizeSelect(gender, ['male', 'female', 'unknown']);
     const cleanBaseline = parseInt(baseline_mobility_score);
@@ -4458,13 +4474,38 @@ app.post('/api/send-magic-link', async (req, res) => {
     const cleanTreatmentCategories = rawTreatmentCategories
       .filter(v => allowedTreatmentCategories.includes(v));
 
+    // Stage 3 returning-owner check: does an owner already exist for this
+    // phone number? maybeSingle() (not single()) since the common case —
+    // a brand-new signup — has zero matches, which single() would treat
+    // as an error rather than a normal "no match" result.
+    const { data: existingOwner, error: ownerLookupError } = await supabase
+      .from('owners')
+      .select('id')
+      .eq('phone', cleanPhone)
+      .maybeSingle();
+
+    if (ownerLookupError) {
+      console.error('Error checking for existing owner:', ownerLookupError);
+      return res.status(500).json({
+        success: false,
+        error: 'Server error. Please try again later.'
+      });
+    }
+
+    const existingOwnerId = existingOwner ? existingOwner.id : null;
+
     // Generate a secure random token (32 bytes = 64 hex characters)
     const token = crypto.randomBytes(32).toString('hex');
 
     // Token expiry: 15 minutes from now
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
-    // Store the magic link token in database
+    // Store the magic link token in database. Fields below are stored
+    // regardless of existingOwnerId (useful for audit/debugging even when
+    // unused) — but /verify only trusts them for a brand-new owner. When
+    // existingOwnerId is set, /verify pulls contact info from the real
+    // owners record instead, never from this resubmitted-but-unverified
+    // form data (see Stage 3's design).
     const { error: tokenError } = await supabase
       .from('magic_link_tokens')
       .insert({
@@ -4480,13 +4521,19 @@ app.post('/api/send-magic-link', async (req, res) => {
         baseline_appetite_score: cleanAppetite,
         baseline_cognitive_score: cleanCognitive,
         observations: cleanObservations,
-        sms_consent: sms_consent === 'on' || sms_consent === true,
+        // Derived boolean, kept for senior_dogs.sms_consent (still a
+        // boolean per Stage 1's mapping) — 'sms' or 'both' count as
+        // consenting to SMS, 'email' alone does not.
+        sms_consent: contact_preference === 'sms' || contact_preference === 'both',
+        contact_preference,
+        owner_name: cleanOwnerName || null,
         weight_lbs: cleanWeight,
         spayed_neutered: cleanSpayedNeutered,
         zip_code: cleanZip,
         diet_type: cleanDietType,
         pet_insurance: cleanPetInsurance,
         treatment_category: cleanTreatmentCategories,
+        existing_owner_id: existingOwnerId,
         expires_at: expiresAt,
         used_at: null,
         created_at: new Date().toISOString()
@@ -4503,10 +4550,16 @@ app.post('/api/send-magic-link', async (req, res) => {
     // Build verification URL
     const verifyUrl = `${BASE_URL}/verify?token=${token}`;
 
-    // Send SMS with magic link via Twilio
+    // Send SMS with magic link via Twilio. Different copy for a returning
+    // owner (see Stage 3's design) — the real phone owner should know this
+    // adds a dog to an existing account rather than assuming a fresh signup.
+    const smsBody = existingOwnerId
+      ? `Add ${cleanName} to your account: ${verifyUrl} (15 min)`
+      : `${cleanName}'s profile - tap to finish: ${verifyUrl} (15 min)`;
+
     try {
       const smsMessage = await twilioClient.messages.create({
-        body: `${cleanName}'s profile - tap to finish: ${verifyUrl} (15 min)`,
+        body: smsBody,
         from: TWILIO_PHONE_NUMBER,
         to: cleanPhone
       });
@@ -4526,7 +4579,8 @@ app.post('/api/send-magic-link', async (req, res) => {
     res.json({
       success: true,
       message: 'Magic link sent! Check your SMS for a verification link.',
-      phone: cleanPhone
+      phone: cleanPhone,
+      existingOwner: !!existingOwnerId
     });
 
   } catch (error) {
@@ -4762,8 +4816,99 @@ app.get('/verify', async (req, res) => {
       `);
     }
 
-    // Token is valid! Create the senior_dogs profile
+    // Token is valid! Resolve the owner first — either link to the
+    // existing one (Stage 3's returning-owner path) or create a brand-new
+    // one. Either way, phone/email/zip for the new senior_dogs row below
+    // come from this resolved owner, never straight from tokenData, so a
+    // returning owner's dog is always tied to their real, trusted contact
+    // info rather than whatever was resubmitted (and not yet verified) on
+    // this particular form.
     const now = new Date().toISOString();
+    let ownerId, ownerPhone, ownerEmail, ownerZip, ownerSmsConsent;
+
+    if (tokenData.existing_owner_id) {
+      const { data: existingOwnerRow, error: existingOwnerError } = await supabase
+        .from('owners')
+        .select('id, email, phone, zip_code, preferred_contact_method')
+        .eq('id', tokenData.existing_owner_id)
+        .single();
+
+      if (existingOwnerError || !existingOwnerRow) {
+        console.error('Error fetching existing owner for verify:', existingOwnerError);
+        return res.status(500).send(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <meta charset="utf-8">
+              <title>Error | Companion Commons</title>
+              <style>
+                body { font-family: -apple-system, sans-serif; max-width: 500px; margin: 50px auto; text-align: center; padding: 20px; }
+                .error-box { background: #fee; border-radius: 12px; padding: 30px; }
+                h1 { color: #c33; }
+              </style>
+            </head>
+            <body>
+              <div class="error-box">
+                <h1>❌ Error Creating Profile</h1>
+                <p>Something went wrong finding your account. Please contact support or try again later.</p>
+              </div>
+            </body>
+          </html>
+        `);
+      }
+
+      ownerId = existingOwnerRow.id;
+      ownerPhone = existingOwnerRow.phone;
+      ownerEmail = existingOwnerRow.email;
+      ownerZip = existingOwnerRow.zip_code;
+      ownerSmsConsent = existingOwnerRow.preferred_contact_method === 'sms' || existingOwnerRow.preferred_contact_method === 'both';
+    } else {
+      const { data: newOwner, error: newOwnerError } = await supabase
+        .from('owners')
+        .insert({
+          email: tokenData.email,
+          phone: tokenData.phone,
+          preferred_contact_method: tokenData.contact_preference,
+          zip_code: tokenData.zip_code,
+          name: tokenData.owner_name || null,
+          preferred_reminder_day: 3,        // Wednesday (mid-week, neutral) — same default senior_dogs uses below
+          preferred_reminder_time: '14:00', // 2:00 PM (afternoon, safe for all)
+          created_at: now
+        })
+        .select()
+        .single();
+
+      if (newOwnerError || !newOwner) {
+        console.error('Error creating owner:', newOwnerError);
+        return res.status(500).send(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <meta charset="utf-8">
+              <title>Error | Companion Commons</title>
+              <style>
+                body { font-family: -apple-system, sans-serif; max-width: 500px; margin: 50px auto; text-align: center; padding: 20px; }
+                .error-box { background: #fee; border-radius: 12px; padding: 30px; }
+                h1 { color: #c33; }
+              </style>
+            </head>
+            <body>
+              <div class="error-box">
+                <h1>❌ Error Creating Profile</h1>
+                <p>Something went wrong. Please contact support or try again later.</p>
+              </div>
+            </body>
+          </html>
+        `);
+      }
+
+      ownerId = newOwner.id;
+      ownerPhone = tokenData.phone;
+      ownerEmail = tokenData.email;
+      ownerZip = tokenData.zip_code;
+      ownerSmsConsent = tokenData.sms_consent === true || tokenData.sms_consent === 'true';
+    }
+
     const { data: newDog, error: dogError } = await supabase
       .from('senior_dogs')
       .insert({
@@ -4776,15 +4921,16 @@ app.get('/verify', async (req, res) => {
         baseline_appetite_score: tokenData.baseline_appetite_score,
         baseline_cognitive_score: tokenData.baseline_cognitive_score,
         baseline_notes: tokenData.observations,
-        phone: tokenData.phone,
-        email: tokenData.email,
-        sms_consent: tokenData.sms_consent === true || tokenData.sms_consent === 'true',
+        phone: ownerPhone,
+        email: ownerEmail,
+        sms_consent: ownerSmsConsent,
         weight_lbs: tokenData.weight_lbs,
         spayed_neutered: tokenData.spayed_neutered,
-        zip_code: tokenData.zip_code,
+        zip_code: ownerZip,
         diet_type: tokenData.diet_type,
         pet_insurance: tokenData.pet_insurance,
         treatment_category: tokenData.treatment_category,
+        owner_id: ownerId,
         created_at: now,
         preferred_reminder_day: 3,        // Wednesday (mid-week, neutral)
         preferred_reminder_time: '14:00'  // 2:00 PM (afternoon, safe for all)
@@ -4868,7 +5014,7 @@ app.get('/verify', async (req, res) => {
     await appendRowToSheet('Signups', [
       new Date().toISOString(),
       dogId,
-      tokenData.email || '',
+      ownerEmail || '',
       tokenData.dog_name || '',
       tokenData.breed || '',
       tokenData.age || '',
@@ -4917,6 +5063,184 @@ app.get('/verify', async (req, res) => {
         </body>
       </html>
     `);
+  }
+});
+
+// ============================================
+// ADD ANOTHER DOG (Stage 3 — multi-dog owner project)
+// Phase-B-only creation for an already-known owner. No magic-link/SMS
+// step here — reached from a link the owner only sees after already
+// verifying their phone once (on the post-verification confirmation page
+// or dashboard), so re-verifying again would be redundant friction, not
+// extra safety. See Stage 3's design for the reasoning.
+// ============================================
+app.post('/api/add-dog', async (req, res) => {
+  try {
+    const {
+      owner_id,
+      dog_name,
+      breed,
+      age,
+      gender,
+      baseline_mobility_score,
+      baseline_energy_score,
+      baseline_appetite_score,
+      baseline_cognitive_score,
+      observations,
+      consent,
+      weight_lbs,
+      spayed_neutered,
+      diet_type,
+      pet_insurance,
+      treatment_category
+    } = req.body;
+
+    if (!owner_id || !dog_name || !breed || !age || !gender || !consent) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields'
+      });
+    }
+
+    // Confirm the owner is real before creating anything against it.
+    const { data: owner, error: ownerError } = await supabase
+      .from('owners')
+      .select('id, email, phone, zip_code, preferred_contact_method')
+      .eq('id', owner_id)
+      .maybeSingle();
+
+    if (ownerError) {
+      console.error('Error looking up owner for add-dog:', ownerError);
+      return res.status(500).json({ success: false, error: 'Server error. Please try again later.' });
+    }
+
+    if (!owner) {
+      return res.status(404).json({ success: false, error: 'We could not find your account. Please use the link from your confirmation page, or start a new signup.' });
+    }
+
+    // Same 40-char cap as the main signup route, for the same reason (SMS
+    // segment length across every template that interpolates dog_name).
+    const cleanName = sanitizeName(dog_name, 40);
+    const cleanBreed = sanitizeName(breed);
+    const cleanAge = parseInt(age);
+    const cleanGender = sanitizeSelect(gender, ['male', 'female', 'unknown']);
+    const cleanBaseline = parseInt(baseline_mobility_score);
+    const cleanEnergy = parseInt(baseline_energy_score);
+    const cleanAppetite = parseInt(baseline_appetite_score);
+    const cleanCognitive = parseInt(baseline_cognitive_score);
+    const cleanObservations = sanitizeString(observations, 500);
+
+    if (!cleanName || !cleanBreed || isNaN(cleanAge) || isNaN(cleanBaseline) || isNaN(cleanEnergy) || isNaN(cleanAppetite) || isNaN(cleanCognitive)) {
+      return res.status(400).json({ success: false, error: 'Invalid input values' });
+    }
+
+    if (cleanAge < 1 || cleanAge > 30) {
+      return res.status(400).json({ success: false, error: 'Age must be between 1 and 30' });
+    }
+    if (cleanBaseline < 1 || cleanBaseline > 8) {
+      return res.status(400).json({ success: false, error: 'Mobility score must be between 1 and 8' });
+    }
+    if (cleanEnergy < 1 || cleanEnergy > 8) {
+      return res.status(400).json({ success: false, error: 'Energy score must be between 1 and 8' });
+    }
+    if (cleanAppetite < 1 || cleanAppetite > 8) {
+      return res.status(400).json({ success: false, error: 'Appetite score must be between 1 and 8' });
+    }
+    if (cleanCognitive < 1 || cleanCognitive > 8) {
+      return res.status(400).json({ success: false, error: 'Cognitive score must be between 1 and 8' });
+    }
+
+    const cleanWeight = parseInt(weight_lbs);
+    if (isNaN(cleanWeight) || cleanWeight < 1 || cleanWeight > 250) {
+      return res.status(400).json({ success: false, error: 'Weight must be a number between 1 and 250 lbs' });
+    }
+
+    const cleanSpayedNeutered = sanitizeSelect(spayed_neutered, ['yes', 'no']);
+    if (spayed_neutered && !['yes', 'no'].includes(String(spayed_neutered).toLowerCase())) {
+      return res.status(400).json({ success: false, error: 'Spayed/neutered must be yes or no' });
+    }
+
+    const allowedDietTypes = ['dry', 'wet', 'raw', 'prescription', 'mixed', 'other'];
+    const cleanDietType = sanitizeSelect(diet_type, allowedDietTypes);
+    if (!diet_type || !allowedDietTypes.includes(String(diet_type).toLowerCase())) {
+      return res.status(400).json({ success: false, error: 'Diet type must be one of: ' + allowedDietTypes.join(', ') });
+    }
+
+    const allowedInsuranceValues = ['yes', 'no', 'not_sure'];
+    const cleanPetInsurance = sanitizeSelect(pet_insurance, allowedInsuranceValues);
+    if (!pet_insurance || !allowedInsuranceValues.includes(String(pet_insurance).toLowerCase())) {
+      return res.status(400).json({ success: false, error: 'Pet insurance must be one of: ' + allowedInsuranceValues.join(', ') });
+    }
+
+    const allowedTreatmentCategories = [
+      'none', 'joint_supplement', 'nsaid', 'steroid',
+      'pain_medication', 'other_prescription', 'other_supplement'
+    ];
+    const rawTreatmentCategories = Array.isArray(treatment_category)
+      ? treatment_category
+      : (treatment_category ? [treatment_category] : []);
+    const cleanTreatmentCategories = rawTreatmentCategories
+      .filter(v => allowedTreatmentCategories.includes(v));
+
+    const now = new Date().toISOString();
+    const ownerSmsConsent = owner.preferred_contact_method === 'sms' || owner.preferred_contact_method === 'both';
+
+    const { data: newDog, error: dogError } = await supabase
+      .from('senior_dogs')
+      .insert({
+        dog_name: cleanName,
+        breed: cleanBreed,
+        age: cleanAge,
+        gender: cleanGender,
+        baseline_mobility_score: cleanBaseline,
+        baseline_energy_score: cleanEnergy,
+        baseline_appetite_score: cleanAppetite,
+        baseline_cognitive_score: cleanCognitive,
+        baseline_notes: cleanObservations,
+        phone: owner.phone,
+        email: owner.email,
+        sms_consent: ownerSmsConsent,
+        weight_lbs: cleanWeight,
+        spayed_neutered: cleanSpayedNeutered,
+        zip_code: owner.zip_code,
+        diet_type: cleanDietType,
+        pet_insurance: cleanPetInsurance,
+        treatment_category: cleanTreatmentCategories,
+        owner_id: owner.id,
+        created_at: now,
+        preferred_reminder_day: 3,
+        preferred_reminder_time: '14:00'
+      })
+      .select();
+
+    if (dogError || !newDog || newDog.length === 0) {
+      console.error('Error creating senior_dog profile via add-dog:', dogError);
+      return res.status(500).json({ success: false, error: 'Something went wrong creating the profile. Please try again later.' });
+    }
+
+    const dogId = newDog[0].id;
+    console.log(`✅ Profile created via add-dog for ${cleanName} (ID: ${dogId}, owner: ${owner.id})`);
+
+    // Same Signups tab, same join key (dog UUID) as the main signup route.
+    await appendRowToSheet('Signups', [
+      new Date().toISOString(),
+      dogId,
+      owner.email || '',
+      cleanName,
+      cleanBreed,
+      cleanAge,
+      cleanGender,
+      cleanWeight ?? '',
+      cleanBaseline ?? '',
+      cleanEnergy ?? '',
+      cleanAppetite ?? '',
+      cleanCognitive ?? ''
+    ]);
+
+    res.json({ success: true, dogId });
+  } catch (error) {
+    console.error('Error in add-dog endpoint:', error);
+    res.status(500).json({ success: false, error: 'Server error. Please try again later.' });
   }
 });
 

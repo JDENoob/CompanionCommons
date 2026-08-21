@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Add Another Dog | Companion Commons</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="assets/css/styles.css" />
+    <script src="assets/js/main.js" defer></script>
+  </head>
+  <body>
+    <header class="site-header" data-header>
+      <div class="container nav-shell">
+        <a class="brand" href="index.html" aria-label="Companion Commons home">
+          <span class="brand-mark" aria-hidden="true">C</span>
+          <span class="brand-name">Companion<br />Commons</span>
+        </a>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="page-hero">
+        <div class="container inner">
+          <p class="eyebrow">Add Another Dog</p>
+          <h1>Tell Us About This Companion</h1>
+          <p>
+            We already have your contact info on file — just the details for this dog. This takes about 2 minutes.
+          </p>
+        </div>
+      </section>
+
+      <section class="content-section">
+        <div class="container" style="max-width: 600px;">
+          <div id="ownerMissingNotice" style="display: none; background: #fee; border-radius: 8px; padding: 16px 20px; margin-bottom: 20px;">
+            <p style="margin: 0; color: #c33;">
+              We couldn't find your account from this link. Please use the link from your original confirmation page,
+              or <a href="baseline-health-journey.html">start a new signup</a> instead.
+            </p>
+          </div>
+
+          <form id="addDogForm">
+            <!-- Dog Info Section -->
+            <fieldset>
+              <legend>About Your Companion</legend>
+
+              <div class="form-group">
+                <label for="dogName">Your dog's name *</label>
+                <input type="text" id="dogName" name="dog_name" required placeholder="e.g., Bailey" maxlength="40" />
+              </div>
+
+              <div class="form-group">
+                <label for="breed">Breed *</label>
+                <input type="text" id="breed" name="breed" required placeholder="e.g., Golden Retriever" maxlength="100" />
+              </div>
+
+              <div class="form-group">
+                <label for="age">Age (in years) *</label>
+                <input type="number" id="age" name="age" required min="1" max="30" placeholder="e.g., 10" />
+              </div>
+
+              <div class="form-group">
+                <label for="gender">Gender *</label>
+                <select id="gender" name="gender" required>
+                  <option value="">Select...</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="unknown">Prefer not to say</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label for="weight">Weight (lbs) *</label>
+                <input type="number" id="weight" name="weight_lbs" required min="1" max="250" placeholder="e.g., 65" />
+              </div>
+
+              <div class="form-group">
+                <label for="spayedNeutered">Spayed / neutered? *</label>
+                <select id="spayedNeutered" name="spayed_neutered" required>
+                  <option value="">Select...</option>
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </div>
+            </fieldset>
+
+            <!-- Baseline Health Snapshot Section -->
+            <fieldset>
+              <legend>Current Health Snapshot</legend>
+
+              <div class="form-group">
+                <label for="mobilityScore">
+                  On a scale of 1-8, how is your dog's mobility this week?
+                  <span class="hint">(1 = very stiff, 8 = excellent movement)</span> *
+                </label>
+                <input type="range" id="mobilityScore" name="baseline_mobility_score" min="1" max="8" value="4" required />
+                <div id="mobilityHint" style="margin-top: 8px; font-size: 14px; color: #666;">4 — Some good days, some bad days</div>
+              </div>
+
+              <div class="form-group">
+                <label for="energyScore">
+                  On a scale of 1-8, how is your dog's energy level?
+                  <span class="hint">(1 = very low energy, 8 = very active)</span> *
+                </label>
+                <input type="range" id="energyScore" name="baseline_energy_score" min="1" max="8" value="4" required />
+                <div id="energyHint" style="margin-top: 8px; font-size: 14px; color: #666;">4 — Average energy</div>
+              </div>
+
+              <div class="form-group">
+                <label for="appetiteScore">
+                  On a scale of 1-8, how is your dog's appetite?
+                  <span class="hint">(1 = barely eating, 8 = excellent appetite)</span> *
+                </label>
+                <input type="range" id="appetiteScore" name="baseline_appetite_score" min="1" max="8" value="4" required />
+                <div id="appetiteHint" style="margin-top: 8px; font-size: 14px; color: #666;">4 — Eating normally</div>
+              </div>
+
+              <div class="form-group">
+                <label for="cognitiveScore">
+                  On a scale of 1-8, how is your dog's alertness and behavior?
+                  <span class="hint">(1 = often confused/withdrawn, 8 = sharp and engaged)</span> *
+                </label>
+                <input type="range" id="cognitiveScore" name="baseline_cognitive_score" min="1" max="8" value="4" required />
+                <div id="cognitiveHint" style="margin-top: 8px; font-size: 14px; color: #666;">4 — Normal alertness</div>
+              </div>
+
+              <div class="form-group">
+                <label for="observations">Tell us what we should know about your dog's health (optional)</label>
+                <textarea
+                  id="observations"
+                  name="observations"
+                  placeholder="E.g., 'Has arthritis in back legs,' 'Recovering from surgery,' 'Especially stiff in morning'"
+                  maxlength="500"
+                  rows="4"
+                ></textarea>
+              </div>
+            </fieldset>
+
+            <!-- A Few More Details Section -->
+            <fieldset>
+              <legend>A Few More Details</legend>
+
+              <div class="form-group">
+                <label>Current treatments (check all that apply)</label>
+                <div class="checkbox-list">
+                  <label class="checkbox-line"><input type="checkbox" name="treatment_category" value="none" id="treatmentNone"> None</label>
+                  <label class="checkbox-line"><input type="checkbox" name="treatment_category" value="joint_supplement"> Joint supplement (e.g., glucosamine)</label>
+                  <label class="checkbox-line"><input type="checkbox" name="treatment_category" value="nsaid"> NSAID / anti-inflammatory</label>
+                  <label class="checkbox-line"><input type="checkbox" name="treatment_category" value="steroid"> Steroid</label>
+                  <label class="checkbox-line"><input type="checkbox" name="treatment_category" value="pain_medication"> Pain medication</label>
+                  <label class="checkbox-line"><input type="checkbox" name="treatment_category" value="other_prescription"> Other prescription medication</label>
+                  <label class="checkbox-line"><input type="checkbox" name="treatment_category" value="other_supplement"> Other supplement</label>
+                </div>
+                <small style="color: #999; display: block; margin-top: 4px;">We just need the general category — no need to tell us the specific drug or dosage.</small>
+              </div>
+
+              <div class="form-group">
+                <label for="dietType">Diet type *</label>
+                <select id="dietType" name="diet_type" required>
+                  <option value="">Select...</option>
+                  <option value="dry">Dry kibble</option>
+                  <option value="wet">Wet food</option>
+                  <option value="raw">Raw</option>
+                  <option value="prescription">Prescription diet</option>
+                  <option value="mixed">Mixed</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label for="petInsurance">Do you have pet insurance? *</label>
+                <select id="petInsurance" name="pet_insurance" required>
+                  <option value="">Select...</option>
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                  <option value="not_sure">Not sure</option>
+                </select>
+              </div>
+            </fieldset>
+
+            <!-- Consent -->
+            <fieldset>
+              <div class="form-group">
+                <label style="display: flex; align-items: flex-start; gap: 8px;">
+                  <input type="checkbox" id="consent" name="consent" required style="margin-top: 4px;" />
+                  <span>
+                    I understand my observations help build a trusted pet health community.
+                    I consent to participate. *
+                  </span>
+                </label>
+              </div>
+            </fieldset>
+
+            <button type="submit" class="button" style="width: 100%; margin-top: 30px;">
+              Add This Dog
+            </button>
+          </form>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-grid">
+        <div>
+          <h2>Companion Commons</h2>
+          <p>Pet families. Shared purpose.</p>
+        </div>
+        <a href="index.html">Return to homepage</a>
+      </div>
+      <div class="container veterinary-disclaimer">
+        <p>
+          Companion Commons is not a veterinary service and does not diagnose,
+          treat, prescribe, or provide veterinary advice. Always consult a
+          licensed veterinarian about your companion's health and care. Think
+          this may be an emergency? Contact your veterinarian or the nearest
+          emergency veterinary hospital immediately.
+        </p>
+      </div>
+    </footer>
+
+    <script>
+      const params = new URLSearchParams(window.location.search);
+      const ownerId = params.get('owner_id');
+      if (!ownerId) {
+        document.getElementById('ownerMissingNotice').style.display = 'block';
+        document.getElementById('addDogForm').style.display = 'none';
+      }
+
+      // Mobility score hint
+      const slider = document.getElementById('mobilityScore');
+      const hint = document.getElementById('mobilityHint');
+      const hints = {
+        1: "1 — Very stiff/limited movement", 2: "2 — Mostly struggling", 3: "3 — Significant issues",
+        4: "4 — Some good days, some bad days", 5: "5 — Decent mobility, occasional stiffness",
+        6: "6 — Good mobility most days", 7: "7 — Very active", 8: "8 — Excellent, no mobility issues"
+      };
+      slider.addEventListener('input', () => { hint.textContent = hints[slider.value]; });
+
+      // Energy score hint
+      const energySlider = document.getElementById('energyScore');
+      const energyHint = document.getElementById('energyHint');
+      const energyHints = {
+        1: "1 — Very low energy", 2: "2 — Mostly lethargic", 3: "3 — Below average energy", 4: "4 — Average energy",
+        5: "5 — Fairly active", 6: "6 — Active", 7: "7 — Very active", 8: "8 — Extremely energetic"
+      };
+      energySlider.addEventListener('input', () => { energyHint.textContent = energyHints[energySlider.value]; });
+
+      // Appetite score hint
+      const appetiteSlider = document.getElementById('appetiteScore');
+      const appetiteHint = document.getElementById('appetiteHint');
+      const appetiteHints = {
+        1: "1 — Barely eating", 2: "2 — Eating much less than usual", 3: "3 — Eating somewhat less than usual",
+        4: "4 — Eating normally", 5: "5 — Good appetite", 6: "6 — Very good appetite", 7: "7 — Eager to eat", 8: "8 — Excellent appetite"
+      };
+      appetiteSlider.addEventListener('input', () => { appetiteHint.textContent = appetiteHints[appetiteSlider.value]; });
+
+      // Cognitive/behavior score hint
+      const cognitiveSlider = document.getElementById('cognitiveScore');
+      const cognitiveHint = document.getElementById('cognitiveHint');
+      const cognitiveHints = {
+        1: "1 — Often confused or withdrawn", 2: "2 — Frequently disoriented", 3: "3 — Occasionally confused",
+        4: "4 — Normal alertness", 5: "5 — Alert and responsive", 6: "6 — Engaged and attentive",
+        7: "7 — Very sharp", 8: "8 — Extremely sharp and engaged"
+      };
+      cognitiveSlider.addEventListener('input', () => { cognitiveHint.textContent = cognitiveHints[cognitiveSlider.value]; });
+
+      // "None" checkbox clears other treatment checkboxes, and vice versa
+      const treatmentBoxes = document.querySelectorAll('input[name="treatment_category"]');
+      const noneBox = document.getElementById('treatmentNone');
+      treatmentBoxes.forEach(box => {
+        box.addEventListener('change', () => {
+          if (box === noneBox && noneBox.checked) {
+            treatmentBoxes.forEach(b => { if (b !== noneBox) b.checked = false; });
+          } else if (box !== noneBox && box.checked) {
+            noneBox.checked = false;
+          }
+        });
+      });
+
+      // Form submission — no magic-link/SMS step here. The owner already
+      // verified their phone moments ago to reach this page (see Stage 3's
+      // design); this just creates the dog directly against their account.
+      document.getElementById('addDogForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const formData = new FormData(e.target);
+        const treatmentCategories = formData.getAll('treatment_category');
+        const data = Object.fromEntries(formData);
+        data.treatment_category = treatmentCategories;
+        data.owner_id = ownerId;
+
+        try {
+          const response = await fetch('/api/add-dog', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+          });
+
+          const result = await response.json();
+
+          if (result.success) {
+            window.location.href = `/dashboard/${result.dogId}`;
+          } else {
+            alert('Error: ' + (result.error || 'Unknown error'));
+          }
+        } catch (error) {
+          console.error('Error:', error);
+          alert('Error submitting form. Please try again.');
+        }
+      });
+    </script>
+
+    <style>
+      fieldset { border: none; padding: 0; margin: 0 0 30px 0; }
+      legend { font-size: 18px; font-weight: 600; color: #333; margin-bottom: 15px; }
+      .form-group { margin-bottom: 20px; }
+      label { display: block; font-weight: 500; color: #333; margin-bottom: 6px; font-size: 14px; }
+      .hint { font-weight: normal; color: #999; font-size: 12px; }
+      input[type="text"], input[type="email"], input[type="tel"], input[type="number"], select, textarea {
+        width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-family: inherit; font-size: 14px; box-sizing: border-box;
+      }
+      input[type="range"] { width: 100%; cursor: pointer; }
+      textarea { resize: vertical; }
+      input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
+      .checkbox-list { display: flex; flex-direction: column; gap: 8px; }
+      .checkbox-line { display: flex !important; align-items: center; gap: 8px; font-weight: 400 !important; cursor: pointer; }
+      .checkbox-line input[type="checkbox"] { flex-shrink: 0; }
+      .button { background: #007AFF; color: white; padding: 12px 24px; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; }
+      .button:hover { background: #0051D5; }
+    </style>
+  </body>
+</html>

@@ -60,7 +60,89 @@
       <section class="content-section">
         <div class="container" style="max-width: 600px;">
           <form id="baselineHealthJourneyForm" method="POST" action="/api/send-magic-link">
-            <!-- Dog Info Section -->
+            <!-- About You Section (Phase A — owner info, asked once) -->
+            <fieldset>
+              <legend>About You</legend>
+              <p style="font-size: 13px; color: #999; margin: -8px 0 16px 0;">
+                We'll only ask for this once, even if you add more dogs later.
+              </p>
+
+              <div class="form-group">
+                <label for="ownerName">Your name (optional)</label>
+                <input
+                  type="text"
+                  id="ownerName"
+                  name="owner_name"
+                  placeholder="e.g., Sarah"
+                  maxlength="100"
+                />
+              </div>
+
+              <div class="form-group">
+                <label for="email">Email *</label>
+                <input
+                  type="email"
+                  id="email"
+                  name="email"
+                  required
+                  placeholder="your@email.com"
+                  maxlength="255"
+                />
+              </div>
+
+              <div class="form-group">
+                <label for="phone">
+                  Phone (for SMS check-ins) *
+                </label>
+                <input
+                  type="tel"
+                  id="phone"
+                  name="phone"
+                  required
+                  placeholder="+1 (555) 123-4567"
+                  maxlength="20"
+                />
+                <small style="color: #666; margin-top: 4px; display: block;">
+                  We'll send you a secure link via SMS to verify and complete your profile.
+                </small>
+              </div>
+
+              <div class="form-group">
+                <label>How should we contact you? *</label>
+                <div class="checkbox-list">
+                  <label class="checkbox-line">
+                    <input type="radio" name="contact_preference" value="sms" required /> Text message (SMS)
+                  </label>
+                  <label class="checkbox-line">
+                    <input type="radio" name="contact_preference" value="email" /> Email
+                  </label>
+                  <label class="checkbox-line">
+                    <input type="radio" name="contact_preference" value="both" /> Both
+                  </label>
+                </div>
+                <p style="font-size: 12px; color: #999; margin: 8px 0 0 0;">
+                  Msg &amp; data rates may apply if you choose SMS. Reply STOP to cancel, HELP for help.
+                  See our <a href="trust-and-data.html" style="color: #666;">Terms &amp; Privacy</a>.
+                </p>
+              </div>
+
+              <div class="form-group">
+                <label for="zipCode">ZIP code *</label>
+                <input
+                  type="text"
+                  id="zipCode"
+                  name="zip_code"
+                  inputmode="numeric"
+                  pattern="[0-9]{5}"
+                  maxlength="5"
+                  placeholder="e.g., 60601"
+                  required
+                />
+                <small style="color: #999; display: block; margin-top: 4px;">Just your ZIP code — we don't need your street address.</small>
+              </div>
+            </fieldset>
+
+            <!-- Dog Info Section (Phase B — per-dog, repeats for "Add another dog") -->
             <fieldset>
               <legend>About Your Companion</legend>
 
@@ -266,58 +348,9 @@
                   <option value="not_sure">Not sure</option>
                 </select>
               </div>
-
-              <div class="form-group">
-                <label for="zipCode">ZIP code *</label>
-                <input
-                  type="text"
-                  id="zipCode"
-                  name="zip_code"
-                  inputmode="numeric"
-                  pattern="[0-9]{5}"
-                  maxlength="5"
-                  placeholder="e.g., 60601"
-                  required
-                />
-                <small style="color: #999; display: block; margin-top: 4px;">Just your ZIP code — we don't need your street address.</small>
-              </div>
             </fieldset>
 
-            <!-- Contact Info Section -->
-            <fieldset>
-              <legend>How to Reach You</legend>
-
-              <div class="form-group">
-                <label for="email">Email *</label>
-                <input
-                  type="email"
-                  id="email"
-                  name="email"
-                  required
-                  placeholder="your@email.com"
-                  maxlength="255"
-                />
-              </div>
-
-              <div class="form-group">
-                <label for="phone">
-                  Phone (for SMS check-ins) *
-                </label>
-                <input
-                  type="tel"
-                  id="phone"
-                  name="phone"
-                  required
-                  placeholder="+1 (555) 123-4567"
-                  maxlength="20"
-                />
-                <small style="color: #666; margin-top: 4px; display: block;">
-                  We'll send you a secure link via SMS to verify and complete your profile.
-                </small>
-              </div>
-            </fieldset>
-
-            <!-- Consent -->
+            <!-- Consent (per-dog — Phase B) -->
             <fieldset>
               <div class="form-group">
                 <label style="display: flex; align-items: flex-start; gap: 8px;">
@@ -333,24 +366,6 @@
                     I consent to participate. *
                   </span>
                 </label>
-              </div>
-
-              <div class="form-group">
-                <label style="display: flex; align-items: flex-start; gap: 8px;">
-                  <input
-                    type="checkbox"
-                    id="smsConsent"
-                    name="sms_consent"
-                    style="margin-top: 4px;"
-                  />
-                  <span>
-                    Yes, I want SMS check-in reminders (approximately 1/week)
-                  </span>
-                </label>
-                <p style="font-size: 12px; color: #999; margin: 8px 0 0 26px;">
-                  Msg &amp; data rates may apply. Reply STOP to cancel, HELP for help.
-                  See our <a href="trust-and-data.html" style="color: #666;">Terms &amp; Privacy</a>.
-                </p>
               </div>
             </fieldset>
 
@@ -493,6 +508,12 @@
           const result = await response.json();
 
           if (result.success) {
+            // Stage 3: the confirmation copy shouldn't claim a brand-new
+            // account was created when this phone already had one — match
+            // what the SMS itself actually says (see /api/send-magic-link).
+            const bodyText = result.existingOwner
+              ? `We found an existing account for this number. Click the link in your SMS to add ${data.dog_name} to it.`
+              : `Click the link in your SMS to verify your number and complete your profile.`;
             document.body.innerHTML = `
               <div style="max-width: 500px; margin: 50px auto; text-align: center; font-family: var(--sans); padding: 20px;">
                 <h1 style="color: #4CAF50; margin-bottom: 10px;">✓ Check Your Phone!</h1>
@@ -500,7 +521,7 @@
                   We've sent a secure link to <strong>${data.phone}</strong>
                 </p>
                 <p style="color: #666; line-height: 1.6;">
-                  Click the link in your SMS to verify your number and complete your profile.
+                  ${bodyText}
                   This link expires in 15 minutes.
                 </p>
                 <p style="color: #999; font-size: 14px; margin-top: 30px;">
