@@ -4029,41 +4029,48 @@ app.get('/api/signups', async (req, res) => {
 // ============================================
 app.get('/api/governance/stats', async (req, res) => {
     try {
-        // Get unique users count
-        const { count: foundingMembers, error: usersError } = await supabase
-            .from('users')
+        // Signup count from senior_dogs — the real, live table. This used
+        // to read from `users`, which is a fully abandoned parallel schema
+        // (users/pets/survey_*/sms_preferences — confirmed at 0 rows, no FK
+        // to senior_dogs, an earlier owner-entity attempt that was never
+        // wired up) that never received data, so this endpoint always
+        // reported zero regardless of real signups.
+        const { count: dogCount, error: dogsError } = await supabase
+            .from('senior_dogs')
             .select('id', { count: 'exact', head: true });
 
-        if (usersError) throw usersError;
-        const memberCount = foundingMembers || 0;
+        if (dogsError) throw dogsError;
+        const memberCount = dogCount || 0;
 
-        // Get SMS opt-ins from sms_preferences table
+        // Today's model is one dog per signup, so "founding members" and
+        // "pets registered" are the same count for now. These will only
+        // diverge once a real Owner entity exists (see the multi-dog-owner
+        // project) and can distinguish unique owners from unique dogs.
+        const petsRegistered = memberCount;
+
+        // SMS opt-in rate from senior_dogs.sms_consent — the real,
+        // actively-used consent field (same one the churn cron and the
+        // check-in reminder gate already check) — not the dead
+        // sms_preferences table.
         const { count: smsOptIns, error: smsError } = await supabase
-            .from('sms_preferences')
+            .from('senior_dogs')
             .select('id', { count: 'exact', head: true })
-            .eq('opt_in', true);
+            .eq('sms_consent', true);
 
-        if (smsError) console.warn('SMS preferences query issue:', smsError);
+        if (smsError) console.warn('SMS consent query issue:', smsError);
         const smsOptInCount = smsOptIns || 0;
         const smsOptInRate = memberCount > 0 ? Math.round((smsOptInCount / memberCount) * 100) : 0;
 
-        // Get unique pets count
-        const { count: petCount, error: petsError } = await supabase
-            .from('pets')
-            .select('id', { count: 'exact', head: true });
-
-        if (petsError) throw petsError;
-        const petsRegistered = petCount || 0;
-
-        // Get count of weekly check-ins (ongoing engagement data points)
+        // Weekly check-in count from mobility_checkins — the real
+        // check-ins table, not the dead survey_weekly_checkins table.
         const { count: checkInCount, error: checkinsError } = await supabase
-            .from('survey_weekly_checkins')
+            .from('mobility_checkins')
             .select('id', { count: 'exact', head: true });
 
         if (checkinsError) console.warn('Check-ins query issue:', checkinsError);
         const weeklyCheckIns = checkInCount || 0;
 
-        // Total data points = baseline assessments (one per user) + weekly check-ins
+        // Total data points = baseline assessments (one per dog) + weekly check-ins
         const totalDataPoints = memberCount + weeklyCheckIns;
 
         res.status(200).json({
