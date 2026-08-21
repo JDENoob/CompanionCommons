@@ -3529,17 +3529,18 @@ app.get('/dashboard/:dog_id', async (req, res) => {
               ${journeyTrendLines.map(line => `<p style="margin: 0 0 6px 0; font-size: 14px; color: #2C2C2C;">${line}</p>`).join('')}
             </div>
 
-            <!-- Print-only chart snapshot: hidden on screen, only shown under
-                 @media print. Populated from the live Chart.js canvas via
-                 toDataURL right before window.print() fires (see
-                 printJourneyBtn's click handler) — reuses the exact same
+            <!-- Chart snapshot: visible in the on-screen modal at all times,
+                 not just in print, so what John sees before printing matches
+                 what actually prints. Populated from the live Chart.js
+                 canvas via toDataURL as soon as the modal opens (see
+                 viewSummaryBtn's click handler) — reuses the exact same
                  chart already rendered on the dashboard instead of
                  maintaining a second one. Height is capped (with
                  object-fit:contain so nothing distorts) since the on-screen
                  canvas can render fairly tall on a wide desktop viewport —
                  this keeps the printed summary from growing past one page
                  for a typical baseline-only case. -->
-            <div id="journeyChartPrintOnly" style="display: none; margin-bottom: 10px; break-inside: avoid; page-break-inside: avoid;">
+            <div id="journeyChartPrintOnly" style="margin-bottom: 10px; break-inside: avoid; page-break-inside: avoid;">
               <img id="journeyChartImg" style="width: 100%; max-width: 100%; max-height: 160px; object-fit: contain; display: block;" alt="${dog.dog_name}'s mobility, energy, and appetite chart" />
               <p style="margin: 4px 0 0 0; font-size: 11px; color: #999; line-height: 1.4;">As ${dog.dog_name}'s weekly health journey updates are submitted, this chart will contain more information, giving you a better health journey picture.</p>
             </div>
@@ -3599,7 +3600,6 @@ app.get('/dashboard/:dog_id', async (req, res) => {
             #journeySummaryModal { position: static !important; background: none !important; overflow: visible !important; z-index: auto !important; }
             #journeySummaryPrintArea { position: absolute; top: 0; left: 0; width: 100%; margin: 0; box-shadow: none; }
             .no-print { display: none !important; }
-            #journeyChartPrintOnly { display: block !important; }
           }
         </style>
 
@@ -3725,21 +3725,22 @@ app.get('/dashboard/:dog_id', async (req, res) => {
           const journeyModal = document.getElementById('journeySummaryModal');
           document.getElementById('viewSummaryBtn').addEventListener('click', () => {
             journeyModal.style.display = 'block';
-          });
-          document.getElementById('closeJourneyBtn').addEventListener('click', () => {
-            journeyModal.style.display = 'none';
-          });
-          document.getElementById('printJourneyBtn').addEventListener('click', () => {
-            // Snapshot the live Chart.js canvas as a static image right
-            // before printing, instead of maintaining a second chart just
-            // for the printout. The <img> stays hidden on screen
-            // (#journeyChartPrintOnly) and is only revealed by the
-            // @media print rule below.
+            // Snapshot the live Chart.js canvas as a static image as soon as
+            // the modal opens, not at print time — so what's shown on screen
+            // in the modal is exactly what prints, instead of the chart
+            // appearing invisibly only once Print is clicked. Reuses the
+            // exact same chart already rendered on the dashboard instead of
+            // maintaining a second one.
             const mobilityCanvas = document.getElementById('mobilityChart');
             const journeyChartImg = document.getElementById('journeyChartImg');
             if (mobilityCanvas && journeyChartImg) {
               journeyChartImg.src = mobilityCanvas.toDataURL('image/png');
             }
+          });
+          document.getElementById('closeJourneyBtn').addEventListener('click', () => {
+            journeyModal.style.display = 'none';
+          });
+          document.getElementById('printJourneyBtn').addEventListener('click', () => {
             window.print();
           });
 
