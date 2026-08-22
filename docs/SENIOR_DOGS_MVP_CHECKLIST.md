@@ -324,12 +324,7 @@ Cleanup:
 - [x] **STEP P7E:** Post legal pages on website ✅ COMPLETE (footer links added across all 9 pages Aug 17, actually deployed Aug 18)
 
 **Testing:**
-- [ ] **STEP P8:** End-to-end flow testing
-  - [ ] Signup → Baseline survey → First log → Dashboard
-  - [ ] SMS reminder sent → Click link → Logs → Sees insights
-  - [ ] Email digest sent → Opens → Clicks → Views digest
-  - [ ] Breed guide unlocked → Downloads → "Share with vet"
-  - QA: Zero unhandled errors, all flows complete
+- [ ] **STEP P8:** ~~End-to-end flow testing~~ **this thin, pre-multi-dog-architecture task list is stale — see the real `## STEP P8` section above for the current, actually-scoped spec. Do not build against this one.**
 
 **Deployment:**
 - [x] **STEP P9:** Deploy to production ✅ MOSTLY COMPLETE (Aug 17-18)
