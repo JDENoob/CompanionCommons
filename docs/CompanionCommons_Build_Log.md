@@ -723,3 +723,23 @@ Closes out three of the real gaps the Aug 20 privacy audit surfaced, plus the de
 **The entire dead legacy schema — `users`, `pets`, `survey_baselines`, `survey_weekly_checkins`, `survey_enrichment`, `sms_preferences` — is now actually dropped**, not just orphaned. Before dropping `users`, `sms_queue.user_id` (a dead foreign key nothing in the real app ever populated) had to be explicitly cleaned up first, since Postgres won't drop a table another column still references. Confirmed live afterward: querying any of the six tables now returns "could not find the table," not just empty results. On the code side: deleted the broken duplicate `users` insert inside `/verify` (a schema mismatch that had been silently failing on every single signup since the project began), and removed the `/api/checkin` and `/api/enrichment` routes outright after confirming zero live callers in `Public/` — `/api/checkin` turned out to reference an undefined variable in its SMS body, proof it had never actually been exercised. The `opted_out` branch in `/api/sms/mark-failed` was also removed on the same confirmed-zero-callers basis.
 
 Test data (including Storage) wiped afterward. Closes checklist items 2, 8, 9, and 11.
+
+---
+
+## August 22, 2026 (Session 3) — Self-Service "Resend My Dashboard Link"
+
+Commit `051d5e7`.
+
+**The gap:** dashboard access was never actually time-gated — the page is meant to be viewable, printable, and shareable any time. But there was no way back in once the original link was lost (SMS deleted, browser history cleared) except waiting for day 7's reminder text to fire incidentally. A real problem for a passwordless, link-based system with no native app yet.
+
+**New `POST /api/resend-dashboard-link`**: looks up an owner by phone (reusing the exact `sanitizePhone` normalization already used at signup, not new logic) and, if found, sends a link to the existing `/checkins/:owner_id` page — no new destination page built, reused as-is since it already lists every dog with status and a link each. Delivered via whatever channel the owner's `preferred_contact_method` already specifies.
+
+**Security posture:** every outcome — found-and-sent, not-found, rate-limited, even an unexpected server error — returns the identical generic response. The endpoint never reveals whether a given phone number is registered.
+
+**Rate limiting reused `smsRateLimit()`**, keyed by phone number rather than any userId — worth noting this function had existed in the codebase with zero call sites anywhere before this; first real usage. Tested against its actual threshold (10/day), not an assumed one: confirmed server-side that the 11th call to the same number was genuinely blocked, while the client response stayed identical throughout all 11.
+
+**Two bonus fixes found and handled in the same pass:** the homepage's "Sign In" nav link pointed to a dead `#signin` anchor with no matching element anywhere — same bug class as the "5 dead sign-up buttons" fixed Aug 16 — repointed to the new page instead of adding a redundant link. And a pointer added to the dashboard's existing "Dog Not Found" error page, since that's the moment someone most needs this.
+
+No migration required — every field used (`owners.phone`/`email`/`preferred_contact_method`/`id`) already existed.
+
+**Verified end-to-end with real sends:** phone normalization confirmed matching against a differently-formatted input (`"500-555-0001"` against a stored `+15005550001`); the actual SMS text fetched back from Twilio and its link confirmed to resolve to the right dog; email delivery confirmed; the not-found case confirmed to create zero records. Test data and stray processes cleaned up afterward.
