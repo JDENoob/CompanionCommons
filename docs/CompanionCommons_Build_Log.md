@@ -687,13 +687,13 @@ Final state confirmed against a real generated PDF: one page for the baseline-on
 - **Deciding when to actually open the site (`SITE_PASSWORD`)** — still genuinely just a decision.
 - **STEP P1C (Comparative Feedback)** — still blocked on real breed-cohort volume.
 - **STEP P8 (full end-to-end pass)** — still outstanding.
-- **Missing consent record** — not yet fixed.
-- **Orphaned `users` table** — not yet fixed; confirmed again this session to be outside the normal table-enumeration process, worth deliberately including next time this area is touched.
-- **Stored-XSS gap in the Journey Summary modal** — not yet fixed.
-- **Site-wide audit needed: unescaped user-controlled fields rendered into HTML without `escapeHtml()`.** Found again (Aug 22) while adding the Stage 5 dog switcher — `buildDogSwitcherHtml`'s dog-name tab label was interpolating `d.dog_name` raw; fixed on the spot. While in there, confirmed the existing, unrelated `<h1>${dog.dog_name}'s Mobility Dashboard</h1>` line in the same route has the identical gap — left unfixed as out of scope for that change, but this is now at least the third confirmed instance of this exact pattern (Journey Summary notes, the dog-switcher tab, and this dashboard heading), each found independently rather than by a deliberate sweep. Worth a real, dedicated audit of every `${...}` interpolation of `dog_name`/breed/notes/or any other user-supplied field across `server.js`, not more one-off fixes as they're stumbled into.
+- ~~Missing consent record~~ — **fixed Aug 22** (`consent_given_at` on both `magic_link_tokens` and `senior_dogs`, see Session 2 entry below).
+- ~~Orphaned `users` table~~ — **fixed Aug 22**, and taken further than originally scoped: the entire dead legacy schema (`users`/`pets`/`survey_baselines`/`survey_weekly_checkins`/`survey_enrichment`/`sms_preferences`) is now dropped, not just this one table.
+- ~~Stored-XSS gap in the Journey Summary modal~~ — **fixed Aug 22**, as part of a full site-wide sweep, not a one-off patch.
+- ~~Site-wide audit needed: unescaped user-controlled fields rendered into HTML without `escapeHtml()`~~ — **done Aug 22**, see Session 2 entry below for the two real findings it turned up.
 - **Data-model separation (identifiable vs. de-identifiable fields)** — not yet started.
-- **Dead duplicate reminder system** (`/api/checkin`, `survey_weekly_checkins`) — confirmed genuinely unreachable by real users, real cleanup candidate, not yet removed.
-- **Startup log message says "(1 minute for testing)"** for the churn cron, but the real interval is 60 minutes — cosmetic, pre-existing, not yet fixed.
+- ~~Dead duplicate reminder system (`/api/checkin`, `survey_weekly_checkins`)~~ — **removed Aug 22**, along with `/api/enrichment`, both confirmed to have zero live callers first.
+- **Startup log message says "(1 minute for testing)"** for the churn cron, but the real interval is 60 minutes — cosmetic, pre-existing, still not fixed.
 - **Begin actual beta recruiting** — 8 real strangers + 2-3 known friends, per the Aug 20 decision — not yet started.
 
 ---
@@ -709,3 +709,17 @@ A full process sweep (`Get-Process node | Stop-Process -Force`, confirmed zero `
 ### Multi-Dog Owner Project — Complete (Aug 22)
 
 The multi-dog owner architecture project (owner entity, `owners` table, signup rewrite with returning-owner detection, message consolidation, and an additive-only dashboard dog-switcher) is now fully complete across all 5 stages. Full design decisions, investigation findings, and live verification detail for every stage live in `Multi_Dog_Signup_Build.md` — not duplicated here, consistent with that doc's original scope.
+
+---
+
+## August 22, 2026 (Session 2) — Consent Record, Site-Wide XSS Sweep, Legacy Schema Removed
+
+Closes out three of the real gaps the Aug 20 privacy audit surfaced, plus the dead-code cleanup flagged alongside them — commit `102798a`.
+
+**Consent record, finally persisted.** The signup consent checkbox has always blocked submission if unchecked, but the fact that consent happened was never actually stored anywhere. Added `consent_given_at` to both `magic_link_tokens` (captured at submission, carried through to `/verify` the same way `contact_preference`/`owner_name` already were) and `senior_dogs` (the real persisted record, written on all three dog-creation paths — `/verify` for both new and returning owners, and `/api/add-dog`). Migration run, verified with a real end-to-end signup.
+
+**A full site-wide `escapeHtml()` sweep**, not another one-off patch — the Journey Summary notes gap flagged since Aug 20 was the trigger, but the sweep covered every `dog_name`/`breed`/`note_text`/`baseline_notes` interpolation across the check-in page, breed guide, dashboard, Journey Summary, the `/checkins/:owner_id` page, and both churn alert emails. Two real findings turned up beyond the original checklist: `activeAlert.message` (the health-alert banner, unescaped on both the dashboard and Journey Summary) and `dog.baseline_notes` — the actually-exploitable one, since it's sanitized at input only via `sanitizeString()` (trim + length cap), unlike `dog_name`/`breed`, which go through the much stricter `sanitizeName()` (letters/spaces/hyphens/apostrophes only — meaning those two fields were never really exploitable; escaping them was real defense-in-depth, not closing a live hole). Verified empirically, not just by inspection: a test dog was created with actual `<script>`/`<img onerror>`/`<svg onload>` payloads written directly into the database, bypassing the app's own sanitization entirely, and confirmed to render as inert text on every page checked.
+
+**The entire dead legacy schema — `users`, `pets`, `survey_baselines`, `survey_weekly_checkins`, `survey_enrichment`, `sms_preferences` — is now actually dropped**, not just orphaned. Before dropping `users`, `sms_queue.user_id` (a dead foreign key nothing in the real app ever populated) had to be explicitly cleaned up first, since Postgres won't drop a table another column still references. Confirmed live afterward: querying any of the six tables now returns "could not find the table," not just empty results. On the code side: deleted the broken duplicate `users` insert inside `/verify` (a schema mismatch that had been silently failing on every single signup since the project began), and removed the `/api/checkin` and `/api/enrichment` routes outright after confirming zero live callers in `Public/` — `/api/checkin` turned out to reference an undefined variable in its SMS body, proof it had never actually been exercised. The `opted_out` branch in `/api/sms/mark-failed` was also removed on the same confirmed-zero-callers basis.
+
+Test data (including Storage) wiped afterward. Closes checklist items 2, 8, 9, and 11.
