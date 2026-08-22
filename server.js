@@ -887,185 +887,6 @@ ensureGoogleSheetTabsExist();
 
 
 // ============================================
-// PHASE 1: WEEKLY CHECK-IN (Weeks 1-12)
-// NEW ENDPOINT
-// ============================================
-app.post('/api/checkin', async (req, res) => {
-    try {
-        const {
-            user_id,
-            pet_id,
-            week_number,
-            mobility_score,
-            observations,
-            trend
-        } = req.body;
-
-        // ============================================
-        // SERVER-SIDE VALIDATION
-        // ============================================
-
-        if (!user_id || !pet_id || !week_number || !mobility_score) {
-            return res.status(400).json({
-                error: 'Missing required fields: user_id, pet_id, week_number, mobility_score'
-            });
-        }
-
-        // Validate UUID format (user_id and pet_id should be UUIDs)
-        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        if (!uuidRegex.test(user_id)) {
-            return res.status(400).json({ error: 'Invalid user_id format' });
-        }
-        if (!uuidRegex.test(pet_id)) {
-            return res.status(400).json({ error: 'Invalid pet_id format' });
-        }
-
-        // Validate week_number
-        const weekNum = parseInt(week_number);
-        if (isNaN(weekNum) || weekNum < 1 || weekNum > 12) {
-            return res.status(400).json({ error: 'week_number must be an integer between 1 and 12' });
-        }
-
-        // Validate mobility_score
-        const mobilityScore = parseInt(mobility_score);
-        if (isNaN(mobilityScore) || mobilityScore < 1 || mobilityScore > 8) {
-            return res.status(400).json({ error: 'mobility_score must be a number between 1 and 8' });
-        }
-
-        // Validate trend if provided
-        const validTrends = ['improving', 'stable', 'declining', ''];
-        if (trend && !validTrends.includes(trend.toLowerCase())) {
-            return res.status(400).json({ error: 'trend must be improving, stable, or declining' });
-        }
-
-        // Validate observations if provided (max 500 characters)
-        if (observations && observations.length > 500) {
-            return res.status(400).json({ error: 'observations must be 500 characters or less' });
-        }
-
-        // ============================================
-        // INPUT SANITIZATION (AFTER VALIDATION)
-        // ============================================
-        const sanitizedObservations = observations ? sanitizeString(observations, 500) : null;
-        const sanitizedTrend = trend ? sanitizeSelect(trend, ['improving', 'stable', 'declining', '']) : 'stable';
-
-        // Save check-in to survey_weekly_checkins
-        const { data: checkin, error: checkinError } = await supabase
-            .from('survey_weekly_checkins')
-            .upsert([{
-                pet_id,
-                user_id,
-                week_number: parseInt(week_number),
-                mobility_score: parseInt(mobility_score),
-                observations: sanitizedObservations,
-                trend: sanitizedTrend
-            }], { onConflict: 'pet_id,week_number' })
-            .select();
-
-        if (checkinError) throw checkinError;
-        console.log(`✅ Week ${week_number} check-in saved for pet: ${pet_id}`);
-
-        // Queue enrichment question if weeks 1-4
-        if (week_number >= 1 && week_number <= 4) {
-            const enrichmentType = getEnrichmentForWeek(week_number);
-            const nextTuesday = getNextTuesday();
-
-            const { error: enrichError } = await supabase
-                .from('sms_queue')
-                .insert([{
-                    user_id,
-                    pet_id,
-                    message_type: enrichmentType,
-                    scheduled_for: nextTuesday.toISOString(),
-                    message_body: getEnrichmentMessage(enrichmentType),
-                    status: 'pending'
-                }]);
-
-            if (enrichError) console.error('Error queuing enrichment SMS:', enrichError);
-        }
-
-        // Queue next week's check-in if not at week 12
-        if (week_number < 12) {
-            const nextWeekTuesday = getNextTuesday();
-            nextWeekTuesday.setDate(nextWeekTuesday.getDate() + 7);
-
-            const { error: nextError } = await supabase
-                .from('sms_queue')
-                .insert([{
-                    user_id,
-                    pet_id,
-                    message_type: `week_${week_number + 1}_checkin`,
-                    scheduled_for: nextWeekTuesday.toISOString(),
-                    message_body: `Week ${week_number + 1}: How's ${dog.dog_name} moving? (1-8)`,
-                    status: 'pending'
-                }]);
-
-            if (nextError) console.error('Error queuing next week SMS:', nextError);
-        }
-
-        res.json({
-            success: true,
-            message: `✅ Week ${week_number} check-in recorded`,
-            data: checkin
-        });
-
-    } catch (error) {
-        console.error('Error processing check-in:', error);
-        res.status(500).json({ error: 'Error processing check-in', details: error.message });
-    }
-});
-
-// ============================================
-// PHASE 1A: ENRICHMENT QUESTIONS (Weeks 1-5)
-// NEW ENDPOINT
-// ============================================
-app.post('/api/enrichment', async (req, res) => {
-    try {
-        const {
-            user_id,
-            pet_id,
-            week_number,
-            typical_day_description,
-            primary_goal,
-            primary_goal_other,
-            peer_comparison_interest,
-            network_context
-        } = req.body;
-
-        if (!user_id || !pet_id || !week_number) {
-            return res.status(400).json({ error: 'Missing: user_id, pet_id, week_number' });
-        }
-
-        const { data: enrichment, error: enrichError } = await supabase
-            .from('survey_enrichment')
-            .upsert([{
-                user_id,
-                pet_id,
-                week_number: parseInt(week_number),
-                typical_day_description: typical_day_description || null,
-                primary_goal: primary_goal || null,
-                primary_goal_other: primary_goal_other || null,
-                peer_comparison_interest: peer_comparison_interest || null,
-                network_context: network_context || null
-            }], { onConflict: 'pet_id,week_number' })
-            .select();
-
-        if (enrichError) throw enrichError;
-        console.log(`✅ Enrichment (week ${week_number}) saved for pet: ${pet_id}`);
-
-        res.json({
-            success: true,
-            message: `✅ Week ${week_number} enrichment saved`,
-            data: enrichment
-        });
-
-    } catch (error) {
-        console.error('Error saving enrichment:', error);
-        res.status(500).json({ error: 'Error saving enrichment', details: error.message });
-    }
-});
-
-// ============================================
 // SMS: QUEUE MANAGEMENT
 // NEW ENDPOINTS
 // ============================================
@@ -1165,24 +986,6 @@ app.post('/api/sms/mark-failed', async (req, res) => {
             .eq('id', message_id);
 
         if (updateError) throw updateError;
-
-        if (status === 'opted_out') {
-            const { data: smsRow } = await supabase
-                .from('sms_queue')
-                .select('user_id')
-                .eq('id', message_id)
-                .single();
-
-            if (smsRow) {
-                await supabase
-                    .from('sms_preferences')
-                    .update({
-                        sms_opted_out: true,
-                        sms_opted_out_at: new Date().toISOString()
-                    })
-                    .eq('user_id', smsRow.user_id);
-            }
-        }
 
         res.json({ success: true });
     } catch (error) {
@@ -1327,7 +1130,7 @@ app.get('/check-in/:dog_id', async (req, res) => {
       <html>
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>${dog.dog_name}'s Check-In</title>
+        <title>${escapeHtml(dog.dog_name)}'s Check-In</title>
         <style>
           body {
             font-family: -apple-system, sans-serif;
@@ -1383,11 +1186,11 @@ app.get('/check-in/:dog_id', async (req, res) => {
       </head>
       <body>
         <div class="card">
-          <h2><i data-lucide="clipboard-check"></i> ${dog.dog_name}'s Check-In</h2>
+          <h2><i data-lucide="clipboard-check"></i> ${escapeHtml(dog.dog_name)}'s Check-In</h2>
           <p class="subtitle">Week ${weekNumber} Health Tracker</p>
 
           <form id="checkinForm">
-            <label for="mobility">How's ${dog.dog_name}'s mobility this week?</label>
+            <label for="mobility">How's ${escapeHtml(dog.dog_name)}'s mobility this week?</label>
             <input
               type="range"
               id="mobility"
@@ -1398,7 +1201,7 @@ app.get('/check-in/:dog_id', async (req, res) => {
             >
             <div class="hint" id="mobilityHint">4/8 - Some good days, some bad days</div>
 
-            <label for="energy" style="margin-top: 20px;">How's ${dog.dog_name}'s energy level this week?</label>
+            <label for="energy" style="margin-top: 20px;">How's ${escapeHtml(dog.dog_name)}'s energy level this week?</label>
             <input
               type="range"
               id="energy"
@@ -1409,7 +1212,7 @@ app.get('/check-in/:dog_id', async (req, res) => {
             >
             <div class="hint" id="energyHint">4/8 - Average energy</div>
 
-            <label for="appetite" style="margin-top: 20px;">How's ${dog.dog_name}'s appetite this week?</label>
+            <label for="appetite" style="margin-top: 20px;">How's ${escapeHtml(dog.dog_name)}'s appetite this week?</label>
             <input
               type="range"
               id="appetite"
@@ -1421,7 +1224,7 @@ app.get('/check-in/:dog_id', async (req, res) => {
             <div class="hint" id="appetiteHint">4/8 - Average appetite</div>
 
             ${showCognitive ? `
-            <label for="cognitive" style="margin-top: 20px;">How's ${dog.dog_name}'s alertness &amp; behavior this week?</label>
+            <label for="cognitive" style="margin-top: 20px;">How's ${escapeHtml(dog.dog_name)}'s alertness &amp; behavior this week?</label>
             <input
               type="range"
               id="cognitive"
@@ -1434,7 +1237,7 @@ app.get('/check-in/:dog_id', async (req, res) => {
             ` : ''}
 
             ${showCognitive ? `
-            <label for="weight" style="margin-top: 20px;">${dog.dog_name}'s weight this week (lbs)</label>
+            <label for="weight" style="margin-top: 20px;">${escapeHtml(dog.dog_name)}'s weight this week (lbs)</label>
             <input
               type="number"
               id="weight"
@@ -1567,7 +1370,7 @@ app.get('/check-in/:dog_id', async (req, res) => {
                   <div class="card" style="text-align: center;">
                     <h2 style="color: green;">✅ Check-In Submitted!</h2>
                     <p style="font-size: 18px; color: #007AFF; margin: 20px 0;">
-                      ${dog.dog_name}'s mobility: \${result.mobility_score}/8
+                      ${escapeHtml(dog.dog_name)}'s mobility: \${result.mobility_score}/8
                     </p>
                     \${streakBadge}
                     \${milestoneBanner}
@@ -2417,7 +2220,7 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
         <html>
         <head>
           <meta name="viewport" content="width=device-width, initial-scale=1">
-          <title>${dog.dog_name}'s Breed Guide</title>
+          <title>${escapeHtml(dog.dog_name)}'s Breed Guide</title>
           <style>
             body { font-family: -apple-system, sans-serif; max-width: 600px; margin: 60px auto; padding: 20px; text-align: center; background: #f5f5f5; }
             .card { background: white; border-radius: 12px; padding: 40px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
@@ -2427,7 +2230,7 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
           <div class="card">
             <p style="font-size: 48px; margin: 0 0 20px 0;"><i data-lucide="lock"></i></p>
             <h2 style="margin: 0 0 10px 0;">Not unlocked yet</h2>
-            <p style="color: #666;">${dog.dog_name}'s breed guide unlocks after your Week 2 check-in. Keep logging!</p>
+            <p style="color: #666;">${escapeHtml(dog.dog_name)}'s breed guide unlocks after your Week 2 check-in. Keep logging!</p>
             <a href="/dashboard/${dog_id}" style="display: inline-block; margin-top: 20px; background: #007AFF; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none;">Back to Dashboard</a>
           </div>
           <script src="https://unpkg.com/lucide@1.33.0"></script>
@@ -2469,7 +2272,7 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>${dog.dog_name}'s ${guide.displayName} Guide</title>
+        <title>${escapeHtml(dog.dog_name)}'s ${guide.displayName} Guide</title>
         <style>
           body { font-family: -apple-system, sans-serif; max-width: 650px; margin: 40px auto; padding: 20px; background: #f5f5f5; color: #333; line-height: 1.6; }
           .card { background: white; border-radius: 12px; padding: 40px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
@@ -2491,13 +2294,13 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
           <p class="site-brand">Companion Commons</p>
 
           ${dog.photo_url
-            ? `<img src="${dog.photo_url}" alt="${dog.dog_name}" class="dog-photo" />`
+            ? `<img src="${dog.photo_url}" alt="${escapeHtml(dog.dog_name)}" class="dog-photo" />`
             : `<div class="dog-photo-placeholder"><i data-lucide="paw-print"></i></div>`
           }
 
           <p style="font-size: 32px; margin: 0 0 10px 0;"><i data-lucide="book-open"></i></p>
           <h1>${guide.displayName}: A Health Journey Guide</h1>
-          <p class="subtitle">Unlocked for ${dog.dog_name} — Week 2 milestone${guide.typicalWeight ? ` &nbsp;•&nbsp; Typical weight: ${guide.typicalWeight}` : ''}</p>
+          <p class="subtitle">Unlocked for ${escapeHtml(dog.dog_name)} — Week 2 milestone${guide.typicalWeight ? ` &nbsp;•&nbsp; Typical weight: ${guide.typicalWeight}` : ''}</p>
 
           <h2>History</h2>
           <p>${guide.history}</p>
@@ -2509,13 +2312,13 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
           <p>${seniorSectionCopy}</p>
 
           <div class="dog-snapshot">
-            <strong>${dog.dog_name}'s current mobility:</strong> ${currentMobility}/8
-            <p style="margin: 8px 0 0 0; font-size: 13px; color: #888;">This is just ${dog.dog_name}'s own number — not a comparison to other dogs. Keep logging to build a clearer picture over time.</p>
+            <strong>${escapeHtml(dog.dog_name)}'s current mobility:</strong> ${currentMobility}/8
+            <p style="margin: 8px 0 0 0; font-size: 13px; color: #888;">This is just ${escapeHtml(dog.dog_name)}'s own number — not a comparison to other dogs. Keep logging to build a clearer picture over time.</p>
           </div>
 
           ${weightComparisonText ? `
           <div class="dog-snapshot" style="margin-top: 12px;">
-            <strong>${dog.dog_name}'s current weight:</strong> ${currentWeight} lb
+            <strong>${escapeHtml(dog.dog_name)}'s current weight:</strong> ${currentWeight} lb
             <p style="margin: 8px 0 0 0; font-size: 13px; color: #888;">This is ${weightComparisonText}.</p>
           </div>
           ` : ''}
@@ -2940,7 +2743,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
           const noteDate = new Date(n.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
           return `<div style="padding: 10px 0; border-bottom: 1px solid #eee;">
             <div style="font-size: 12px; color: #888; margin-bottom: 3px;">${noteDate}</div>
-            <div style="font-size: 14px; color: #2C2C2C;">${n.note_text}</div>
+            <div style="font-size: 14px; color: #2C2C2C;">${escapeHtml(n.note_text)}</div>
           </div>`;
         }).join('')
       : `<p style="font-size: 14px; color: #888;">No notes logged yet.</p>`;
@@ -2948,7 +2751,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
     // Active alert, if any (reuses the same activeAlert already fetched for the dashboard banner)
     const journeyAlertHtml = activeAlert
       ? `<div style="background: #FFF8E1; border-left: 4px solid #F5A623; border-radius: 8px; padding: 14px 16px; margin-bottom: 20px;">
-          <p style="margin: 0; font-size: 14px; color: #2C2C2C; font-weight: 500;">⚠️ ${activeAlert.message || 'A recent change was flagged for this dog.'}</p>
+          <p style="margin: 0; font-size: 14px; color: #2C2C2C; font-weight: 500;">⚠️ ${escapeHtml(activeAlert.message) || 'A recent change was flagged for this dog.'}</p>
           <p style="margin: 6px 0 0 0; font-size: 12px; color: #888;">This is not a diagnosis — worth mentioning to your vet.</p>
         </div>`
       : '';
@@ -2961,7 +2764,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
       <html>
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>${dog.dog_name}'s Dashboard</title>
+        <title>${escapeHtml(dog.dog_name)}'s Dashboard</title>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
         <style>
           * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -3281,8 +3084,8 @@ app.get('/dashboard/:dog_id', async (req, res) => {
           ${dogSwitcherHtml}
 
           <div class="header">
-            <h1><i data-lucide="bar-chart-3"></i> ${dog.dog_name}'s Mobility Dashboard</h1>
-            <p>${dog.breed || ''} • ${dog.age || 'Age unknown'} years old • ${dog.gender || 'Gender unknown'}</p>
+            <h1><i data-lucide="bar-chart-3"></i> ${escapeHtml(dog.dog_name)}'s Mobility Dashboard</h1>
+            <p>${escapeHtml(dog.breed) || ''} • ${dog.age || 'Age unknown'} years old • ${dog.gender || 'Gender unknown'}</p>
             <div class="week-progress">
               <span>Baseline ✓</span>
               <span>·</span>
@@ -3295,12 +3098,12 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                 }).join('')}
               </div>
             </div>
-            ${isSenior ? `<p style="margin: 8px 0 0 0; font-size: 13px; color: #666;">${dog.dog_name} is considered a senior for their breed.</p>` : ''}
+            ${isSenior ? `<p style="margin: 8px 0 0 0; font-size: 13px; color: #666;">${escapeHtml(dog.dog_name)} is considered a senior for their breed.</p>` : ''}
           </div>
 
           ${isInBaselinePeriod ? `
           <div style="background: #EEF2F5; border-left: 4px solid #8B9BA8; border-radius: 8px; padding: 16px 20px; margin: 20px 0;">
-            <p style="margin: 0; color: #4A5A66; font-size: 14px;"><i data-lucide="clipboard-list"></i> ${dog.dog_name}'s first weekly update will be ready in ${daysUntilFirstUpdate} day${daysUntilFirstUpdate === 1 ? '' : 's'}. You'll get a text when it's time.</p>
+            <p style="margin: 0; color: #4A5A66; font-size: 14px;"><i data-lucide="clipboard-list"></i> ${escapeHtml(dog.dog_name)}'s first weekly update will be ready in ${daysUntilFirstUpdate} day${daysUntilFirstUpdate === 1 ? '' : 's'}. You'll get a text when it's time.</p>
           </div>
           ` : hasUpdateDue ? `
           <div style="background: #FFF8E7; border-left: 4px solid #A89968; border-radius: 8px; padding: 16px 20px; margin: 20px 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
@@ -3315,7 +3118,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
           ${activeAlert ? `
           <div style="background: #FFF3E0; border-left: 4px solid #FF9800; border-radius: 8px; padding: 16px 20px; margin: 20px 0;">
             <p style="margin: 0 0 4px 0; font-weight: 600; color: #E65100; font-size: 14px;">⚠️ Worth a look</p>
-            <p style="margin: 0; color: #5D4037; font-size: 14px; line-height: 1.5;">${activeAlert.message}</p>
+            <p style="margin: 0; color: #5D4037; font-size: 14px; line-height: 1.5;">${escapeHtml(activeAlert.message)}</p>
           </div>
           ` : ''}
 
@@ -3323,7 +3126,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
           <div style="background: #FFF8E7; border-left: 4px solid #A89968; border-radius: 8px; padding: 16px 20px; margin: 20px 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
             <div>
               <p style="margin: 0 0 4px 0; font-weight: 600; color: #8A7A4F; font-size: 14px;"><i data-lucide="book-open"></i> Breed guide unlocked</p>
-              <p style="margin: 0; color: #5D4E37; font-size: 14px;">${dog.dog_name}'s ${dog.breed || 'breed'} guide is ready to read.</p>
+              <p style="margin: 0; color: #5D4E37; font-size: 14px;">${escapeHtml(dog.dog_name)}'s ${escapeHtml(dog.breed) || 'breed'} guide is ready to read.</p>
             </div>
             <a href="/breed-guide/${dog_id}" style="background: #A89968; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 500; white-space: nowrap;">Read it →</a>
           </div>
@@ -3336,14 +3139,14 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                 <div style="display: flex; gap: 15px; align-items: flex-start; margin-bottom: 20px;">
                   <div class="baseline-photo">
                     ${dog.photo_url
-                      ? `<img src="${dog.photo_url}" alt="${dog.dog_name}" />`
+                      ? `<img src="${dog.photo_url}" alt="${escapeHtml(dog.dog_name)}" />`
                       : `<div class="baseline-photo-placeholder"><i data-lucide="paw-print"></i></div>`
                     }
                   </div>
                   <div style="flex: 1;">
-                    <h2 style="margin: 0 0 8px 0; font-size: 22px; font-weight: 500; color: #2C2C2C;">${dog.dog_name}'s Health Journey</h2>
+                    <h2 style="margin: 0 0 8px 0; font-size: 22px; font-weight: 500; color: #2C2C2C;">${escapeHtml(dog.dog_name)}'s Health Journey</h2>
                     <p style="margin: 0 0 4px 0; font-size: 13px; color: #999; font-weight: 400;">
-                      ${dog.breed || 'Breed unknown'} • ${dog.age || 'Age unknown'} years old • ${dog.gender || 'Gender unknown'}
+                      ${escapeHtml(dog.breed) || 'Breed unknown'} • ${dog.age || 'Age unknown'} years old • ${dog.gender || 'Gender unknown'}
                       ${dog.spayed_neutered ? ` • ${dog.spayed_neutered === 'yes' ? 'Fixed' : 'Not Fixed'}` : ''}
                       ${dog.diet_type ? ` • ${DIET_TYPE_LABELS[dog.diet_type] || dog.diet_type}` : ''}
                       ${dog.pet_insurance ? ` • ${dog.pet_insurance === 'yes' ? 'Insured' : dog.pet_insurance === 'no' ? 'No Insurance' : 'Insurance Unknown'}` : ''}
@@ -3359,7 +3162,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                     <div class="photo-and-checkin-row" style="display: flex; gap: 8px; margin-bottom: 12px;">
                       <form id="quickPhotoUpload" style="display: flex; gap: 4px; align-items: center;">
                         <input type="file" id="quickPhotoInput" accept="image/*" style="padding: 8px 10px; border: 1.5px solid #D4CDB8; border-radius: 8px; font-size: 12px; width: 130px;">
-                        <button type="submit" class="btn-secondary"><i data-lucide="camera"></i> Update ${dog.dog_name}'s Photo</button>
+                        <button type="submit" class="btn-secondary"><i data-lucide="camera"></i> Update ${escapeHtml(dog.dog_name)}'s Photo</button>
                       </form>
                       ${isInBaselinePeriod ? `
                       <button class="btn-primary" disabled style="white-space: nowrap; padding: 8px 16px; opacity: 0.5; cursor: not-allowed;">
@@ -3408,7 +3211,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                   </div>
                   ${dog.baseline_notes ? `
                   <div class="baseline-notes">
-                    <p><strong>Baseline Notes:</strong> ${dog.baseline_notes}</p>
+                    <p><strong>Baseline Notes:</strong> ${escapeHtml(dog.baseline_notes)}</p>
                   </div>
                   ` : ''}
                 </div>
@@ -3446,7 +3249,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
 
               <div class="chart-card">
                 <h2><i data-lucide="file-text"></i> Notes</h2>
-                <p style="font-size: 13px; color: #999; margin: -8px 0 16px 0;">Jot down anything worth remembering between check-ins — these are saved with ${dog.dog_name}'s health journey.</p>
+                <p style="font-size: 13px; color: #999; margin: -8px 0 16px 0;">Jot down anything worth remembering between check-ins — these are saved with ${escapeHtml(dog.dog_name)}'s health journey.</p>
                 <form id="addNoteForm" style="display: flex; gap: 8px; margin-bottom: 16px;">
                   <input type="text" id="noteInput" placeholder="e.g. Seemed stiffer after our walk today" maxlength="500" style="flex: 1; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px;" required>
                   <button type="submit" style="background: #A89968; color: white; border: none; padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; white-space: nowrap;">Add Note</button>
@@ -3465,7 +3268,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
               </div>
 
               <div class="peer-card">
-                <h2>How ${dog.dog_name} compares across the community</h2>
+                <h2>How ${escapeHtml(dog.dog_name)} compares across the community</h2>
                 <div class="peer-stat">
                   <span class="peer-stat-label">Your dog's rank</span>
                   <span class="peer-stat-value">#${rank} / ${totalDogs}</span>
@@ -3478,7 +3281,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                   <span class="peer-stat-label">Status</span>
                   <span class="peer-stat-value" style="font-size: 14px; color: #A89968; font-weight: 600;"><i data-lucide="target"></i> ${currentScore > peerAverage ? 'Above average!' : currentScore === parseFloat(peerAverage) ? 'At average' : 'Below average'}</span>
                 </div>
-                <p style="margin: 12px 0 0 0; font-size: 12px; color: #999; line-height: 1.5;">This compares ${dog.dog_name} to all dogs currently logging, not specifically ${dog.breed || 'this breed'} — breed-specific comparisons will be added once enough dogs of the same breed are logging regularly.</p>
+                <p style="margin: 12px 0 0 0; font-size: 12px; color: #999; line-height: 1.5;">This compares ${escapeHtml(dog.dog_name)} to all dogs currently logging, not specifically ${escapeHtml(dog.breed) || 'this breed'} — breed-specific comparisons will be added once enough dogs of the same breed are logging regularly.</p>
               </div>
             </div>
 
@@ -3511,7 +3314,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px;">
             <div style="background: #FAFAF8; border-radius: 12px; padding: 18px; border-left: 4px solid #D4AF88;">
               <p style="margin: 0; font-size: 13px; color: #2C2C2C; line-height: 1.6;">
-                Based on anonymized observations from all dogs currently logging on Companion Commons, not specifically ${dog.breed || 'this breed'}. For context only — not a diagnosis or veterinary assessment.
+                Based on anonymized observations from all dogs currently logging on Companion Commons, not specifically ${escapeHtml(dog.breed) || 'this breed'}. For context only — not a diagnosis or veterinary assessment.
               </p>
             </div>
 
@@ -3519,7 +3322,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
               <div style="display: flex; align-items: flex-start; gap: 12px;">
                 <i data-lucide="circle-help" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
                 <div>
-                  <p style="margin: 0 0 8px 0; font-size: 14px; font-weight: 500; color: #2C2C2C;">Prepare for a conversation with ${dog.dog_name}'s vet, family, babysitter etc.</p>
+                  <p style="margin: 0 0 8px 0; font-size: 14px; font-weight: 500; color: #2C2C2C;">Prepare for a conversation with ${escapeHtml(dog.dog_name)}'s vet, family, babysitter etc.</p>
                   <p style="margin: 0; font-size: 13px; color: #2C2C2C;">Review recent notes and highlights to help you share what matters most.</p>
                 </div>
               </div>
@@ -3528,7 +3331,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
 
           <div style="display: flex; gap: 15px; margin-bottom: 30px;">
             <button id="viewSummaryBtn" style="flex: 1; background: #A89968; color: white; border: none; padding: 16px 20px; border-radius: 8px; font-size: 15px; font-weight: 500; cursor: pointer;">
-              Click to View ${dog.dog_name}'s Journey Summary
+              Click to View ${escapeHtml(dog.dog_name)}'s Journey Summary
             </button>
           </div>
 
@@ -3541,31 +3344,31 @@ app.get('/dashboard/:dog_id', async (req, res) => {
         <div id="checkInModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; overflow-y: auto;">
           <div style="background: white; margin: 20px auto; border-radius: 12px; padding: 30px; max-width: 500px; position: relative; top: 50px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-              <h2 style="margin: 0; color: #333;"><i data-lucide="clipboard-check"></i> ${dog.dog_name}'s Check-In</h2>
+              <h2 style="margin: 0; color: #333;"><i data-lucide="clipboard-check"></i> ${escapeHtml(dog.dog_name)}'s Check-In</h2>
               <button id="closeCheckInBtn" style="background: none; border: none; font-size: 24px; cursor: pointer;">✕</button>
             </div>
 
             <form id="checkInForm">
-              <label style="display: block; margin: 15px 0 5px 0; font-weight: 500; color: #333;">How's ${dog.dog_name}'s mobility this week?</label>
+              <label style="display: block; margin: 15px 0 5px 0; font-weight: 500; color: #333;">How's ${escapeHtml(dog.dog_name)}'s mobility this week?</label>
               <input type="range" id="mobility" name="mobility_score" min="1" max="8" value="${latestMobilityScore}" style="width: 100%; cursor: pointer;">
               <div id="mobilityHint" style="font-size: 12px; color: #666; margin: 5px 0 0 0;">4/8 - Some good days, some bad days</div>
 
-              <label style="display: block; margin: 20px 0 5px 0; font-weight: 500; color: #333;">How's ${dog.dog_name}'s energy level this week?</label>
+              <label style="display: block; margin: 20px 0 5px 0; font-weight: 500; color: #333;">How's ${escapeHtml(dog.dog_name)}'s energy level this week?</label>
               <input type="range" id="energy" name="energy_score" min="1" max="8" value="${latestEnergyScore}" style="width: 100%; cursor: pointer;">
               <div id="energyHint" style="font-size: 12px; color: #666; margin: 5px 0 0 0;">4/8 - Average energy</div>
 
-              <label style="display: block; margin: 20px 0 5px 0; font-weight: 500; color: #333;">How's ${dog.dog_name}'s appetite this week?</label>
+              <label style="display: block; margin: 20px 0 5px 0; font-weight: 500; color: #333;">How's ${escapeHtml(dog.dog_name)}'s appetite this week?</label>
               <input type="range" id="appetite" name="appetite_score" min="1" max="8" value="${latestAppetiteScore}" style="width: 100%; cursor: pointer;">
               <div id="appetiteHint" style="font-size: 12px; color: #666; margin: 5px 0 0 0;">4/8 - Average appetite</div>
 
               ${showCognitiveThisWeek ? `
-              <label style="display: block; margin: 20px 0 5px 0; font-weight: 500; color: #333;">How's ${dog.dog_name}'s alertness &amp; behavior this week?</label>
+              <label style="display: block; margin: 20px 0 5px 0; font-weight: 500; color: #333;">How's ${escapeHtml(dog.dog_name)}'s alertness &amp; behavior this week?</label>
               <input type="range" id="cognitive" name="cognitive_score" min="1" max="8" value="${latestCognitiveScore}" style="width: 100%; cursor: pointer;">
               <div id="cognitiveHint" style="font-size: 12px; color: #666; margin: 5px 0 0 0;">4/8 - Average alertness</div>
               ` : ''}
 
               ${showCognitiveThisWeek ? `
-              <label style="display: block; margin: 20px 0 5px 0; font-weight: 500; color: #333;">${dog.dog_name}'s weight this week (lbs)</label>
+              <label style="display: block; margin: 20px 0 5px 0; font-weight: 500; color: #333;">${escapeHtml(dog.dog_name)}'s weight this week (lbs)</label>
               <input type="number" id="weight" name="weight_lbs" min="1" max="250" value="${latestWeightScore}" placeholder="e.g. 62" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-family: inherit; font-size: 14px; box-sizing: border-box;">
               <div style="font-size: 12px; color: #666; margin: 5px 0 0 0;">Optional — tracked alongside mobility, energy, and appetite.</div>
               ` : ''}
@@ -3582,22 +3385,22 @@ app.get('/dashboard/:dog_id', async (req, res) => {
         <div id="journeySummaryModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; overflow-y: auto;">
           <div id="journeySummaryPrintArea" style="background: white; margin: 20px auto; border-radius: 12px; padding: 14px; max-width: 650px; position: relative; top: 30px; border: 2px solid #D4CDB8;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;" class="no-print">
-              <h2 style="margin: 0; color: #333;"><i data-lucide="clipboard-list"></i> ${dog.dog_name}'s Journey Summary</h2>
+              <h2 style="margin: 0; color: #333;"><i data-lucide="clipboard-list"></i> ${escapeHtml(dog.dog_name)}'s Journey Summary</h2>
               <button id="closeJourneyBtn" style="background: none; border: none; font-size: 24px; cursor: pointer;">✕</button>
             </div>
 
             <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 12px;">
               ${dog.photo_url
-                ? `<img src="${dog.photo_url}" alt="${dog.dog_name}" style="width: 64px; height: 64px; border-radius: 50%; object-fit: cover; flex-shrink: 0;" />`
+                ? `<img src="${dog.photo_url}" alt="${escapeHtml(dog.dog_name)}" style="width: 64px; height: 64px; border-radius: 50%; object-fit: cover; flex-shrink: 0;" />`
                 : `<div style="width: 64px; height: 64px; border-radius: 50%; background: #FFF8E7; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><i data-lucide="paw-print" style="width: 28px; height: 28px;"></i></div>`
               }
               <div>
                 <p style="margin: 0 0 2px 0; font-size: 12px; font-weight: 700; letter-spacing: 0.5px; color: #A89968; text-transform: uppercase;">Companion Commons</p>
-                <h3 style="margin: 0; font-size: 18px; color: #2C2C2C;">${dog.dog_name}'s Journey Summary</h3>
+                <h3 style="margin: 0; font-size: 18px; color: #2C2C2C;">${escapeHtml(dog.dog_name)}'s Journey Summary</h3>
               </div>
             </div>
             <p style="margin: 0 0 4px 0; font-size: 13px; color: #666;">
-              ${dog.breed || 'Breed unknown'} • ${dog.age || 'Age unknown'} years old • ${dog.gender || 'Gender unknown'}
+              ${escapeHtml(dog.breed) || 'Breed unknown'} • ${dog.age || 'Age unknown'} years old • ${dog.gender || 'Gender unknown'}
               ${dog.spayed_neutered ? ` • ${dog.spayed_neutered === 'yes' ? 'Fixed' : 'Not Fixed'}` : ''}
               ${dog.diet_type ? ` • ${DIET_TYPE_LABELS[dog.diet_type] || dog.diet_type}` : ''}
               ${dog.pet_insurance ? ` • ${dog.pet_insurance === 'yes' ? 'Insured' : dog.pet_insurance === 'no' ? 'No Insurance' : 'Insurance Unknown'}` : ''}
@@ -3633,8 +3436,8 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                  this keeps the printed summary from growing past one page
                  for a typical baseline-only case. -->
             <div id="journeyChartPrintOnly" style="margin-bottom: 10px; break-inside: avoid; page-break-inside: avoid;">
-              <img id="journeyChartImg" style="width: 100%; max-width: 100%; max-height: 160px; object-fit: contain; display: block;" alt="${dog.dog_name}'s mobility, energy, and appetite chart" />
-              <p style="margin: 4px 0 0 0; font-size: 11px; color: #999; line-height: 1.4;">As ${dog.dog_name}'s weekly health journey updates are submitted, this chart will contain more information, giving you a better health journey picture.</p>
+              <img id="journeyChartImg" style="width: 100%; max-width: 100%; max-height: 160px; object-fit: contain; display: block;" alt="${escapeHtml(dog.dog_name)}'s mobility, energy, and appetite chart" />
+              <p style="margin: 4px 0 0 0; font-size: 11px; color: #999; line-height: 1.4;">As ${escapeHtml(dog.dog_name)}'s weekly health journey updates are submitted, this chart will contain more information, giving you a better health journey picture.</p>
             </div>
 
             <hr style="border: none; border-top: 1px solid #eee; margin: 0 0 8px 0;">
@@ -3656,7 +3459,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                 ${journeyTableRows}
               </tbody>
             </table>
-            ` : `<p style="font-size: 14px; color: #888; margin-bottom: 10px;">No weekly check-ins yet — this will fill in after ${dog.dog_name}'s first update.</p>`}
+            ` : `<p style="font-size: 14px; color: #888; margin-bottom: 10px;">No weekly check-ins yet — this will fill in after ${escapeHtml(dog.dog_name)}'s first update.</p>`}
 
             <hr style="border: none; border-top: 1px solid #eee; margin: 0 0 8px 0;">
 
@@ -4637,6 +4440,7 @@ app.post('/api/send-magic-link', async (req, res) => {
         pet_insurance: cleanPetInsurance,
         treatment_category: cleanTreatmentCategories,
         existing_owner_id: existingOwnerId,
+        consent_given_at: new Date().toISOString(),
         expires_at: expiresAt,
         used_at: null,
         created_at: new Date().toISOString()
@@ -5034,6 +4838,7 @@ app.get('/verify', async (req, res) => {
         pet_insurance: tokenData.pet_insurance,
         treatment_category: tokenData.treatment_category,
         owner_id: ownerId,
+        consent_given_at: tokenData.consent_given_at,
         created_at: now,
         preferred_reminder_day: 3,        // Wednesday (mid-week, neutral)
         preferred_reminder_time: '14:00'  // 2:00 PM (afternoon, safe for all)
@@ -5077,22 +4882,6 @@ app.get('/verify', async (req, res) => {
     }
 
     const dogId = newDog[0].id;
-
-    // Store user contact info (create/update users table entry)
-    const { error: userError } = await supabase
-      .from('users')
-      .insert({
-        email: tokenData.email,
-        phone: tokenData.phone,
-        sms_consent: tokenData.sms_consent,
-        created_at: now
-      })
-      .select();
-
-    if (userError) {
-      console.warn('Warning: Error storing user contact info:', userError);
-      // Non-fatal error - continue to mark token as used
-    }
 
     // Mark the token as used
     const { error: updateError } = await supabase
@@ -5319,6 +5108,7 @@ app.post('/api/add-dog', async (req, res) => {
         pet_insurance: cleanPetInsurance,
         treatment_category: cleanTreatmentCategories,
         owner_id: owner.id,
+        consent_given_at: new Date().toISOString(),
         created_at: now,
         preferred_reminder_day: 3,
         preferred_reminder_time: '14:00'
@@ -5437,14 +5227,14 @@ app.get('/checkins/:owner_id', async (req, res) => {
       }
 
       const photoHtml = dog.photo_url
-        ? `<img src="${dog.photo_url}" alt="${dog.dog_name}" style="width: 56px; height: 56px; border-radius: 50%; object-fit: cover; flex-shrink: 0;" />`
+        ? `<img src="${dog.photo_url}" alt="${escapeHtml(dog.dog_name)}" style="width: 56px; height: 56px; border-radius: 50%; object-fit: cover; flex-shrink: 0;" />`
         : `<div style="width: 56px; height: 56px; border-radius: 50%; background: #FFF8E7; flex-shrink: 0;"></div>`;
 
       return `
         <div style="display: flex; align-items: center; gap: 16px; padding: 16px 0; border-bottom: 1px solid #eee;">
           ${photoHtml}
           <div style="flex: 1;">
-            <div style="font-weight: 600; color: #333;">${dog.dog_name}</div>
+            <div style="font-weight: 600; color: #333;">${escapeHtml(dog.dog_name)}</div>
             <div style="font-size: 13px; color: #777; margin-top: 2px;">${statusText}</div>
           </div>
           ${actionHtml}
@@ -5660,6 +5450,12 @@ async function sendChurnAlertEmail(ownerEmail, dogName, lastScore, lastCheckInDa
   }
 
   try {
+    // Escaped separately from the raw dogName used below in `subject` — a
+    // plain-text email subject should never show literal HTML entities
+    // (e.g. an apostrophe-containing name rendering as "O&#39;Brien"), but
+    // the html body needs the escaped form.
+    const dogNameSafe = escapeHtml(dogName);
+
     // lastCheckInDate is null when the dog has never had a real check-in —
     // in that case there's no real date to cite (the caller no longer
     // falls back to the signup date, which used to make this line stay
@@ -5681,14 +5477,14 @@ async function sendChurnAlertEmail(ownerEmail, dogName, lastScore, lastCheckInDa
               ${sinceLine}
             </p>
             <p style="color: #666; font-size: 16px; margin: 15px 0; line-height: 1.6;">
-              When you get a moment, we'd love to know how ${dogName}'s doing this week. One quick check-in takes 30 seconds and helps build a clear picture of ${dogName} and all the pet families participating.
+              When you get a moment, we'd love to know how ${dogNameSafe}'s doing this week. One quick check-in takes 30 seconds and helps build a clear picture of ${dogNameSafe} and all the pet families participating.
             </p>
             <p style="color: #666; font-size: 14px; margin: 15px 0; line-height: 1.6;">
               <strong>Bonus:</strong> Every check-in helps us build a clearer picture of pet health for the whole community. 🐾
             </p>
             <div style="text-align: center; margin-top: 25px;">
               <a href="${BASE_URL}/dashboard/${dogId}" style="display: inline-block; background: #d96f56; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: 600;">
-                View ${dogName}'s Progress and Update
+                View ${dogNameSafe}'s Progress and Update
               </a>
             </div>
             <p style="color: #999; font-size: 12px; margin-top: 30px; text-align: center;">
@@ -5733,17 +5529,21 @@ async function sendCombinedChurnAlertEmail(ownerEmail, alerts) {
   try {
     const names = alerts.map(a => a.dog.dog_name);
     const nameList = joinDogNames(names);
+    // Escaped separately from the raw nameList used in `subject` below —
+    // same reasoning as sendChurnAlertEmail's dogNameSafe.
+    const nameListSafe = escapeHtml(nameList);
 
     const dogBlocks = alerts.map(({ dog, lastScore, lastCheckInDate }) => {
+      const dogNameSafe = escapeHtml(dog.dog_name);
       const sinceLine = lastCheckInDate
-        ? `We haven't heard from you about ${dog.dog_name} since <strong>${new Date(lastCheckInDate).toLocaleDateString()}</strong>.`
-        : `You haven't logged a check-in for ${dog.dog_name} yet.`;
+        ? `We haven't heard from you about ${dogNameSafe} since <strong>${new Date(lastCheckInDate).toLocaleDateString()}</strong>.`
+        : `You haven't logged a check-in for ${dogNameSafe} yet.`;
       return `
         <div style="border-top: 1px solid #eee; margin-top: 20px; padding-top: 20px;">
           <p style="color: #666; font-size: 15px; margin: 0 0 12px 0; line-height: 1.6;">${sinceLine}</p>
           <div style="text-align: center;">
             <a href="${BASE_URL}/dashboard/${dog.id}" style="display: inline-block; background: #d96f56; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">
-              View ${dog.dog_name}'s Progress and Update
+              View ${dogNameSafe}'s Progress and Update
             </a>
           </div>
         </div>
@@ -5759,7 +5559,7 @@ async function sendCombinedChurnAlertEmail(ownerEmail, alerts) {
           <div style="background: #f5f5f5; border-radius: 12px; padding: 30px;">
             <h2 style="color: #333; margin-bottom: 20px; text-align: center;">Hey there! 👋</h2>
             <p style="color: #666; font-size: 16px; margin: 15px 0; line-height: 1.6;">
-              No pressure — we know life gets busy. When you get a moment, we'd love a quick update on ${nameList}. Each check-in takes 30 seconds and helps build a clear picture of your dogs and all the pet families participating.
+              No pressure — we know life gets busy. When you get a moment, we'd love a quick update on ${nameListSafe}. Each check-in takes 30 seconds and helps build a clear picture of your dogs and all the pet families participating.
             </p>
             ${dogBlocks}
             <p style="color: #999; font-size: 12px; margin-top: 30px; text-align: center;">
