@@ -695,3 +695,17 @@ Final state confirmed against a real generated PDF: one page for the baseline-on
 - **Dead duplicate reminder system** (`/api/checkin`, `survey_weekly_checkins`) — confirmed genuinely unreachable by real users, real cleanup candidate, not yet removed.
 - **Startup log message says "(1 minute for testing)"** for the churn cron, but the real interval is 60 minutes — cosmetic, pre-existing, not yet fixed.
 - **Begin actual beta recruiting** — 8 real strangers + 2-3 known friends, per the Aug 20 decision — not yet started.
+
+---
+
+## August 22, 2026 — Stray Local Dev Server Racing Live Supabase Data, and the Multi-Dog Owner Project Closes Out
+
+### A real testing lesson: a stray local `node server.js` process raced a fresh test run against live data
+
+While live-verifying Stage 4's SMS-combining feature (see `Multi_Dog_Signup_Build.md`), the first attempt looked like a failure: two dogs under one owner, both due for the same reminder, went out as two separate texts with two different Twilio message SIDs and their original individual wording — not combined at all. The grouping logic itself checked out correct both in isolation and re-tested directly against live Supabase data, which pointed away from a code bug. The actual cause: a stray `node server.js` process left running from earlier local work was still alive, polling the same live `sms_queue` table on its own 60-second timer, running older code. It raced the fresh test server — each process grabbed one of the two queued rows before the other could group them, so both got sent individually, one from each process's own (different) logic.
+
+A full process sweep (`Get-Process node | Stop-Process -Force`, confirmed zero `node.exe` running) followed by one clean server instance produced the correct result on retest. **This is now a standing rule in `CLAUDE.md`**: check for and kill any existing node processes before starting a local dev server for testing, since a stray leftover server shares the same live Supabase database as a fresh test run and can silently race it, producing a false-looking failure.
+
+### Multi-Dog Owner Project — Complete (Aug 22)
+
+The multi-dog owner architecture project (owner entity, `owners` table, signup rewrite with returning-owner detection, message consolidation, and an additive-only dashboard dog-switcher) is now fully complete across all 5 stages. Full design decisions, investigation findings, and live verification detail for every stage live in `Multi_Dog_Signup_Build.md` — not duplicated here, consistent with that doc's original scope.
