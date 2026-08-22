@@ -105,6 +105,50 @@ function parseCookies(req) {
   return cookies;
 }
 
+// ============================================
+// OWNER SESSION (STAGE 5 — multi-dog owner project)
+// Additive-only convenience cookie, NOT an auth/login system. It never
+// gates access to anything — dashboard and Journey Summary links keep
+// working with zero session for anyone (a vet, a family member), exactly
+// as they always have. All this cookie ever does is let /dashboard/:dog_id
+// show a bonus dog switcher when the browser holding it already proved
+// phone ownership once via the real magic-link /verify flow. See
+// Multi_Dog_Signup_Build.md, Stage 5, for the full design and the
+// cross-owner edge case this is deliberately guarded against.
+// ============================================
+const OWNER_SESSION_COOKIE = 'cc_owner_session';
+const OWNER_SESSION_MAX_AGE = 90 * 24 * 60 * 60 * 1000; // 90 days, sliding
+
+function setOwnerSessionCookie(res, ownerId) {
+  res.cookie(OWNER_SESSION_COOKIE, ownerId, {
+    httpOnly: true,
+    maxAge: OWNER_SESSION_MAX_AGE,
+    sameSite: 'lax'
+  });
+}
+
+// Renders a horizontal tab strip linking to each of the owner's dogs,
+// highlighting whichever one is currently being viewed. Only ever called
+// when a session cookie's owner_id has already been confirmed to match the
+// dog on screen and the owner has more than one dog — see the call site in
+// /dashboard/:dog_id.
+function buildDogSwitcherHtml(ownersDogs, currentDogId) {
+  const tabs = ownersDogs.map(d => {
+    const isActive = d.id === currentDogId;
+    const photoHtml = d.photo_url
+      ? `<img src="${d.photo_url}" alt="" style="width: 24px; height: 24px; border-radius: 50%; object-fit: cover; margin-right: 6px; vertical-align: middle;" />`
+      : '';
+    return `<a href="/dashboard/${d.id}" style="display: inline-flex; align-items: center; padding: 8px 14px; margin: 0 6px 6px 0; border-radius: 20px; text-decoration: none; font-size: 14px; font-weight: 600; ${isActive ? 'background: #d96f56; color: white;' : 'background: #f0ece3; color: #555;'}">${photoHtml}${escapeHtml(d.dog_name)}</a>`;
+  }).join('');
+
+  return `
+    <div style="margin: 16px 0;">
+      <div>${tabs}</div>
+      <a href="#" onclick="fetch('/api/clear-owner-session', {method:'POST'}).then(() => window.location.reload()); return false;" style="font-size: 12px; color: #999; text-decoration: underline;">Not your device? Clear saved account</a>
+    </div>
+  `;
+}
+
 const COMING_SOON_HTML = `<!doctype html>
 <html lang="en">
 <head>
@@ -171,6 +215,15 @@ app.post('/api/site-unlock', (req, res) => {
     return res.json({ success: true });
   }
   return res.status(401).json({ success: false });
+});
+
+// STAGE 5 (multi-dog owner project) — lets someone clear a saved owner
+// session from a shared/public device. Clearing it only ever removes the
+// bonus dog-switcher on future visits; it was never required to see any
+// dog's data in the first place, so there's nothing else for this to do.
+app.post('/api/clear-owner-session', (req, res) => {
+  res.clearCookie(OWNER_SESSION_COOKIE);
+  res.json({ success: true });
 });
 
 app.use((req, res, next) => {
@@ -2567,6 +2620,41 @@ app.get('/dashboard/:dog_id', async (req, res) => {
       `);
     }
 
+    // ============================================
+    // STAGE 5 (multi-dog owner project): additive-only owner session.
+    // LOCKED DECISION — this block must never gate or change anything
+    // above it. The dog fetch/render above is unconditional and stays
+    // exactly as it's always worked, so a shared dashboard/Journey Summary
+    // link keeps working with zero login for anyone who opens it (a vet, a
+    // family member) — that's already-shipped behavior this must not
+    // regress. This block only ever ADDS a dog switcher on top, and only
+    // when a session cookie exists AND belongs to the owner of THIS dog —
+    // a valid session for a *different* owner (e.g. a vet's own session,
+    // opened on a client's shared link) must render identically to no
+    // session at all, not leak that other owner's dog list here.
+    // ============================================
+    let dogSwitcherHtml = '';
+    const dashboardCookies = parseCookies(req);
+    const sessionOwnerId = dashboardCookies[OWNER_SESSION_COOKIE];
+    if (sessionOwnerId && dog.owner_id && sessionOwnerId === dog.owner_id) {
+      // Sliding renewal: any valid, matching use extends the session
+      // another 90 days, rather than counting down from a fixed grant
+      // time. An owner who keeps visiting effectively never sees the
+      // switcher disappear; one who doesn't simply stops getting the
+      // convenience — never a functional loss either way.
+      setOwnerSessionCookie(res, sessionOwnerId);
+
+      const { data: ownersDogs } = await supabase
+        .from('senior_dogs')
+        .select('id, dog_name, photo_url')
+        .eq('owner_id', sessionOwnerId)
+        .order('created_at', { ascending: true });
+
+      if (ownersDogs && ownersDogs.length > 1) {
+        dogSwitcherHtml = buildDogSwitcherHtml(ownersDogs, dog_id);
+      }
+    }
+
     // Fetch all check-ins for this dog, ordered by date
     const { data: checkins, error: checkinsError } = await supabase
       .from('mobility_checkins')
@@ -3190,6 +3278,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
           <a href="/check-in/${dog_id}" class="back-link">← Back to Check-In</a>
           ${dog.owner_id ? `<a href="/add-dog.html?owner_id=${dog.owner_id}" class="back-link" style="margin-left: 16px;">+ Add Another Dog</a>` : ''}
           ${dog.owner_id ? `<a href="/checkins/${dog.owner_id}" class="back-link" style="margin-left: 16px;">View All My Dogs</a>` : ''}
+          ${dogSwitcherHtml}
 
           <div class="header">
             <h1><i data-lucide="bar-chart-3"></i> ${dog.dog_name}'s Mobility Dashboard</h1>
@@ -5040,6 +5129,15 @@ app.get('/verify', async (req, res) => {
       tokenData.baseline_cognitive_score ?? ''
     ]);
 
+    // STAGE 5: grant the additive owner-session cookie here — this is the
+    // one point in the whole app where the browser has just proven real
+    // phone ownership (a valid, unexpired, single-use magic-link click),
+    // covering both the new-owner and returning-owner branches above since
+    // ownerId is resolved either way by this point. See the OWNER SESSION
+    // block near the top of this file for what this cookie does and does
+    // not do.
+    setOwnerSessionCookie(res, ownerId);
+
     // Redirect to dashboard with the new dog ID
     res.redirect(`/dashboard/${dogId}`);
 
@@ -5250,6 +5348,12 @@ app.post('/api/add-dog', async (req, res) => {
       cleanAppetite ?? '',
       cleanCognitive ?? ''
     ]);
+
+    // STAGE 5: this path is only reachable from a link the owner already
+    // holds (dashboard's "+ Add Another Dog"), so grant/refresh the same
+    // additive session cookie here too — belt-and-suspenders alongside the
+    // /verify grant point, not a second distinct mechanism.
+    setOwnerSessionCookie(res, owner.id);
 
     res.json({ success: true, dogId });
   } catch (error) {
