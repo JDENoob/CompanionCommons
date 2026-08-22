@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Find My Dashboard | Companion Commons</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="assets/css/styles.css" />
+    <script src="assets/js/main.js" defer></script>
+  </head>
+  <body>
+    <header class="site-header" data-header>
+      <div class="container nav-shell">
+        <a class="brand" href="index.html" aria-label="Companion Commons home">
+          <span class="brand-mark" aria-hidden="true">C</span>
+          <span class="brand-name">Companion<br />Commons</span>
+        </a>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="page-hero">
+        <div class="container inner">
+          <p class="eyebrow">Already Signed Up?</p>
+          <h1>Find Your Dashboard</h1>
+          <p>
+            Lost your original text or link? Enter the phone number you signed up with and we'll send you a link back to your dog's (or dogs') dashboard.
+          </p>
+        </div>
+      </section>
+
+      <section class="content-section">
+        <div class="container" style="max-width: 480px;">
+          <form id="findForm">
+            <div class="form-group">
+              <label for="phone">Phone number</label>
+              <input type="tel" id="phone" name="phone" required placeholder="(555) 123-4567" autocomplete="tel" />
+            </div>
+
+            <button type="submit" class="button" style="width: 100%; margin-top: 10px;" id="submitBtn">
+              Text Me My Link
+            </button>
+          </form>
+
+          <div id="resultMessage" style="display: none; margin-top: 20px; padding: 16px 20px; border-radius: 8px; background: #FFF8E7; color: #5D4E37;"></div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-grid">
+        <div>
+          <h2>Companion Commons</h2>
+          <p>Pet families. Shared purpose.</p>
+        </div>
+        <a href="index.html">Return to homepage</a>
+      </div>
+      <div class="container" style="text-align: center; font-size: 12px; opacity: 0.75; margin-top: 18px;">
+        <a href="privacy.html" style="color: #fff;">Privacy Policy</a>
+        <span style="margin: 0 8px;">&middot;</span>
+        <a href="terms.html" style="color: #fff;">Terms of Service</a>
+      </div>
+      <div class="container veterinary-disclaimer">
+        <p>
+          Companion Commons is not a veterinary service and does not diagnose,
+          treat, prescribe, or provide veterinary advice. Always consult a
+          licensed veterinarian about your companion's health and care. Think
+          this may be an emergency? Contact your veterinarian or the nearest
+          emergency veterinary hospital immediately.
+        </p>
+      </div>
+    </footer>
+
+    <script>
+      document.getElementById('findForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const btn = document.getElementById('submitBtn');
+        const resultBox = document.getElementById('resultMessage');
+        const phone = document.getElementById('phone').value;
+
+        btn.disabled = true;
+        btn.textContent = 'Sending...';
+
+        try {
+          const response = await fetch('/api/resend-dashboard-link', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone })
+          });
+
+          const result = await response.json();
+          resultBox.textContent = result.message || "If that number has an account, we've sent a link.";
+          resultBox.style.display = 'block';
+        } catch (error) {
+          console.error('Error:', error);
+          resultBox.textContent = 'Something went wrong. Please try again in a moment.';
+          resultBox.style.display = 'block';
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Text Me My Link';
+        }
+      });
+    </script>
+
+    <style>
+      .form-group { margin-bottom: 20px; }
+      label { display: block; font-weight: 500; color: #333; margin-bottom: 6px; font-size: 14px; }
+      input[type="tel"] {
+        width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-family: inherit; font-size: 14px; box-sizing: border-box;
+      }
+      .button { background: #007AFF; color: white; padding: 12px 24px; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; }
+      .button:hover { background: #0051D5; }
+      .button:disabled { opacity: 0.6; cursor: default; }
+    </style>
+  </body>
+</html>

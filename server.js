@@ -2417,6 +2417,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
           <div class="card">
             <h2>❌ Dog Not Found</h2>
             <p>We couldn't find this dog's profile (ID: ${dog_id}). Please check your link and try again.</p>
+            <p style="margin-top: 16px;"><a href="/find-my-dashboard.html" style="color: #007AFF;">Lost your link? Find your dashboard here.</a></p>
           </div>
         </body>
         </html>
@@ -5267,6 +5268,146 @@ app.get('/checkins/:owner_id', async (req, res) => {
   } catch (error) {
     console.error('Error rendering /checkins/:owner_id:', error);
     res.status(500).send('Something went wrong loading your dogs. Please try again later.');
+  }
+});
+
+// Email version of the dashboard-link resend below — same visual pattern
+// as sendChurnAlertEmail, sent to the owner's real email on file (never
+// whatever address a resubmitted form claims, since this route only ever
+// looks up contact info from the verified owners record).
+async function sendDashboardLinkEmail(ownerEmail, checkinsLink) {
+  if (!SENDGRID_API_KEY) {
+    console.warn('⚠️ SendGrid not configured. Email not sent.');
+    return;
+  }
+
+  try {
+    const msg = {
+      to: ownerEmail,
+      from: SENDGRID_FROM_EMAIL,
+      subject: `Your Companion Commons dashboard link`,
+      html: `
+        <div style="font-family: -apple-system, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px;">
+          <div style="background: #f5f5f5; border-radius: 12px; padding: 30px;">
+            <h2 style="color: #333; margin-bottom: 20px; text-align: center;">Here's your link 👋</h2>
+            <p style="color: #666; font-size: 16px; margin: 15px 0; line-height: 1.6;">
+              You (or someone with your phone number) asked for your Companion Commons dashboard link. Tap below to see your dog's (or dogs') health journey.
+            </p>
+            <div style="text-align: center; margin-top: 25px;">
+              <a href="${checkinsLink}" style="display: inline-block; background: #d96f56; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+                View My Dashboard
+              </a>
+            </div>
+            <p style="color: #999; font-size: 12px; margin-top: 30px; text-align: center;">
+              Didn't request this? You can safely ignore this email.
+            </p>
+          </div>
+        </div>
+      `
+    };
+
+    await sgMail.send(msg);
+    console.log(`✅ Dashboard-link email sent to ${ownerEmail}`);
+    return { success: true };
+  } catch (error) {
+    console.error(`❌ Error sending dashboard-link email to ${ownerEmail}:`, error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+// ============================================
+// SELF-SERVICE "RESEND MY DASHBOARD LINK"
+// POST /api/resend-dashboard-link
+//
+// Closes a real gap: once someone loses the original signup link (deletes
+// the SMS, clears history), there was no way back into a page (the
+// dashboard) that's supposed to be viewable/printable/shareable any time —
+// short of waiting for a reminder text to fire incidentally.
+//
+// Security posture, deliberate throughout: this endpoint must never reveal
+// whether a given phone number has an account. Every code path — owner
+// found and message sent, owner not found, or rate-limited — returns the
+// exact same generic response text. The real outcome is only ever visible
+// server-side via console.log.
+// ============================================
+app.post('/api/resend-dashboard-link', async (req, res) => {
+  const GENERIC_RESPONSE = { success: true, message: "If that number has an account, we've sent a link." };
+
+  try {
+    const { phone } = req.body;
+    // Same normalization used at signup (/api/send-magic-link) — reused
+    // as-is rather than re-implemented, so "what counts as a valid phone"
+    // can't quietly drift between the two routes.
+    const cleanPhone = sanitizePhone(phone);
+
+    if (!cleanPhone) {
+      console.log('ℹ️ resend-dashboard-link: invalid/unparseable phone submitted');
+      return res.json(GENERIC_RESPONSE);
+    }
+
+    // Rate limit keyed by the phone number itself, not any userId — this
+    // is the same smsRateLimit() already defined for SMS sending generally,
+    // just never actually wired up anywhere until now. Keying by phone
+    // (not IP) matters here specifically because the real risk with a
+    // public "resend my link" form is someone spamming a stranger's real
+    // number, not one IP hammering the endpoint (already covered by the
+    // global apiRateLimit on all POST routes).
+    const rateLimitResult = smsRateLimit(cleanPhone);
+    if (!rateLimitResult.allowed) {
+      console.log(`⏭️ resend-dashboard-link: rate limited for ${cleanPhone}`);
+      return res.json(GENERIC_RESPONSE);
+    }
+
+    const { data: owner, error: ownerError } = await supabase
+      .from('owners')
+      .select('id, email, phone, preferred_contact_method')
+      .eq('phone', cleanPhone)
+      .maybeSingle();
+
+    if (ownerError) {
+      console.error('Error looking up owner for resend-dashboard-link:', ownerError);
+      return res.json(GENERIC_RESPONSE);
+    }
+
+    if (!owner) {
+      console.log(`ℹ️ resend-dashboard-link: no owner found for ${cleanPhone}`);
+      return res.json(GENERIC_RESPONSE);
+    }
+
+    // Reuses the existing /checkins/:owner_id page as-is — it already
+    // lists every one of the owner's dogs with status and a dashboard link
+    // each, so there's nothing new to build here.
+    const checkinsLink = `${BASE_URL}/checkins/${owner.id}`;
+    const wantsSms = owner.preferred_contact_method === 'sms' || owner.preferred_contact_method === 'both';
+    const wantsEmail = owner.preferred_contact_method === 'email' || owner.preferred_contact_method === 'both';
+
+    if (wantsSms && owner.phone) {
+      try {
+        const smsMessage = await twilioClient.messages.create({
+          body: `Your Companion Commons dashboard link: ${checkinsLink}`,
+          from: TWILIO_PHONE_NUMBER,
+          to: owner.phone
+        });
+        console.log(`✅ resend-dashboard-link SMS sent to ${owner.phone} (SID: ${smsMessage.sid})`);
+      } catch (smsError) {
+        console.error(`❌ resend-dashboard-link SMS failed for ${owner.phone}:`, smsError.message);
+      }
+    }
+
+    if (wantsEmail && owner.email) {
+      const emailResult = await sendDashboardLinkEmail(owner.email, checkinsLink);
+      if (!emailResult || !emailResult.success) {
+        console.error(`❌ resend-dashboard-link email failed for ${owner.email}`);
+      }
+    }
+
+    return res.json(GENERIC_RESPONSE);
+  } catch (error) {
+    // Still the same generic response even on an unexpected server error —
+    // no path through this endpoint should ever look different from any
+    // other to the client.
+    console.error('Error in resend-dashboard-link endpoint:', error);
+    return res.json(GENERIC_RESPONSE);
   }
 });
 
