@@ -230,6 +230,57 @@
 
 - [x] **STEP P1E:** ~~Implement L3 Pattern Alerts~~ **= STEP 27D, merged and COMPLETE (Aug 18) — see full write-up at top of doc.**
 
+---
+
+## STEP P8: Full End-to-End Testing Pass ⏳ NOT YET STARTED
+
+**Build Effort:** N/A — this is a verification pass, not a build.
+**When:** Before beta recruiting begins. The last gate before real strangers touch the site.
+
+**Why this is being formally scoped now:** STEP P8 was referenced across multiple sessions' NEXT STEP lists as "full end-to-end testing" but never actually given a task list, unlike every other STEP entry in this doc. Worth defining properly given what's shipped since the last full pass: the entire multi-dog owner architecture (Stages 1-5, see `Multi_Dog_Signup_Build.md`) and, most recently, the consent record, sitewide XSS sweep, and legacy schema removal (Aug 22, Session 2).
+
+Note: there is an unrelated "FEATURE P8" elsewhere in this doc (Phase 4, Wave 3 — "Implement #8 Data Companion (chatbot)"). Different item, different numbering scheme, do not confuse the two.
+
+**Tasks:**
+
+Signup flow:
+- [ ] New owner, first dog — full path: /api/send-magic-link → email received → /verify → dashboard
+- [ ] Returning owner, second dog via "Add Another Dog" — same phone number, confirm no duplicate signup, consent checkbox, or verification text
+- [ ] Confirm `consent_given_at` is actually populated on both paths — spot-check the real row in Supabase, don't just trust the code path
+
+Check-in flow:
+- [ ] Standalone check-in page (/check-in/:dog_id)
+- [ ] Dashboard check-in modal
+- [ ] A dog with real multi-week history (not a fresh signup) — confirm streak, trend, and mid-week notes all display correctly
+
+Multi-dog specific:
+- [ ] Combined /checkins/:owner_id page for a real two-dog owner — correct status per dog, correct action link per state
+- [ ] Dashboard dog-switcher appears correctly for the owner's own session
+- [ ] Dashboard dog-switcher does NOT appear when the same dashboard link is opened with no session — confirms vet/family sharing links still work unaffected
+
+Journey Summary:
+- [ ] View on-screen, on a dog with several weeks of check-ins and at least one note
+- [ ] Print to PDF — confirm chart appears, no page-break/duplicate-page issues, note text renders as safe escaped text
+
+Breed guide:
+- [ ] View for at least 2-3 different breeds, confirm correct locked/unlocked state by week number
+
+Communications — confirm received on a real phone/inbox, not just server logs:
+- [ ] Signup confirmation SMS/email
+- [ ] Check-in confirmation
+- [ ] At least one reminder (or manually trigger via the test endpoint)
+- [ ] Churn alert email, triggered manually via the safe test endpoint (sends to SENDGRID_FROM_EMAIL only)
+
+Cleanup:
+- [ ] Delete all test data created during this pass — senior_dogs, owners, mobility_checkins, health_alerts, churn_flags, dog_notes, sms_queue, magic_link_tokens rows, plus the Dog_Photos storage folder. Same pattern as every prior test-data wipe this project.
+
+**QA Checklist:**
+- [ ] No console errors on any page tested
+- [ ] No 500s on any route tested
+- [ ] Any real bug found gets fixed before beta recruiting begins, not deferred to "later"
+
+---
+
 **SMS Optimization:**
 - [ ] **STEP P2:** Optimize SMS reminder copy (personalized, compelling)
   - [ ] Test 2 subject lines (measure click rate)
@@ -911,7 +962,7 @@ TOTAL COST: $0-9k (depends on hiring vs DIY)
 1. **Get actual lawyer review** — full, specific question list prepared in `CompanionCommons_Strategy_and_Legal_Aug20.md`, not yet scheduled
 2. **Decide when to remove `SITE_PASSWORD`** — still genuinely just a decision
 3. **STEP P1C (Comparative Feedback)** — still blocked until real breed-cohort data exists
-4. **STEP P8 (full end-to-end testing)** — recommended as the actual next priority: a lot of code moved this session (consent record, full XSS sweep, legacy-schema removal, plus last session's full multi-dog owner project), worth one clean deliberate pass before anything else
+4. **STEP P8 (full end-to-end testing)** — recommended as the actual next priority: a lot of code moved this session (consent record, full XSS sweep, legacy-schema removal, plus last session's full multi-dog owner project), worth one clean deliberate pass before anything else — see full scope below
 5. **Begin recruiting for the beta** — 8 real strangers matching the actual target persona, plus 2-3 close friends
 6. **Begin scoping the data-model separation work** (identifiable vs. de-identifiable fields) — still flagged as a real prerequisite before any future drug-name-level data collection
 7. Cosmetic, lower priority: fix the churn-cron startup log message ("1 minute for testing" when it's actually 60 minutes) — not part of this session's cleanup, still outstanding
