@@ -1911,6 +1911,7 @@ app.post('/api/checkin-senior', async (req, res) => {
         .from('sms_queue')
         .insert([{
           pet_id: dog_id,
+          owner_id: dog.owner_id || null,
           phone: dog.phone,
           message_type: `week_${weekNumber + 1}_checkin`,
           scheduled_for: nextReminderDate.toISOString(),
@@ -3188,6 +3189,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
         <div class="container">
           <a href="/check-in/${dog_id}" class="back-link">← Back to Check-In</a>
           ${dog.owner_id ? `<a href="/add-dog.html?owner_id=${dog.owner_id}" class="back-link" style="margin-left: 16px;">+ Add Another Dog</a>` : ''}
+          ${dog.owner_id ? `<a href="/checkins/${dog.owner_id}" class="back-link" style="margin-left: 16px;">View All My Dogs</a>` : ''}
 
           <div class="header">
             <h1><i data-lucide="bar-chart-3"></i> ${dog.dog_name}'s Mobility Dashboard</h1>
@@ -4157,7 +4159,7 @@ app.post('/api/test-churn-detection', async (req, res) => {
     // Get all senior dogs
     const { data: allDogs } = await supabase
       .from('senior_dogs')
-      .select('id, dog_name, baseline_mobility_score, created_at');
+      .select('id, dog_name, owner_id, baseline_mobility_score, created_at');
 
     if (!allDogs || allDogs.length === 0) {
       return res.json({
@@ -4171,19 +4173,31 @@ app.post('/api/test-churn-detection', async (req, res) => {
     dogsChecked = allDogs.length;
     const now = new Date();
 
-    // For each dog, run the exact same shared churn-check the real cron
-    // uses (see processDogForChurn) — no SMS reminders (a manual trigger
-    // shouldn't have SMS side effects), and always emails SENDGRID_FROM_EMAIL
-    // instead of the real owner, so a test run never emails an actual user.
+    // For each dog, run the exact same shared evaluation the real cron uses
+    // (see evaluateDogForChurn) — no SMS reminders (a manual trigger
+    // shouldn't have SMS side effects). Then group by owner (STAGE 4) and
+    // send, always to SENDGRID_FROM_EMAIL instead of the real owner, so a
+    // test run never emails an actual user.
+    const needsAlert = [];
     for (const dog of allDogs) {
       try {
-        const result = await processDogForChurn(dog, { emailOverride: SENDGRID_FROM_EMAIL });
-        if (!result.skipped && result.alertSent) {
-          alertsSent++;
-        }
+        const result = await evaluateDogForChurn(dog);
+        if (!result.skipped && result.needsAlert) needsAlert.push(result);
       } catch (dogError) {
         console.error(`Error processing dog ${dog.id}:`, dogError.message);
       }
+    }
+
+    const groups = new Map();
+    for (const alert of needsAlert) {
+      const key = alert.dog.owner_id || `solo:${alert.dog.id}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(alert);
+    }
+
+    for (const alerts of groups.values()) {
+      const result = await sendChurnAlertsForOwnerGroup(null, alerts, { emailOverride: SENDGRID_FROM_EMAIL });
+      if (result.sent) alertsSent += result.dogCount;
     }
 
     res.json({
@@ -5245,6 +5259,124 @@ app.post('/api/add-dog', async (req, res) => {
 });
 
 // ============================================
+// ALL MY DOGS' CHECK-INS (STAGE 4 — multi-dog owner project)
+// GET /checkins/:owner_id
+//
+// A single, no-login landing page listing every dog belonging to one
+// owner, each with its own check-in status and link. This is the page the
+// new combined SMS reminder/churn email link to, so an owner with several
+// dogs due at once gets ONE short link instead of one text per dog. Not
+// authenticated — matches the app's existing link-based security model
+// (same as /check-in/:dog_id and /dashboard/:dog_id, both reachable by
+// anyone with the right UUID in the URL). This is deliberately NOT the
+// full owner session/dog-switcher from Stage 5 — no login, no cookie, just
+// a status list keyed off the owner_id already in hand.
+// ============================================
+app.get('/checkins/:owner_id', async (req, res) => {
+  try {
+    const { owner_id } = req.params;
+
+    const { data: dogs, error } = await supabase
+      .from('senior_dogs')
+      .select('id, dog_name, photo_url, created_at')
+      .eq('owner_id', owner_id)
+      .order('created_at', { ascending: true });
+
+    if (error || !dogs || dogs.length === 0) {
+      return res.status(404).send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>Not Found</title>
+          <style>
+            body { font-family: -apple-system, sans-serif; max-width: 500px; margin: 60px auto; padding: 20px; text-align: center; background: #f5f5f5; }
+            .card { background: white; border-radius: 12px; padding: 40px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <h2 style="margin: 0 0 10px 0;">We couldn't find that account</h2>
+            <p style="color: #666;">Please check your link, or use the one from your most recent text or email.</p>
+          </div>
+        </body>
+        </html>
+      `);
+    }
+
+    // Same week/status math used by /check-in/:dog_id and the dashboard —
+    // computed fresh per dog, not stored, so it's always current.
+    const now = new Date();
+    const { data: allCheckins } = await supabase
+      .from('mobility_checkins')
+      .select('dog_id, week_number')
+      .in('dog_id', dogs.map(d => d.id));
+
+    const dogRows = dogs.map(dog => {
+      const created = new Date(dog.created_at);
+      const daysSinceSignup = (now - created) / (24 * 60 * 60 * 1000);
+      const inBaselinePeriod = Math.floor(daysSinceSignup / 7) === 0;
+      const currentWeek = Math.max(1, Math.floor((now - created) / (7 * 24 * 60 * 60 * 1000)) + 1);
+      const hasCheckinThisWeek = (allCheckins || []).some(c => c.dog_id === dog.id && c.week_number === currentWeek);
+
+      let statusText, actionHtml;
+      if (inBaselinePeriod) {
+        const daysLeft = 7 - Math.floor(daysSinceSignup);
+        statusText = `First check-in available in ${daysLeft} day${daysLeft === 1 ? '' : 's'}`;
+        actionHtml = `<span style="color: #999; font-size: 14px;">Not yet available</span>`;
+      } else if (hasCheckinThisWeek) {
+        statusText = `Week ${currentWeek} — already checked in ✓`;
+        actionHtml = `<a href="/dashboard/${dog.id}" style="color: #d96f56; font-weight: 600; text-decoration: none; font-size: 14px;">View Dashboard →</a>`;
+      } else {
+        statusText = `Week ${currentWeek} check-in is ready`;
+        actionHtml = `<a href="/check-in/${dog.id}" style="display: inline-block; background: #d96f56; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">Check In Now</a>`;
+      }
+
+      const photoHtml = dog.photo_url
+        ? `<img src="${dog.photo_url}" alt="${dog.dog_name}" style="width: 56px; height: 56px; border-radius: 50%; object-fit: cover; flex-shrink: 0;" />`
+        : `<div style="width: 56px; height: 56px; border-radius: 50%; background: #FFF8E7; flex-shrink: 0;"></div>`;
+
+      return `
+        <div style="display: flex; align-items: center; gap: 16px; padding: 16px 0; border-bottom: 1px solid #eee;">
+          ${photoHtml}
+          <div style="flex: 1;">
+            <div style="font-weight: 600; color: #333;">${dog.dog_name}</div>
+            <div style="font-size: 13px; color: #777; margin-top: 2px;">${statusText}</div>
+          </div>
+          ${actionHtml}
+        </div>
+      `;
+    }).join('');
+
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Your Dogs' Check-Ins</title>
+        <style>
+          body { font-family: -apple-system, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px; background: #f5f5f5; }
+          .card { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+          h2 { margin: 0 0 4px 0; color: #333; }
+          .subtitle { color: #666; margin: 0 0 8px 0; font-size: 14px; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <h2>Your Dogs' Check-Ins</h2>
+          <p class="subtitle">${dogs.length} dog${dogs.length === 1 ? '' : 's'} on your account</p>
+          ${dogRows}
+        </div>
+      </body>
+      </html>
+    `);
+  } catch (error) {
+    console.error('Error rendering /checkins/:owner_id:', error);
+    res.status(500).send('Something went wrong loading your dogs. Please try again later.');
+  }
+});
+
+// ============================================
 // UPLOAD DOG PHOTO (STEP 23 - Photo Upload)
 // POST /api/upload-dog-photo
 // ============================================
@@ -5472,29 +5604,108 @@ async function sendChurnAlertEmail(ownerEmail, dogName, lastScore, lastCheckInDa
   }
 }
 
+// Join a list of dog names into readable prose: "Bailey", "Bailey and Max",
+// or "Bailey, Max, and Rex". Used only by the combined churn email/SMS —
+// the single-dog email path never calls this.
+function joinDogNames(names) {
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`;
+}
+
+// Send ONE combined churn alert email covering multiple dogs under the same
+// owner (STAGE 4, multi-dog owner project). Same visual pattern as the
+// single-dog sendChurnAlertEmail above — one "since we heard from you" line
+// and one "View & Update" button per dog, all inside one email — rather
+// than an owner with 2+ overdue dogs getting 2+ separate emails on the same
+// day. See sendChurnAlertsForOwnerGroup, which decides when this vs. the
+// single-dog template gets used.
+async function sendCombinedChurnAlertEmail(ownerEmail, alerts) {
+  if (!SENDGRID_API_KEY) {
+    console.warn('⚠️ SendGrid not configured. Email not sent.');
+    return;
+  }
+
+  try {
+    const names = alerts.map(a => a.dog.dog_name);
+    const nameList = joinDogNames(names);
+
+    const dogBlocks = alerts.map(({ dog, lastScore, lastCheckInDate }) => {
+      const sinceLine = lastCheckInDate
+        ? `We haven't heard from you about ${dog.dog_name} since <strong>${new Date(lastCheckInDate).toLocaleDateString()}</strong>.`
+        : `You haven't logged a check-in for ${dog.dog_name} yet.`;
+      return `
+        <div style="border-top: 1px solid #eee; margin-top: 20px; padding-top: 20px;">
+          <p style="color: #666; font-size: 15px; margin: 0 0 12px 0; line-height: 1.6;">${sinceLine}</p>
+          <div style="text-align: center;">
+            <a href="${BASE_URL}/dashboard/${dog.id}" style="display: inline-block; background: #d96f56; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">
+              View ${dog.dog_name}'s Progress and Update
+            </a>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    const msg = {
+      to: ownerEmail,
+      from: SENDGRID_FROM_EMAIL,
+      subject: `How are ${nameList} doing this week? 👋`,
+      html: `
+        <div style="font-family: -apple-system, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px;">
+          <div style="background: #f5f5f5; border-radius: 12px; padding: 30px;">
+            <h2 style="color: #333; margin-bottom: 20px; text-align: center;">Hey there! 👋</h2>
+            <p style="color: #666; font-size: 16px; margin: 15px 0; line-height: 1.6;">
+              No pressure — we know life gets busy. When you get a moment, we'd love a quick update on ${nameList}. Each check-in takes 30 seconds and helps build a clear picture of your dogs and all the pet families participating.
+            </p>
+            ${dogBlocks}
+            <p style="color: #999; font-size: 12px; margin-top: 30px; text-align: center;">
+              Companion Commons — Together we can change the future of pet health understanding
+            </p>
+          </div>
+        </div>
+      `
+    };
+
+    await sgMail.send(msg);
+    console.log(`✅ Combined churn alert email sent to ${ownerEmail} for ${nameList}`);
+    return { success: true };
+  } catch (error) {
+    console.error(`❌ Error sending combined churn alert email for ${alerts.map(a => a.dog.dog_name).join(', ')}:`, error.message);
+    return { success: false, error: error.message };
+  }
+}
+
 // ============================================
-// SHARED CHURN-DETECTION LOGIC FOR ONE DOG
+// SHARED CHURN-EVALUATION LOGIC FOR ONE DOG
 // Used by both the real hourly cron and the manual /api/test-churn-detection
 // endpoint, so there's exactly one implementation to fix going forward —
 // this is exactly why the baseline-period fix from earlier today lived in
 // the cron but not the test endpoint until this refactor: two copies of the
 // same logic had already started to drift.
 //
+// STAGE 4 (multi-dog owner project) change: this function used to send the
+// churn re-engagement email itself. It no longer does — it only evaluates
+// whether ONE dog needs an alert and returns that decision. The caller
+// (the cron loop / test endpoint) now collects these per-dog decisions
+// across a whole batch, groups them by owner_id, and sends ONE combined
+// email per owner covering every dog that needs one — see
+// sendChurnAlertsForOwnerGroup below. This is what actually fixes a
+// two-dog owner getting two separate "haven't heard from you" emails on
+// the same day. SMS reminder queueing stays per-dog here (unchanged) —
+// combining those happens later, at actual send time, in the SMS-sending
+// cron, since sibling dogs can be on different weeks/tiers.
+//
 // options:
 //   sendSmsReminders (bool) — the real cron queues SMS check-in reminders;
 //     the manual test endpoint never has, on purpose — a manual trigger
 //     shouldn't have SMS side effects.
-//   emailOverride (string|null) — the manual test endpoint always sends to
-//     SENDGRID_FROM_EMAIL instead of the real owner's address, so running a
-//     test never emails an actual user. The real cron leaves this null and
-//     falls back to the dog's own email on file.
 //
 // Returns { skipped: true, reason, currentWeek? } or
-//         { skipped: false, alertSent: true, currentWeek }
-// so each caller can log/count in whatever style it already uses.
+//         { skipped: false, needsAlert: true, dog, lastScore, lastCheckInDate, currentWeek }
+// so each caller can group/log/count in whatever style it already uses.
 // ============================================
-async function processDogForChurn(dog, options = {}) {
-  const { sendSmsReminders = false, emailOverride = null } = options;
+async function evaluateDogForChurn(dog, options = {}) {
+  const { sendSmsReminders = false } = options;
 
   // Defensive floor: a created_at slightly in the future (timezone quirk,
   // clock skew) can make (now - created) negative, which would floor to
@@ -5596,6 +5807,7 @@ async function processDogForChurn(dog, options = {}) {
         .from('sms_queue')
         .insert({
           pet_id: dog.id,
+          owner_id: dog.owner_id || null,
           phone: dog.phone,
           message_type: `week_${currentWeek}_reminder_1`,
           scheduled_for: reminderDay1.toISOString(),
@@ -5615,6 +5827,7 @@ async function processDogForChurn(dog, options = {}) {
         .from('sms_queue')
         .insert({
           pet_id: dog.id,
+          owner_id: dog.owner_id || null,
           phone: dog.phone,
           message_type: `week_${currentWeek}_reminder_2`,
           scheduled_for: reminderDay2At7pm.toISOString(),
@@ -5634,6 +5847,7 @@ async function processDogForChurn(dog, options = {}) {
         .from('sms_queue')
         .insert({
           pet_id: dog.id,
+          owner_id: dog.owner_id || null,
           phone: dog.phone,
           message_type: `week_${currentWeek}_reminder_3`,
           scheduled_for: reminderDay3.toISOString(),
@@ -5676,17 +5890,6 @@ async function processDogForChurn(dog, options = {}) {
     }
   }
 
-  // Resolve who gets the email — the manual test endpoint overrides this to
-  // SENDGRID_FROM_EMAIL, so a real dog's owner is never emailed by a test
-  // run. The real cron leaves this null and falls back to the dog's own
-  // email on file, skipping (dogs created before the email field existed
-  // won't have one) rather than sending to nobody.
-  const ownerEmail = emailOverride || dog.email;
-  if (!ownerEmail) {
-    console.warn(`⚠️ ${dog.dog_name} has no email on file — skipping churn alert email`);
-    return { skipped: true, reason: 'no_email', currentWeek };
-  }
-
   // Get last check-in to show context
   const { data: lastCheckin } = await supabase
     .from('mobility_checkins')
@@ -5697,41 +5900,78 @@ async function processDogForChurn(dog, options = {}) {
 
   const lastScore = lastCheckin?.[0]?.mobility_score || dog.baseline_mobility_score;
   // null (not dog.created_at) when there's no real check-in yet — see
-  // sendChurnAlertEmail, which now branches on this instead of citing the
+  // sendChurnAlertEmail, which branches on this instead of citing the
   // signup date as if it were a check-in date.
   const lastCheckInDate = lastCheckin?.[0]?.created_at || null;
 
-  // Send churn alert email
-  const emailResult = await sendChurnAlertEmail(ownerEmail, dog.dog_name, lastScore, lastCheckInDate, dog.id);
+  // This dog needs a churn alert. Don't send it here — the caller groups
+  // this result with any of the same owner's other dogs that also need one
+  // this pass, and sends a single combined email. See
+  // sendChurnAlertsForOwnerGroup.
+  return { skipped: false, needsAlert: true, dog, lastScore, lastCheckInDate, currentWeek };
+}
 
-  // sendChurnAlertEmail returns undefined if SendGrid isn't configured at
-  // all, or { success: false, error } if the send itself failed (e.g. the
-  // SendGrid 403s seen during today's testing). Either way, this must not
-  // be logged as a success and must NOT write a churn_flags row — a failed
-  // send isn't "already alerted," and writing the flag anyway would block a
-  // legitimate retry on the next churn-detection pass, i.e. a real owner
+// ============================================
+// SEND CHURN ALERT(S) FOR ONE OWNER'S GROUP OF DOGS
+// STAGE 4 (multi-dog owner project): takes every dog under one owner that
+// evaluateDogForChurn just flagged as needing an alert this pass, and sends
+// exactly ONE email — the existing single-dog copy/template when there's
+// only one (unchanged, so the already-audited wording keeps working
+// byte-for-byte), or a new combined template listing every dog when there's
+// more than one. On success, writes a churn_flags row for EACH dog in the
+// group, so the existing per-dog 24h dedup in evaluateDogForChurn keeps
+// working exactly as before for every dog that was actually covered.
+//
+// alerts: array of { dog, lastScore, lastCheckInDate, currentWeek }, all
+//   sharing the same owner (or all length-1 "solo" groups for dogs with no
+//   owner_id — see the grouping in the cron/test-endpoint callers).
+// options.emailOverride: same meaning as before — the manual test endpoint
+//   always sends to SENDGRID_FROM_EMAIL instead of a real owner's address.
+//
+// Returns { sent: boolean, dogCount, reason? }
+// ============================================
+async function sendChurnAlertsForOwnerGroup(ownerEmail, alerts, options = {}) {
+  const { emailOverride = null } = options;
+  const toEmail = emailOverride || ownerEmail;
+
+  if (!toEmail) {
+    const names = alerts.map(a => a.dog.dog_name).join(', ');
+    console.warn(`⚠️ No email on file for owner of ${names} — skipping churn alert email`);
+    return { sent: false, dogCount: alerts.length, reason: 'no_email' };
+  }
+
+  const emailResult = alerts.length === 1
+    ? await sendChurnAlertEmail(toEmail, alerts[0].dog.dog_name, alerts[0].lastScore, alerts[0].lastCheckInDate, alerts[0].dog.id)
+    : await sendCombinedChurnAlertEmail(toEmail, alerts);
+
+  // Either function returns undefined if SendGrid isn't configured at all,
+  // or { success: false, error } if the send itself failed (e.g. the
+  // SendGrid 403s seen during Aug 21 testing). Either way, this must not be
+  // logged as a success and must NOT write any churn_flags rows — a failed
+  // send isn't "already alerted," and writing the flags anyway would block
+  // a legitimate retry on the next churn-detection pass, i.e. real owners
   // could silently never get re-engaged while the system insists it worked.
   if (!emailResult || !emailResult.success) {
     const reason = emailResult?.error || 'SendGrid not configured';
-    console.error(`❌ Churn alert email FAILED for ${dog.dog_name}: ${reason}`);
-    return { skipped: false, alertSent: false, reason: 'email_failed', currentWeek };
+    const names = alerts.map(a => a.dog.dog_name).join(', ');
+    console.error(`❌ Churn alert email FAILED for ${names}: ${reason}`);
+    return { sent: false, dogCount: alerts.length, reason: 'email_failed' };
   }
 
-  // Log the alert to churn_flags table
-  const { error: flagError } = await supabase
-    .from('churn_flags')
-    .insert({
-      dog_id: dog.id,
-      week_number: currentWeek
-    });
-
-  if (flagError) {
-    console.error(`Error logging churn flag for ${dog.dog_name}:`, flagError);
-  } else {
-    console.log(`✅ Churn alert email sent for ${dog.dog_name} (week ${currentWeek})`);
+  // Log the alert to churn_flags — one row per dog, so each dog's own 24h
+  // dedup window (checked in evaluateDogForChurn) is tracked independently,
+  // exactly as it was before this dog's alerts started being combined.
+  for (const alert of alerts) {
+    const { error: flagError } = await supabase
+      .from('churn_flags')
+      .insert({ dog_id: alert.dog.id, week_number: alert.currentWeek });
+    if (flagError) {
+      console.error(`Error logging churn flag for ${alert.dog.dog_name}:`, flagError);
+    }
   }
 
-  return { skipped: false, alertSent: true, currentWeek };
+  console.log(`✅ Churn alert email sent to ${toEmail} for ${alerts.map(a => a.dog.dog_name).join(', ')}`);
+  return { sent: true, dogCount: alerts.length };
 }
 
 // Get next Tuesday at a specific time
@@ -5814,7 +6054,7 @@ setInterval(async () => {
     // Get all senior dogs
     const { data: allDogs, error: dogsError } = await supabase
       .from('senior_dogs')
-      .select('id, dog_name, phone, email, sms_consent, baseline_mobility_score, created_at');
+      .select('id, dog_name, phone, email, sms_consent, owner_id, baseline_mobility_score, created_at');
 
     if (dogsError) {
       console.error('❌ Error fetching senior dogs:', dogsError.message);
@@ -5828,15 +6068,32 @@ setInterval(async () => {
 
     console.log(`📊 Checking ${allDogs.length} dogs for missing check-ins...`);
 
-    // For each dog, run the shared churn-check (baseline-period fix,
-    // this-week-checkin check, SMS reminders, dedup, and email) — see
-    // processDogForChurn above.
+    // Pass 1: evaluate each dog independently (baseline-period fix,
+    // this-week-checkin check, SMS reminder queueing, per-dog dedup) — see
+    // evaluateDogForChurn above. Collect just the ones that need an alert.
+    const needsAlert = [];
     for (const dog of allDogs) {
       try {
-        await processDogForChurn(dog, { sendSmsReminders: true });
+        const result = await evaluateDogForChurn(dog, { sendSmsReminders: true });
+        if (!result.skipped && result.needsAlert) needsAlert.push(result);
       } catch (dogError) {
         console.error(`Error processing dog ${dog.id}:`, dogError.message);
       }
+    }
+
+    // Pass 2: group by owner_id (STAGE 4, multi-dog owner project) so an
+    // owner with multiple overdue dogs gets ONE combined email instead of
+    // one per dog. Dogs with no owner_id (legacy/ownerless) each form their
+    // own solo group, matching today's exact per-dog behavior.
+    const groups = new Map();
+    for (const alert of needsAlert) {
+      const key = alert.dog.owner_id || `solo:${alert.dog.id}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(alert);
+    }
+
+    for (const alerts of groups.values()) {
+      await sendChurnAlertsForOwnerGroup(alerts[0].dog.email, alerts);
     }
 
     console.log('✅ Churn detection cycle complete');
@@ -5846,6 +6103,34 @@ setInterval(async () => {
   }
 }, 60 * 60 * 1000); // Run every 60 minutes (production)
 
+// Build one combined SMS body for 2+ pending queue rows that share an
+// owner and message kind (STAGE 4, multi-dog owner project). Deliberately
+// omits the week number that the individual templates include — sibling
+// dogs can legitimately be on different weeks, so no single number would be
+// accurate for the whole group. Links to the new /checkins/:owner_id page
+// instead of any one dog's own check-in link, since that page lists every
+// dog for this owner with its own link — one short URL regardless of how
+// many dogs are in the group, which is what keeps this inside the 160-char
+// single-segment budget (see All_SMS_Communications.md).
+async function buildCombinedSmsBody(group) {
+    const petIds = group.map(m => m.pet_id);
+    const { data: dogs } = await supabase
+        .from('senior_dogs')
+        .select('id, dog_name')
+        .in('id', petIds);
+
+    const names = petIds
+        .map(id => dogs?.find(d => d.id === id)?.dog_name)
+        .filter(Boolean);
+
+    const link = `${BASE_URL}/checkins/${group[0].owner_id}`;
+    const whoLine = names.length === 2
+        ? `${names[0]} & ${names[1]}`
+        : `${names.length || group.length} of your dogs`;
+
+    return `${whoLine} have check-ins ready: ${link}`;
+}
+
 // ============================================
 // SMS CRON JOB (Runs every 60 seconds)
 // Automatically sends pending SMS messages
@@ -5854,49 +6139,75 @@ setInterval(async () => {
     try {
         const { data: pending } = await supabase
             .from('sms_queue')
-            .select(`id, pet_id, phone, message_body`)
+            .select(`id, pet_id, owner_id, phone, message_body, message_type`)
             .eq('status', 'pending')
             .lte('scheduled_for', new Date().toISOString())
             .limit(10);
 
         if (!pending || pending.length === 0) return;
 
+        // Group rows that can be safely combined into one outgoing text:
+        // same owner (non-null — legacy/ownerless dogs never combine), same
+        // message "kind" ignoring the week number (week_3_reminder_1 and
+        // week_2_reminder_1 both normalize to reminder_1 — sibling dogs can
+        // be on different weeks and still be due for the same reminder
+        // tier at the same time). Rows without an owner_id each get their
+        // own solo group, so they always send individually exactly as
+        // before this change. See migration_add_sms_queue_owner_id.sql.
+        const groups = new Map();
         for (const msg of pending) {
-            if (!msg.phone) {
-                console.warn(`⚠️ No phone on queued message ${msg.id} (pet_id: ${msg.pet_id}), skipping SMS`);
-                await supabase
-                    .from('sms_queue')
-                    .update({ status: 'failed', error_message: 'No phone number' })
-                    .eq('id', msg.id);
+            const kind = (msg.message_type || '').replace(/^week_\d+_/, '');
+            const key = msg.owner_id ? `${msg.owner_id}:${kind}` : `solo:${msg.id}`;
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(msg);
+        }
+
+        for (const group of groups.values()) {
+            if (!group[0].phone) {
+                for (const msg of group) {
+                    console.warn(`⚠️ No phone on queued message ${msg.id} (pet_id: ${msg.pet_id}), skipping SMS`);
+                    await supabase
+                        .from('sms_queue')
+                        .update({ status: 'failed', error_message: 'No phone number' })
+                        .eq('id', msg.id);
+                }
                 continue;
             }
 
+            const body = group.length > 1
+                ? await buildCombinedSmsBody(group)
+                : group[0].message_body;
+
             try {
                 const sent = await twilioClient.messages.create({
-                    body: msg.message_body,
+                    body,
                     from: TWILIO_PHONE_NUMBER,
-                    to: msg.phone
+                    to: group[0].phone
                 });
 
-                await supabase
-                    .from('sms_queue')
-                    .update({
-                        status: 'sent',
-                        twilio_sid: sent.sid,
-                        sent_at: new Date().toISOString()
-                    })
-                    .eq('id', msg.id);
+                for (const msg of group) {
+                    await supabase
+                        .from('sms_queue')
+                        .update({
+                            status: 'sent',
+                            twilio_sid: sent.sid,
+                            sent_at: new Date().toISOString()
+                        })
+                        .eq('id', msg.id);
+                }
 
-                console.log(`✅ SMS sent to ${msg.phone}`);
+                console.log(`✅ SMS sent to ${group[0].phone}${group.length > 1 ? ` (combined for ${group.length} dogs)` : ''}`);
             } catch (error) {
-                console.error(`❌ Error sending SMS for message ${msg.id}:`, error.message);
-                await supabase
-                    .from('sms_queue')
-                    .update({
-                        status: 'failed',
-                        error_message: error.message
-                    })
-                    .eq('id', msg.id);
+                console.error(`❌ Error sending SMS for group (phone ${group[0].phone}):`, error.message);
+                for (const msg of group) {
+                    await supabase
+                        .from('sms_queue')
+                        .update({
+                            status: 'failed',
+                            error_message: error.message
+                        })
+                        .eq('id', msg.id);
+                }
             }
         }
     } catch (error) {

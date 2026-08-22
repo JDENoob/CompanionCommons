@@ -71,6 +71,22 @@
 
 ---
 
+## 6. Combined Multi-Dog Reminder (Stage 4, multi-dog owner project)
+
+**Fires:** Instead of the individual templates above, whenever 2 or more of the same owner's dogs are due for the same reminder tier at the same time (checked at actual send time by the SMS-sending cron — see `Multi_Dog_Signup_Build.md`, Stage 4). Never combines the Verification SMS (that's a per-signup, one-time text, not a recurring reminder). Deliberately omits the week number the individual templates carry, since sibling dogs can legitimately be on different weeks within the same combined send.
+
+**Final copy — exactly 2 dogs:**
+> Bailey & Max have check-ins ready: {url}
+
+**Final copy — 3+ dogs:**
+> {N} of your dogs have check-ins ready: {url}
+
+**Character count (2-dog case):** 109 chars (Bailey & Max) / 128 chars (Constantinople & Constantinople) — **1 segment**, 51–32 chars margin. The link here points to the new `/checkins/:owner_id` page (74 chars, same length class as an individual check-in link), not any one dog's own check-in page — that's what keeps this in budget regardless of dog count.
+
+**Character count (3-dog generic case):** 111 chars — **1 segment**, 49 chars margin. This form doesn't grow with dog count (it names a number, not a name list), so it stays comfortably within budget for any group size in practice.
+
+---
+
 ## Message ordering — how these relate to each other
 
 - On-time logging path: only the **Verification SMS** (once, at signup) and the **Proactive Next-Week Reminder** (once per successful check-in) fire. No other SMS is sent.
@@ -80,5 +96,7 @@
 ---
 
 ## Change history
+
+**August 22, 2026:** Added the combined multi-dog reminder template (see section 6) as part of Stage 4 of the multi-dog owner project — when 2+ of the same owner's dogs are due for the same reminder tier at once, they now receive one combined text instead of separate texts per dog. No existing single-dog template's copy changed.
 
 **August 21, 2026:** Trimmed Reminders #2, #3, the Verification SMS, and the Proactive Next-Week Reminder to guarantee single-segment delivery at the new 40-character dog-name cap (all four were previously splitting into 2 segments for typical/long dog names — a real, ongoing cost, not just a style issue). Reminder #1 was already within limits and left unchanged. Added the 40-character `dog_name` maximum (client + server-side) specifically to keep this margin structural rather than something that could erode again as real users sign up with longer names.

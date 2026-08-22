@@ -15,6 +15,7 @@ This is CompanionCommons, a pet health data intelligence platform. Full details,
 - Always verify empirically before reporting something works (measure/query live state, don't just infer from a success message)
 - Migrations: write the SQL file, do NOT run it — John runs migrations manually in Supabase's SQL Editor
 - Before committing: show the diff for review first
+- Before starting any local dev server for testing, check for and kill any existing node processes first (Get-Process node on Windows) — stray leftover servers from earlier sessions share the same live Supabase database as fresh test runs and can race against them, producing false-looking test failures (confirmed real occurrence: Aug 22, Stage 4 SMS-combining verification)
 
 ## Current in-progress work
-Multi-dog owner architecture project — see Multi_Dog_Signup_Build.md for full detail. Stages 1-3 complete and shipped (owner entity, owners table, signup rewrite with returning-owner detection). Stage 4 (message consolidation) and Stage 5 (dashboard dog-switcher) not yet started.
+Multi-dog owner architecture project — see Multi_Dog_Signup_Build.md for full detail. Stages 1-4 complete (owner entity, owners table, signup rewrite with returning-owner detection, combined churn emails + combined SMS reminders + new /checkins/:owner_id page). **Stage 4 has one pending migration (`migration_add_sms_queue_owner_id.sql`) that must be run before/with deploy — until it runs, the SMS-sending cron will silently stop sending any pending SMS.** Stage 5 (owner session + dashboard dog-switcher) not yet started.
