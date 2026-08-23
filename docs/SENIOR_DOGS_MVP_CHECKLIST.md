@@ -297,7 +297,7 @@ Cleanup:
 
 **STEP P8 (Full End-to-End Testing) needs to be re-run against this new instrument once it's built** — P8's existing scope was written against the old single-slider design and doesn't yet reflect this.
 
-**Not yet scoped, deliberately:** real task breakdown, an effort estimate, and whether this needs staged sub-steps (matching the multi-dog project's Stage 1-5 pattern) all need to happen once the current form/schema code can be seen directly — not guessed at from a planning conversation alone.
+**Scoped Aug 23 — full build tracked in `Health_Instrument_Redesign_Build.md`.** Staged into 6 sub-steps, matching the multi-dog project's pattern: (1) schema + shared helpers, (2) signup surfaces, (3) check-in surfaces, (4) dashboard/Journey Summary/breed-guide display logic + sign-convention flip, (5) Google Sheets headers, (6) verification pass. **Stage 1 complete** (migration written, not yet run; shared config/validation/composite-scoring/widget helpers built, not yet wired into any route). Stages 2-6 not started.
 
 ---
 
@@ -995,5 +995,6 @@ TOTAL COST: $0-9k (depends on hiring vs DIY)
 
 9. **Multi-dog owner project (see `Multi_Dog_Signup_Build.md` for full detail)** — all 5 stages complete: owner entity, `owners` table, signup flow rewritten with returning-owner detection, message consolidation (combined churn emails, combined SMS reminders via `/checkins/:owner_id`, migration run and live-verified), and an additive-only owner-session dashboard dog-switcher (`/dashboard/:dog_id` renders identically for anyone with no session — vets/family sharing links unaffected — and only adds a switcher when a session cookie matches the dog's own owner, verified adversarially against a cross-owner mismatch). A real unescaped-`dog_name` gap found during Stage 5's own build was fixed on the spot (`buildDogSwitcherHtml`). No open items on this project.
 10. **Mobile strategy decision (Aug 23):** PWA layer (manifest, service worker, push notifications, install prompt) — scoped for mid-beta, roughly weeks 4-6, once initial beta churn settles. Native iOS/Android apps stay Phase 2 (Petwella), not pulled forward — decided explicitly, not by default. This supersedes the parallel-native-build plan in the "PHASE 2: PARALLEL APP BUILD" section below (React Native/Expo, weeks 3-7, week-8 A/B decision) — see the superseded notice at the top of that section, kept for reference only.
+11. **Chart Cognitive and Weight in the dashboard, and add Cognitive to the Baseline Score box** — pre-existing gap, noticed during STEP P10 investigation (Aug 23), explicitly NOT part of P10's scope. The dashboard's Chart.js line chart has only ever plotted Mobility/Energy/Appetite (never Cognitive or Weight), and the "Baseline Score" box has only ever shown Mobility/Energy/Appetite/Weight (never Cognitive) — both gaps predate P10 and aren't caused by it. Deliberately deferred rather than bundled into P10's Stage 4, to keep that diff focused on the instrument redesign itself. Pick up after P10 ships (see `Health_Instrument_Redesign_Build.md`).
 
 

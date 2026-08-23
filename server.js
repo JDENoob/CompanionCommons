@@ -42,6 +42,170 @@ const TREATMENT_CATEGORY_LABELS = {
 };
 
 // ============================================
+// STEP P10: HEALTH CHECK-IN INSTRUMENT (v2)
+// Full design rationale: docs/CompanionCommons_Health_Instrument_Design.md
+//
+// Stage 1 of the P10 rebuild — shared config, validation, composite-
+// scoring, and a reusable 0-10 tap-button widget generator. Nothing below
+// is wired into a live route yet; that's Stage 2 (signup forms) and
+// Stage 3 (check-in forms). Building these first, in isolation, is what
+// lets four separate surfaces (baseline form, add-dog form, standalone
+// check-in page, dashboard check-in modal) share ONE implementation of
+// the new instrument instead of a fifth copy-pasted version each — the
+// exact trap the OLD 1-8 slider design fell into (four near-identical
+// hint-dictionary blocks, three near-identical range-validators).
+//
+// IMPORTANT sign convention: 0 = normal/no difficulty, 10 = severe/most
+// concerning, across EVERY domain — a deliberate reversal from the old
+// "higher = better" scale. Anywhere that reads a score and decides
+// "up = good" needs its comparison flipped, not just relabeled, once
+// Stage 4 rewires the dashboard/insight/alert logic to use this.
+// ============================================
+
+const INSTRUMENT_SCALE_MIN = 0;
+const INSTRUMENT_SCALE_MAX = 10;
+
+// The locked instrument. Domains with `items` (mobility, cognitive) get a
+// composite = average of their 4 items. Domains with `items: null`
+// (energy, appetite) are collected as a single 0-10 value directly, no
+// averaging.
+const HEALTH_INSTRUMENT = {
+  mobility: {
+    label: 'Mobility',
+    cadence: 'weekly',
+    compositeColumn: 'mobility_score',
+    baselineCompositeColumn: 'baseline_mobility_score',
+    items: [
+      { key: 'getting_up', label: 'Getting Up', anchorLow: 'No difficulty, gets up right away', anchorHigh: 'Severe difficulty, struggles significantly or needs help' },
+      { key: 'stairs', label: 'Stairs', anchorLow: 'No difficulty, moves easily', anchorHigh: 'Severe difficulty, avoids stairs entirely or needs to be carried' },
+      { key: 'stiffness_after_rest', label: 'Stiffness After Rest', anchorLow: 'Moves normally right away', anchorHigh: "Remains very stiff even after moving around, doesn't fully loosen up" },
+      { key: 'walk_distance', label: 'Walk Distance', anchorLow: 'No limitation, walks normal distances easily', anchorHigh: 'Severe limitation, unable to walk normal distances' }
+    ]
+  },
+  cognitive: {
+    label: 'Cognitive',
+    cadence: 'every_4th_week',
+    compositeColumn: 'cognitive_score',
+    baselineCompositeColumn: 'baseline_cognitive_score',
+    items: [
+      { key: 'orientation', label: 'Orientation', anchorLow: 'Not at all, fully alert and aware', anchorHigh: 'Frequently disoriented or confused' },
+      { key: 'memory', label: 'Memory / Recognition', anchorLow: 'No signs of forgetting', anchorHigh: 'Frequent signs of forgetting' },
+      { key: 'interest', label: 'Interest / Engagement', anchorLow: 'Normal interest and engagement', anchorHigh: 'Little to no interest, seems withdrawn' },
+      { key: 'sleep_wake', label: 'Sleep-Wake Pattern', anchorLow: 'Normal sleep pattern', anchorHigh: 'Significantly disrupted' }
+    ]
+  },
+  energy: {
+    label: 'Energy',
+    cadence: 'weekly',
+    compositeColumn: 'energy_score',
+    baselineCompositeColumn: 'baseline_energy_score',
+    items: null,
+    singleItem: { anchorLow: 'Normal, active energy level', anchorHigh: 'Very low energy, lethargic most or all of the time' }
+  },
+  appetite: {
+    label: 'Appetite',
+    cadence: 'weekly',
+    compositeColumn: 'appetite_score',
+    baselineCompositeColumn: 'baseline_appetite_score',
+    items: null,
+    singleItem: { anchorLow: 'Normal, healthy appetite', anchorHigh: 'Barely eating or refusing food' }
+  }
+};
+
+// Builds the DB column name for one item, e.g.
+// itemColumnName('mobility', 'stiffness_after_rest') -> 'mobility_stiffness_after_rest',
+// or with baseline: true -> 'baseline_mobility_stiffness_after_rest'.
+function itemColumnName(domainKey, itemKey, { baseline = false } = {}) {
+  return `${baseline ? 'baseline_' : ''}${domainKey}_${itemKey}`;
+}
+
+function isValidInstrumentValue(value) {
+  if (value === null || value === undefined || value === '') return false;
+  const n = Number(value);
+  return Number.isInteger(n) && n >= INSTRUMENT_SCALE_MIN && n <= INSTRUMENT_SCALE_MAX;
+}
+
+// Average of 0-10 item values, rounded to one decimal place. Returns null
+// if any item is missing — a composite is only meaningful once every item
+// in the domain has a real answer, never a partial average.
+function computeCompositeScore(itemValues) {
+  if (!Array.isArray(itemValues) || itemValues.length === 0) return null;
+  if (itemValues.some(v => !isValidInstrumentValue(v))) return null;
+  const sum = itemValues.reduce((total, v) => total + Number(v), 0);
+  return Math.round((sum / itemValues.length) * 10) / 10;
+}
+
+// ---- Shared 0-10 tap-button widget ----
+// One generator, used identically by the standalone check-in page and the
+// dashboard's inline check-in modal (both server-rendered template
+// literals in this file, wired up in Stage 3). The two static signup
+// forms (Public/baseline-health-journey.html, Public/add-dog.html) can't
+// call this function directly since they're plain files, not routes —
+// when Stage 2 rebuilds those forms, copy this exact HTML/CSS/JS shape
+// into them so all four surfaces stay in lockstep. If this widget's
+// markup ever changes, all four surfaces need the update, not just here.
+function buildScoreItemWidget(fieldName, label, anchorLow, anchorHigh, currentValue) {
+  const buttons = [];
+  for (let v = INSTRUMENT_SCALE_MIN; v <= INSTRUMENT_SCALE_MAX; v++) {
+    buttons.push(`<button type="button" class="score-btn" data-value="${v}">${v}</button>`);
+  }
+  const safeValue = isValidInstrumentValue(currentValue) ? Number(currentValue) : '';
+  return `
+    <div class="form-group score-item" data-score-item>
+      <label>${escapeHtml(label)}</label>
+      <div class="score-buttons" role="group" aria-label="${escapeHtml(label)}">
+        ${buttons.join('')}
+      </div>
+      <input type="hidden" name="${escapeHtml(fieldName)}" value="${safeValue}" required>
+      <div class="score-anchor-hint">
+        <span class="anchor-low">${escapeHtml(anchorLow)}</span>
+        <span class="anchor-high">${escapeHtml(anchorHigh)}</span>
+      </div>
+    </div>`;
+}
+
+// Shared CSS for the widget above — one copy, included once per page.
+const SCORE_ITEM_WIDGET_STYLES = `
+  .score-item { margin-bottom: 24px; }
+  .score-buttons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .score-btn {
+    flex: 1 1 auto; min-width: 32px; padding: 8px 0; border: 1px solid #ddd;
+    border-radius: 6px; background: #fff; font-family: inherit; font-size: 14px;
+    cursor: pointer; text-align: center;
+  }
+  .score-btn:hover { border-color: #A89968; }
+  .score-btn.selected { background: #A89968; border-color: #A89968; color: #fff; font-weight: 600; }
+  .score-anchor-hint {
+    display: flex; justify-content: space-between; gap: 12px; margin-top: 6px;
+    font-size: 12px; color: #999;
+  }
+  .score-anchor-hint .anchor-low { text-align: left; }
+  .score-anchor-hint .anchor-high { text-align: right; }
+`;
+
+// Shared behavior for the widget above — one copy, included once per page.
+// Generic/data-driven on purpose: reads each widget's own hidden input and
+// button set, so it works for any number of score-item widgets on a page
+// without a per-metric bespoke listener (unlike the old per-slider hint
+// dictionaries it replaces).
+const SCORE_ITEM_WIDGET_SCRIPT = `
+  document.querySelectorAll('[data-score-item]').forEach(function(container) {
+    var buttons = container.querySelectorAll('.score-btn');
+    var hiddenInput = container.querySelector('input[type=hidden]');
+    function selectValue(v) {
+      hiddenInput.value = v;
+      buttons.forEach(function(b) {
+        b.classList.toggle('selected', b.getAttribute('data-value') === String(v));
+      });
+    }
+    buttons.forEach(function(btn) {
+      btn.addEventListener('click', function() { selectValue(btn.getAttribute('data-value')); });
+    });
+    if (hiddenInput.value !== '') selectValue(hiddenInput.value);
+  });
+`;
+
+// ============================================
 // VALIDATE REQUIRED ENVIRONMENT VARIABLES
 // ============================================
 const requiredEnvVars = [
