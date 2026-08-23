@@ -1671,14 +1671,14 @@ function generatePostLogInsight(dogName, current, previous) {
   const absDiff = Math.abs(biggest.diff);
 
   const betterVariants = [
-    `${dogName}'s ${biggest.label} is down ${absDiff} point${absDiff > 1 ? 's' : ''} from last week — nice trend, keep it going.`,
-    `Good sign: ${dogName}'s ${biggest.label} improved by ${absDiff} point${absDiff > 1 ? 's' : ''} since last week.`,
-    `${dogName}'s ${biggest.label} moved in a good direction this week (-${absDiff}). Worth noting if anything changed in the routine.`
+    `${dogName}'s ${biggest.label} is down ${absDiff} point${absDiff > 1 ? 's' : ''} from last week. Keep logging to see how the trend continues.`,
+    `${dogName}'s ${biggest.label} moved lower by ${absDiff} point${absDiff > 1 ? 's' : ''} since last week — worth adding a note in the dashboard if anything's changed.`,
+    `${dogName}'s ${biggest.label} was lower this week (-${absDiff}). One week alone isn't a pattern — tracking it is how you'll know.`
   ];
 
   const worseVariants = [
-    `${dogName}'s ${biggest.label} is up ${absDiff} point${absDiff > 1 ? 's' : ''} from last week. Nothing to panic about from a single week — but worth watching next week.`,
-    `Heads up: ${dogName}'s ${biggest.label} increased by ${absDiff} point${absDiff > 1 ? 's' : ''} since last week. Keep logging so you can see if it's a trend or a one-off.`,
+    `${dogName}'s ${biggest.label} is up ${absDiff} point${absDiff > 1 ? 's' : ''} from last week. One week alone doesn't show a pattern — keep logging, and add a note in the dashboard if anything's changed.`,
+    `${dogName}'s ${biggest.label} increased by ${absDiff} point${absDiff > 1 ? 's' : ''} since last week. Keep logging so you can see if it's a trend or a one-off.`,
     `${dogName}'s ${biggest.label} was a bit higher this week (+${absDiff}). One week alone isn't a pattern — tracking it is how you'll know.`
   ];
 
@@ -1842,7 +1842,7 @@ async function detectHealthAlerts(dog_id, dogName, current, previous, currentIte
     // key, not a "good/bad" label.
     const message = direction === 'up'
       ? `${dogName}'s ${subject} increased ${magnitude} points compared to a recent check-in. This isn't a diagnosis — just a pattern that might be worth mentioning at ${dogName}'s next vet visit.`
-      : `${dogName}'s ${subject} improved ${magnitude} points compared to a recent check-in. Worth noting what's been different lately.`;
+      : `${dogName}'s ${subject} improved ${magnitude} points compared to a recent check-in. If anything's changed recently, consider adding a note in the dashboard.`;
 
     const { error: alertError } = await supabase
       .from('health_alerts')
