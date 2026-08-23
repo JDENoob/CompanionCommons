@@ -297,7 +297,7 @@ Cleanup:
 
 **STEP P8 (Full End-to-End Testing) needs to be re-run against this new instrument once it's built** — P8's existing scope was written against the old single-slider design and doesn't yet reflect this.
 
-**Scoped Aug 23 — full build tracked in `Health_Instrument_Redesign_Build.md`.** Staged into 6 sub-steps, matching the multi-dog project's pattern: (1) schema + shared helpers, (2) signup surfaces, (3) check-in surfaces, (4) dashboard/Journey Summary/breed-guide display logic + sign-convention flip — split into 4a (insight/alert logic) and 4b (dashboard display) given its size, (5) Google Sheets headers, (6) verification pass. **Stages 1-4 complete, both migrations run, and a full real end-to-end pass (signup → verify → check-in → dashboard, including a real alert firing and real correctly-flipped trend text) confirmed working live.** Stage 5 starting now.
+**Scoped Aug 23 — full build tracked in `Health_Instrument_Redesign_Build.md`.** Staged into 6 sub-steps, matching the multi-dog project's pattern: (1) schema + shared helpers, (2) signup surfaces, (3) check-in surfaces, (4) dashboard/Journey Summary/breed-guide display logic + sign-convention flip — split into 4a (insight/alert logic) and 4b (dashboard display) given its size, (5) Google Sheets headers, (6) verification pass. **Stages 1-5 complete**, both migrations run and verified live end-to-end. **Manual follow-up still needed from John**: add "(0-10)" to the 8 score column headers on the live Google Sheet (code only updates a freshly-created tab, not the existing one). Stage 6 (verification pass) is next and last.
 
 ---
 

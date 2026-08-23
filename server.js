@@ -1074,15 +1074,26 @@ async function ensureGoogleSheetTabsExist() {
       console.log(`✅ Created Google Sheets tabs: ${tabsToCreate.join(', ')}`);
 
       // Add header rows to any newly-created tabs
+      //
+      // STEP P10: score columns labeled "(0-10)" as of Aug 23 — the
+      // underlying scale changed from the old 1-8 "higher=better" slider to
+      // a 0-10 "higher=more concerning" composite (see
+      // docs/CompanionCommons_Health_Instrument_Design.md). This code only
+      // runs when a tab is created for the first time; Signups/CheckIns/
+      // Notes already exist, so this label change does NOT retroactively
+      // update the live sheet's actual header row — that needs a manual
+      // edit, same as the weight-column addition on Aug 20. Values
+      // exported are composites only, matching the Stage 1 decision to
+      // keep item-level detail in Supabase rather than widen the sheet.
       if (tabsToCreate.includes('Signups')) {
         await appendRowToSheet('Signups', [
           'Timestamp', 'Dog ID', 'Email', 'Dog Name', 'Breed', 'Age', 'Gender', 'Baseline Weight',
-          'Baseline Mobility', 'Baseline Energy', 'Baseline Appetite', 'Baseline Cognitive'
+          'Baseline Mobility (0-10)', 'Baseline Energy (0-10)', 'Baseline Appetite (0-10)', 'Baseline Cognitive (0-10)'
         ]);
       }
       if (tabsToCreate.includes('CheckIns')) {
         await appendRowToSheet('CheckIns', [
-          'Timestamp', 'Dog ID', 'Dog Name', 'Week Number', 'Mobility', 'Energy', 'Appetite', 'Cognitive', 'Weight', 'Notes'
+          'Timestamp', 'Dog ID', 'Dog Name', 'Week Number', 'Mobility (0-10)', 'Energy (0-10)', 'Appetite (0-10)', 'Cognitive (0-10)', 'Weight', 'Notes'
         ]);
       }
       if (tabsToCreate.includes('Notes')) {

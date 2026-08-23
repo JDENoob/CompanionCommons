@@ -1,6 +1,6 @@
 # CompanionCommons — Health Check-In Instrument Redesign Build
 **Started:** August 23, 2026
-**Status:** Stages 1-4 complete, both migrations run, and a full real end-to-end pass (signup → verify → check-in → dashboard) confirmed working live for the first time. Stage 5 (Google Sheets headers) starting now.
+**Status:** Stages 1-5 complete, both migrations run and verified live end-to-end. Stage 6 (verification pass) not started.
 **Purpose:** Standalone tracking document for STEP P10 (see `SENIOR_DOGS_MVP_CHECKLIST.md`), the pre-beta-blocker rebuild of the weekly/baseline health check-in instrument. Tracked separately from the main build log given the scope, matching the pattern set by `Multi_Dog_Signup_Build.md`. Full design rationale, literature grounding, and the locked item-by-item instrument live in `CompanionCommons_Health_Instrument_Design.md` — not duplicated here.
 
 ---
@@ -71,8 +71,8 @@ Header rows for `Signups` and `CheckIns` reference the old column names (server.
 4. **Display/interpretation logic** — split into two sub-stages Aug 23 given the size (8 distinct sign-dependent pieces) and because one of them (the alert threshold retune) requires extending `/api/checkin-senior` again, which is a meaningfully different risk profile than the pure dashboard-rendering pieces:
    - **4a — Insight & alert logic** ✅ complete — `generatePostLogInsight`, `detectHealthAlerts` (sign-flip + the Stage 1 two-check threshold retune), the `segment` A/B/C field found during Stage 3. Pure functions plus one `/api/checkin-senior` field, no dashboard HTML.
    - **4b — Dashboard display** ✅ complete — "at a glance" trend text, Chart.js Y-axis max 8→10, peer/community comparison card (rank formula, `/8` literal, "Above average!" wording, plus a found-and-fixed `latestPerDog` falsy-zero bug), Journey Summary (`describeJourneyTrend`), breed guide `/8` literal, and the Baseline Score box's 3 `/8` literals (found via a fresh sweep, not in the original spec).
-5. **Google Sheets headers** — `Signups` and `CheckIns` tabs
-6. **Verification pass** — effectively the first real pass of STEP P8, scoped to just the new instrument, before P8 runs in full against everything else
+5. **Google Sheets headers** ✅ complete — `Signups` and `CheckIns` tab header labels updated in code (`(0-10)` added to the 8 score columns); confirmed this only affects a freshly-created tab, so a manual header edit on the live sheet is still needed from John.
+6. **Verification pass** ← next — effectively the first real pass of STEP P8, scoped to just the new instrument, before P8 runs in full against everything else
 
 ---
 
@@ -303,3 +303,17 @@ A full independent grep for `<score-column-name> ||` across the whole file (not 
 **All test data deleted immediately after** — owner, dog, the check-in row, both health-alert rows, the queued SMS reminder, and the magic-link token — every table involved confirmed back to 0 rows by a direct follow-up query, not assumed. Preview server stopped; confirmed 0 `node.exe` processes running afterward.
 
 This closes out the last standing gap both Stage 4a and 4b's write-ups flagged (their own logic being unreachable/only-baseline-testable live) — everything built in Stages 1-4b is now confirmed correct against real, independently-chosen data, not just unit tests and expected-failure patterns. Stage 5 starts clean, with no remaining doubt about whether the underlying save/read/alert pipeline actually works.
+
+---
+
+### Stage 5 — Google Sheets headers ✅ Complete (Aug 23)
+
+**A real asymmetry checked before touching anything, per the Stage 1 spec**: `ensureGoogleSheetTabsExist()`'s header-writing code only runs when a tab is **created for the first time** — it's gated behind `if (tabsToCreate.length > 0)`. Confirmed via the live server log (`✅ Google Sheets authenticated`, no tab-creation message) and this project's own history that `Signups`/`CheckIns`/`Notes` already exist and have for a long time. This means editing the header-array literals in code does **not** retroactively change the live sheet's actual header row — the exact same asymmetry this project already hit once before (the Aug 20 weight-column addition needed both a code fix and a manual header-column insert John did directly in the spreadsheet).
+
+**Updated anyway, for correctness and any future re-creation**: the 8 score-related header labels (`Baseline Mobility`/`Energy`/`Appetite`/`Cognitive` in `Signups`, `Mobility`/`Energy`/`Appetite`/`Cognitive` in `CheckIns`) now read `"... (0-10)"` — e.g. `Baseline Mobility (0-10)`. Deliberately kept short (no "higher=more concerning" direction note in the header itself — that level of detail belongs in a spreadsheet comment or a reference doc, not cluttering every column label) since the goal is just making the scale change self-documenting to whoever reads the sheet later, not re-explaining the whole instrument redesign in a cell.
+
+**Confirmed, not assumed, that no other code needed to change**: re-checked all four `appendRowToSheet` call sites (the two `Signups` sites in `/verify` and `/api/add-dog`, the one `CheckIns` site in `/api/checkin-senior`) against the updated headers — all already export composites only, in the exact column order the headers expect, matching the Stage 1 decision. This was already confirmed working with zero export errors during the real end-to-end pass just before this stage, so nothing here needed a code-level fix, only the label text.
+
+**Not tested live, deliberately**: the only way to actually exercise the tab-creation code path would be to delete the real `Signups`/`CheckIns`/`Notes` tabs from the live, shared Google Sheet and let the code recreate them — a destructive action against real shared infrastructure this business actually uses, not something to do just to test a label change. `node --check server.js` passes; the array-literal edit itself is low-risk (same values, same order, just longer strings).
+
+**Manual step needed from John, not something code can do**: the live spreadsheet's actual `Signups` and `CheckIns` header rows need the same `(0-10)` suffix added by hand, same pattern as the Aug 20 precedent. Worth deciding at the same time whether any pre-P10 rows already in those tabs (old 1-8-scale data, if any survived the various test-data wipes) should be visually separated or annotated — not something to guess at without visibility into the actual current sheet content, so left as John's call rather than assumed.
