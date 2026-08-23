@@ -188,8 +188,8 @@ const SCORE_ITEM_WIDGET_STYLES = `
   .score-item { margin-bottom: 24px; }
   .score-buttons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .score-btn {
-    flex: 1 1 auto; min-width: 32px; padding: 8px 0; border: 1px solid #ddd;
-    border-radius: 6px; background: #fff; font-family: inherit; font-size: 14px;
+    flex: 1 1 auto; min-width: 32px; width: auto; padding: 8px 0; border: 1px solid #ddd;
+    border-radius: 6px; background: #fff; color: #333; font-family: inherit; font-size: 14px;
     cursor: pointer; text-align: center;
   }
   .score-btn:hover { border-color: #A89968; }
@@ -1582,6 +1582,7 @@ app.get('/check-in/:dog_id', async (req, res) => {
                     <p style="font-size: 14px; color: #666; margin: 20px 0;">
                       \${result.change_text}
                     </p>
+                    <a href="/dashboard/${dog_id}" style="display: inline-block; background: #007AFF; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600; margin: 8px 0 20px 0;">View Dashboard</a>
                     <p style="font-size: 12px; color: #999;">
                       You'll get SMS updates each week. Thanks for tracking!
                     </p>
