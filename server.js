@@ -1841,9 +1841,10 @@ async function detectHealthAlerts(dog_id, dogName, current, previous, currentIte
     // `direction` itself is UNCHANGED: it's still a literal description of
     // which way the raw number moved, used only as a stable dedup bucket
     // key, not a "good/bad" label.
+    const pointWord = magnitude === 1 ? 'point' : 'points';
     const message = direction === 'up'
-      ? `${dogName}'s ${subject} increased ${magnitude} points compared to a recent check-in. This isn't a diagnosis — just a pattern that might be worth mentioning at ${dogName}'s next vet visit.`
-      : `${dogName}'s ${subject} improved ${magnitude} points compared to a recent check-in. If anything's changed recently, consider adding a note in the dashboard.`;
+      ? `${dogName}'s ${subject} increased ${magnitude} ${pointWord} compared to a recent check-in. This isn't a diagnosis — just a pattern that might be worth mentioning at ${dogName}'s next vet visit.`
+      : `${dogName}'s ${subject} improved ${magnitude} ${pointWord} compared to a recent check-in. If anything's changed recently, consider adding a note in the dashboard.`;
 
     const { error: alertError } = await supabase
       .from('health_alerts')
@@ -3066,9 +3067,23 @@ app.get('/dashboard/:dog_id', async (req, res) => {
     // future relative to server time (clock skew, a TZ-less timestamp
     // misparsed as local time — the same bug class as the original "Week
     // #0" fix) sends daysSinceSignup slightly negative, which floors to -1
-    // instead of 0 — showing "Week -1 of 12" on a real owner's Journey
-    // Summary and, since isInBaselinePeriod checks === 0, incorrectly
-    // flipping a genuinely-in-baseline dog to "not in baseline" too.
+    // instead of 0, incorrectly flipping a genuinely-in-baseline dog to
+    // "not in baseline" (isInBaselinePeriod checks === 0).
+    //
+    // weeksSinceSignup is elapsed-time-only and uses a DIFFERENT numbering
+    // convention than mostRecentSubmittedWeek/nextCheckinWeekNumber below —
+    // it's "how many full weeks since signup" (0-indexed), not "which
+    // submission-numbered week are we on" (1-indexed, where week 1 is the
+    // baseline-blocked period and week 2 is the first real check-in
+    // opportunity). That's a real, systematic off-by-one between the two,
+    // not a bug in either individually — weeksSinceSignup is only ever
+    // meant to drive baseline-period/due-week detection below, never a
+    // user-visible "Week X of 12" label. It used to feed the Journey
+    // Summary's own header too, which is exactly what produced the
+    // "dashboard says Week 4, Journey Summary says Week 3" bug for the
+    // same dog at the same moment — reconciled by pointing the Journey
+    // Summary header at mostRecentSubmittedWeek instead, the same source
+    // the dashboard's own header and week-dots already use.
     const weeksSinceSignup = Math.max(0, Math.floor(daysSinceSignup / 7)); // 0 during baseline period, 1 from day 7, etc.
     const mostRecentSubmittedWeek = checkins.length > 0
       ? Math.max(...checkins.map(c => c.week_number))
@@ -3820,7 +3835,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                 ? `<p style="margin: 0 0 8px 0; font-size: 13px; color: #666;">Medications/treatments: ${journeyMeds.join(', ')}</p>`
                 : `<p style="margin: 0 0 8px 0; font-size: 13px; color: #666;"></p>`;
             })()}
-            <p style="margin: 0 0 6px 0; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: #999;">Prepared ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} · Baseline ✓ · Week ${weeksSinceSignup} of 12</p>
+            <p style="margin: 0 0 6px 0; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: #999;">Prepared ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} · Baseline ✓ · Week ${mostRecentSubmittedWeek} of 12</p>
 
             <hr style="border: none; border-top: 1.5px solid #D4CDB8; margin: 0 0 8px 0;">
 
@@ -3875,7 +3890,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
               ${journeyNotesHtml}
             </div>
 
-            <p style="font-size: 12px; color: #999; border-top: 1px solid #eee; padding-top: 8px; margin: 0; break-inside: avoid; page-break-inside: avoid;">
+            <p style="font-size: 12px; color: #999; border-top: 1px solid #eee; padding-top: 8px; margin: 0;">
               Companion Commons is not a veterinary service and does not diagnose, treat, prescribe, or provide veterinary advice. Always consult a licensed veterinarian about your companion's health and care. Think this may be an emergency? Contact your veterinarian or the nearest emergency veterinary hospital immediately.
             </p>
             <p style="font-size: 12px; color: #999; margin: 4px 0 0 0;">
