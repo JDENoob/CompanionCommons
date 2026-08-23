@@ -1,3 +1,15 @@
+// Force UTC regardless of the host OS's local timezone. Must run before any
+// Date parsing happens (Supabase timestamps have no timezone suffix, so
+// without this Node parses them in local time). This bug has been
+// independently rediscovered and fixed via a local-only .env TZ=UTC override
+// at least four times across this project's history because .env is
+// git-ignored and doesn't travel with the repo. Setting it here instead means
+// every environment (local, Railway, a fresh clone) behaves identically with
+// no environment-specific setup required. Production already runs as UTC by
+// default (Railway's Linux containers, no TZ env var set) — this makes that
+// explicit and portable rather than incidental.
+process.env.TZ = 'UTC';
+
 require('dotenv').config();
 
 const express = require('express');
