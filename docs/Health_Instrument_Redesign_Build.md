@@ -1,6 +1,6 @@
 # CompanionCommons — Health Check-In Instrument Redesign Build
 **Started:** August 23, 2026
-**Status:** Stages 1-3 complete (schema/helpers, signup surfaces, check-in surfaces). Migration still not run against Supabase. Stage 4 (display/interpretation logic + sign-flip) not started.
+**Status:** Stages 1-3 complete, Stage 4 split into 4a/4b — 4a (insight & alert logic) complete. Migration still not run against Supabase. Stage 4b (dashboard display) not started.
 **Purpose:** Standalone tracking document for STEP P10 (see `SENIOR_DOGS_MVP_CHECKLIST.md`), the pre-beta-blocker rebuild of the weekly/baseline health check-in instrument. Tracked separately from the main build log given the scope, matching the pattern set by `Multi_Dog_Signup_Build.md`. Full design rationale, literature grounding, and the locked item-by-item instrument live in `CompanionCommons_Health_Instrument_Design.md` — not duplicated here.
 
 ---
@@ -68,9 +68,58 @@ Header rows for `Signups` and `CheckIns` reference the old column names (server.
 1. **Schema + shared helpers** ✅ complete
 2. **Signup surfaces** ✅ complete — `baseline-health-journey.html` + `/api/send-magic-link`; `add-dog.html` + `/api/add-dog`
 3. **Check-in surfaces** ✅ complete — standalone `/check-in/:dog_id` + dashboard's inline modal + `/api/checkin-senior`
-4. **Display/interpretation logic** ← next — dashboard "at a glance" trend text, Chart.js (Y-axis max 8→10), peer/community comparison card (currently mobility-only, has a literal `/8`), Journey Summary (trend lines, week-by-week table, chart image capture), breed guide "current status" (one `/8` literal), `generatePostLogInsight`, `detectHealthAlerts` + threshold retune, **and now also the `segment` A/B/C field** (found during Stage 3, see its progress log entry below — its improving/declining labels are backwards under the new sign convention). This is where the sign-flip work concentrates.
+4. **Display/interpretation logic** — split into two sub-stages Aug 23 given the size (8 distinct sign-dependent pieces) and because one of them (the alert threshold retune) requires extending `/api/checkin-senior` again, which is a meaningfully different risk profile than the pure dashboard-rendering pieces:
+   - **4a — Insight & alert logic** ← next — `generatePostLogInsight`, `detectHealthAlerts` (sign-flip + the Stage 1 two-check threshold retune), the `segment` A/B/C field found during Stage 3. Pure functions plus one `/api/checkin-senior` field, no dashboard HTML.
+   - **4b — Dashboard display** — "at a glance" trend text, Chart.js Y-axis max 8→10, peer/community comparison card (rank formula, `/8` literal, "Above average!" wording), Journey Summary (`describeJourneyTrend`, week-by-week table), breed guide `/8` literal. All inside the one large dashboard route — the higher-risk half.
 5. **Google Sheets headers** — `Signups` and `CheckIns` tabs
 6. **Verification pass** — effectively the first real pass of STEP P8, scoped to just the new instrument, before P8 runs in full against everything else
+
+---
+
+## Stage 4 OLD → NEW behavior spec (written before touching any code, per John's request — this is the artifact to check the actual changes against)
+
+Full investigation performed first (a dedicated sweep of every sign-dependent comparison in `server.js`, not assumptions) — see the Stage 4 progress log entries below for what it found. This section is the spec derived from that investigation; the progress log entries record what was actually verified once built.
+
+### 4a — Insight & alert logic
+
+**`generatePostLogInsight`** (server.js, `/api/checkin-senior`'s post-log message)
+- OLD: `direction = biggest.diff > 0 ? 'up' : 'down'`. `upVariants` (fires on `diff > 0`, i.e. score rose) carry positive framing — "nice trend, keep it going," "Good sign: ... improved by," "moved up ... (+N)." `downVariants` (fires on `diff < 0`) carry cautious framing — "Nothing to panic about ... worth watching," "Heads up: ... dropped," "a bit lower (-N)."
+- NEW: A score *decrease* is now the good outcome, so the encouraging copy must fire on `diff < 0`, and the cautious copy on `diff > 0`. Not a bare swap of which array fires — the words *inside* each variant reference "up"/"down"/"dropped"/"lower" as literal descriptions of the raw number's motion, and those must stay factually true to what actually happened, not get carried over attached to the wrong direction. New: compute the sentiment off `-biggest.diff` (positive = improvement), keep two variant arrays with the same two sentiments as before, but rewrite each variant's internal direction-words to match the *actual* number movement for that sentiment (e.g. the encouraging array now says "is down N points" / "moved in a good direction (-N)" instead of "is up N points").
+
+**`detectHealthAlerts`** (server.js)
+- OLD: `direction = diff > 0 ? 'up' : 'down'` (stored as-is in `health_alerts.direction`, used for 14-day dedup bucketing). Message: `direction === 'down'` → the vet-mention/concerning template; else (`'up'`) → the "improved" template. Correct pairing under the old scale, since `diff > 0` meant genuine improvement.
+- NEW: **The `direction` computation itself does NOT change** — `diff > 0 ? 'up' : 'down'` still accurately describes which way the raw number moved, and the dedup mechanism only needs a stable, internally-consistent bucket key, not a "good/bad" label. Confirmed by re-reading the actual dedup query: it never interprets `direction`'s value, just groups by it. What changes is **which message template pairs with which direction**: the concerning/vet-mention template now fires on `direction === 'up'` (score rose = more concerning), and the "improved" template fires on `direction === 'down'` (score fell = better).
+- **Threshold retune** (per the reasoning already locked in the Stage 1 decisions table): replace the single `HEALTH_ALERT_THRESHOLD = 2` composite-only check with two independent checks per domain that has items (mobility, cognitive): (a) composite moves 1.0+ from the prior comparison point, OR (b) any single item moves 3+ points on its own. Energy/appetite (no items, single value already) keep one direct threshold on their own value — **3**, not the originally-considered 2.5-3 range, since these are proportionally scaled from the old `2`-out-of-1-8-span exactly the same way the single-item threshold was derived (2 × 10/7 ≈ 2.86 → 3), with no averaging-dampening effect to correct for (unlike mobility/cognitive, energy/appetite were never composites).
+  - This requires `/api/checkin-senior`'s `prevCheckins` query to select the 8 item columns too (currently composite-only: `mobility_score, energy_score, appetite_score, cognitive_score`), and `detectHealthAlerts`'s signature to receive item-level current/previous values alongside the composites it already gets. This is the one piece of Stage 4a that touches `/api/checkin-senior` again, not just the two standalone functions.
+
+**`segment` field** (`/api/checkin-senior`, found during Stage 3)
+- OLD: `scoreDiff = mobilityComposite - previousScore`; `scoreDiff >= 1` → `'A'` (improving), `scoreDiff <= -1` → `'C'` (declining). Correct under the old scale.
+- NEW: a positive `scoreDiff` now means the score rose = worse. Flip which comparison maps to which letter so `'A'` (improving) still means "actually improving": `scoreDiff <= -1` → `'A'`, `scoreDiff >= 1` → `'C'`. Confirmed via full-codebase grep (Stage 3) that nothing currently reads `segment` for display/logic — this is a real fix, but not user-visible today.
+
+### 4b — Dashboard display
+
+**`describeTrendForGlance`** ("This Week at a Glance" — Mobility/Energy/Appetite rows)
+- OLD: `diff = current - previous`; `diff > 0` → `"improved (+N)"`; `diff < 0` → `"declined (N)"`; `0` → `"held steady"`.
+- NEW: `diff < 0` (score fell) → `"improved (N)"` (N is already negative, prints as e.g. `-2`); `diff > 0` (score rose) → `"declined (+N)"`; `0` unchanged. Same three-state shape, comparisons and sign-prefix swapped.
+- `describeWeightTrendForGlance` — **no change**. Already neutral ("up/down/steady," no "improved/declined"), confirmed by the design's own existing comment explaining weight direction isn't inherently good or bad.
+
+**Chart.js** — `scales.y.max: 8` → `10`. No axis title/label text exists to reword (confirmed — Chart.js config has no `title` block on the y-axis). Legend labels are just dataset names, not direction-dependent.
+
+**Peer/community comparison card**
+- `peerAverage` display: `/8` → `/10` literal.
+- **Rank formula (`dogsWithLowerScores = peerScores.filter(s => s < currentScore).length`) — verified NO CHANGE NEEDED, and this is deliberate, not an oversight.** Traced through a concrete example: under the OLD scale this formula actually gave the *worst* dog rank #1 (already backwards from normal "rank 1 = best" convention — counting how many dogs you *beat* and calling that your rank number literally means "beat more dogs → higher rank number," the opposite of a leaderboard). The scale flip corrects this for free: under the NEW scale, `s < currentScore` counts dogs with a *lower* (now *better*) score than yours, so the best dog (lowest score) now correctly lands at rank #1. Blindly flipping this comparator (as the "sign flip" pattern elsewhere would suggest) would have re-introduced the backwards behavior. Left untouched.
+- **"Above average!" / "At average" / "Below average" wording — rewritten, not just re-triggered on the flipped comparison.** This isn't only a math fix: the standing project rule ("never diagnose or interpret health data — show data, never a health judgment") means the OLD celebratory framing (gold color, target icon, exclamation point on "Above average!") was already a soft value judgment that happened to align with "more = good" under the old scale. Under the new scale, continuing that same celebratory treatment would mean telling an owner "Above average!" in bright, positive styling when their dog's score is *higher* (more concerning) than peers — a much more visible violation of that rule than before. New copy is neutral and factual, dropping the exclamation point: `"Lower than the community average"` / `"About the same as the community average"` / `"Higher than the community average"`, condition based on `currentScore` vs `peerAverage` (lower score = first branch). Icon/color treatment left as the existing brand-accent styling (not specifically "positive-coded" elsewhere in the app), only the words and the exclamation point change.
+
+**Journey Summary**
+- `describeJourneyTrend`: `/8` → `/10` (3 literals). **Wording — no change needed**, and this is also deliberate: the function already uses neutral factual language ("up N since baseline" / "down N since baseline" / "steady since baseline"), never "improved"/"declined." Same reasoning as `describeWeightTrendForGlance` — already compliant with the "no health judgment" rule as written, so "up"/"down" stay as literal, accurate descriptions of the raw number's movement.
+- `describeWeightJourneyTrend` — no change (weight, out of scope).
+- `journeyTrendLines` construction — no change beyond what `describeJourneyTrend` already produces once fixed.
+- Weekly log table (headers + row cells) — no change. Confirmed it renders raw numbers only, no `/8` literal, no interpretive language anywhere in the table.
+- Chart image capture — no change (captures the same canvas already fixed in the Chart.js item above).
+
+**Breed guide** — `currentMobility` display: `/8` → `/10` literal only. Already framed neutrally ("current mobility: X/10," explicitly not compared to other dogs per its own existing comment) — no interpretive wording to fix. `isSeniorForBreed` confirmed unaffected (age/breed-tier only).
+
+---
 
 ---
 
@@ -151,3 +200,28 @@ Neither is wired to any form's submit event yet — there's no real form to wire
 **Aside, not part of this stage's work**: while testing, a `dotenv` console tip (`⌁ auth for agents [www.vestauth.com]`) looked like a possible prompt-injection attempt and was flagged to John before continuing. Traced to the actual installed `dotenv@17.4.2` package source (`node_modules/dotenv/lib/main.js`) and its own CHANGELOG — genuine (if unusually spammy) self-promotion by the dotenv maintainer for their own new project, not a supply-chain compromise. No action taken.
 
 **Not yet done**: migration still not run. Stage 4 (display/interpretation logic, the sign-flip work, now including the newly-found `segment` bug) not started.
+
+### Stage 4a — Insight & alert logic ✅ Complete (Aug 23)
+
+Built exactly to the OLD→NEW spec written above (see the "Stage 4 OLD → NEW behavior spec" section) — no deviation found necessary once implementing.
+
+**`generatePostLogInsight`**: sentiment now computed off `-biggest.diff` (positive = improvement). Rewrote both variant arrays' internal wording (not just which array fires) so every message stays factually accurate to the real number movement — the "better" array now says "is down N points" / "moved in a good direction (-N)" instead of carrying over "up"/"+N" language from its old positive-but-now-wrong-direction home.
+
+**`detectHealthAlerts`**: `direction = diff > 0 ? 'up' : 'down'` **left unchanged** — confirmed it's only ever used as an opaque dedup bucket key, never interpreted as good/bad, so the raw-motion label stays accurate and dedup keeps working exactly as before. What changed is which message template pairs with which direction (`'up'` now gets the vet-mention/concerning template, `'down'` gets "improved"). Implemented the Stage 1 two-check threshold design: `HEALTH_ALERT_COMPOSITE_THRESHOLD = 1.0` and `HEALTH_ALERT_ITEM_THRESHOLD = 3` for mobility/cognitive (composite move OR any single item move, whichever is larger determines both the trigger and which item the message names), `HEALTH_ALERT_SINGLE_VALUE_THRESHOLD = 3` for energy/appetite (no averaging, so no item-level check needed for these two). De-dup stays keyed by domain (`metric` column) + direction, not per-item — `health_alerts` has no item-level column, and adding one would be a schema change out of scope for this stage; an item-triggered alert is still stored under its domain's `metric` key, with a message naming the specific item for readability.
+
+**`/api/checkin-senior` extended** (not just the two functions) to support the item-level threshold check: `prevCheckins` now selects the 8 item columns alongside the 4 composites (previously composite-only), and a new `currentItems`/`previousItems` pair is built and passed into `detectHealthAlerts` — mobility items always populated (mobility is always required weekly), cognitive items only populated in `currentItems` when this submission actually included them (mirrors the existing composite fallback pattern: `previousItems` always falls back through `prevRow` → baseline the same way `previousScores` already did, for consistency rather than introducing a different, more precise but inconsistent lookup).
+
+**`segment` field**: `scoreDiff <= -1` → `'A'` (improving), `scoreDiff >= 1` → `'C'` (declining) — flipped from the old `>= 1`/`<= -1` pairing, so `'A'` still means "actually improving" under the new scale.
+
+**Verification — a real limitation, documented rather than glossed over**: unlike Stages 1-3, none of this stage's new code is reachable through a live request against the running app right now. `/api/checkin-senior`'s `mobility_checkins` insert (which fails with the expected pending-migration column error) happens **before** any of `generatePostLogInsight`, `detectHealthAlerts`, the new `currentItems`/`previousItems` construction, or the `segment` fix ever execute — the route returns its error response and never reaches this code at all. So there's no live-endpoint test to run here yet, migration or not; this is different from Stages 1-3, where the code under test sat before the point of failure.
+
+Given that, verification for this stage was **direct unit testing of the exact code**, not a reimplementation or paraphrase — extracted verbatim from `server.js` via string-slice + `eval`, stubbing only `supabase` (the one external dependency), and run with `node -e`:
+- `generatePostLogInsight`: confirmed a score decrease produces "down"/"improved"/"good direction" language with zero "up"/"increased" leakage, and a score increase produces the reverse — across 200 runs each, sampling all 3 variants per direction (6 total), with no cross-contamination in any of them.
+- `detectHealthAlerts`, 5 cases against a stubbed Supabase client that records what would have been inserted: (1) composite-only trigger (mobility worse, +2.5, no single item ≥3) → correct `direction: 'up'`, correct "increased... worth mentioning to the vet" message; (2) a single item (Stairs) spiking +4 while the composite only moves +1.0 → correctly triggers on the item check alone and the message names "Stairs" specifically, not "mobility"; (3) mobility improving (composite −3.0) → correct `direction: 'down'`, correct "improved... worth noting" message; (4) energy at the single-value threshold — diff of 2 correctly produces no alert, diff of 3 correctly triggers; (5) composite +0.5 and max item movement +1 (both under threshold) → correctly no alert.
+- `segment`: confirmed `scoreDiff <= -1` → `'A'`, `>= 1` → `'C'`, `0` → `'B'` directly.
+- `node --check server.js` passes; grepped for `HEALTH_ALERT_THRESHOLD` (the old constant name) to confirm no leftover reference survived the rename to the three new threshold constants — none found.
+- No live server was started this round (nothing to reach live), so no test data was written and no cleanup was needed; confirmed 0 `node.exe` processes running regardless.
+
+**Standing gap, not new to this stage**: this stage's logic still can't be exercised end-to-end until the migration runs — Stage 6's verification pass will need to confirm it live once that happens, not just trust the unit tests forever.
+
+**Not yet done**: Stage 4b (dashboard display — the trend text, chart, peer/community card, Journey Summary, breed guide) not started, per the split above.

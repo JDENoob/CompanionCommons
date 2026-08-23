@@ -1636,22 +1636,30 @@ function generatePostLogInsight(dogName, current, previous) {
     return flatVariants[Math.floor(Math.random() * flatVariants.length)];
   }
 
-  const direction = biggest.diff > 0 ? 'up' : 'down';
+  // STEP P10: higher = more concerning now, so a score DECREASE is the
+  // encouraging outcome and a score INCREASE is the one worth a cautious
+  // note — the opposite of the old 1-8 scale. Not a bare swap of which
+  // variant array fires: the words inside each variant describe the raw
+  // number's motion ("up"/"down"/"dropped"/"lower"), and those need to
+  // stay factually true to what actually happened, so each array's
+  // internal wording is rewritten to match its real direction, not just
+  // reassigned. See docs/Health_Instrument_Redesign_Build.md Stage 4a spec.
+  const sentiment = biggest.diff < 0 ? 'better' : 'worse';
   const absDiff = Math.abs(biggest.diff);
 
-  const upVariants = [
-    `${dogName}'s ${biggest.label} is up ${absDiff} point${absDiff > 1 ? 's' : ''} from last week — nice trend, keep it going.`,
+  const betterVariants = [
+    `${dogName}'s ${biggest.label} is down ${absDiff} point${absDiff > 1 ? 's' : ''} from last week — nice trend, keep it going.`,
     `Good sign: ${dogName}'s ${biggest.label} improved by ${absDiff} point${absDiff > 1 ? 's' : ''} since last week.`,
-    `${dogName}'s ${biggest.label} moved up this week (+${absDiff}). Worth noting if anything changed in the routine.`
+    `${dogName}'s ${biggest.label} moved in a good direction this week (-${absDiff}). Worth noting if anything changed in the routine.`
   ];
 
-  const downVariants = [
-    `${dogName}'s ${biggest.label} is down ${absDiff} point${absDiff > 1 ? 's' : ''} from last week. Nothing to panic about from a single week — but worth watching next week.`,
-    `Heads up: ${dogName}'s ${biggest.label} dropped ${absDiff} point${absDiff > 1 ? 's' : ''} since last week. Keep logging so you can see if it's a trend or a one-off.`,
-    `${dogName}'s ${biggest.label} was a bit lower this week (-${absDiff}). One week alone isn't a pattern — tracking it is how you'll know.`
+  const worseVariants = [
+    `${dogName}'s ${biggest.label} is up ${absDiff} point${absDiff > 1 ? 's' : ''} from last week. Nothing to panic about from a single week — but worth watching next week.`,
+    `Heads up: ${dogName}'s ${biggest.label} increased by ${absDiff} point${absDiff > 1 ? 's' : ''} since last week. Keep logging so you can see if it's a trend or a one-off.`,
+    `${dogName}'s ${biggest.label} was a bit higher this week (+${absDiff}). One week alone isn't a pattern — tracking it is how you'll know.`
   ];
 
-  const variants = direction === 'up' ? upVariants : downVariants;
+  const variants = sentiment === 'better' ? betterVariants : worseVariants;
   return variants[Math.floor(Math.random() * variants.length)];
 }
 
@@ -1700,20 +1708,44 @@ function getStreakMilestoneMessage(dogName, streak) {
 
 // ============================================
 // STEP 27D: HEALTH ALERT TRIGGERS
-// Dashboard-only (no SMS). Fires on 2+ point swings in EITHER direction
-// (threshold is provisional — no real user data yet to tune it).
-// De-dupes per dog+metric within a 14-day window so owners aren't shown
-// the same alert repeatedly.
+// Dashboard-only (no SMS). De-dupes per dog+metric+direction within a
+// 14-day window so owners aren't shown the same alert repeatedly.
+//
+// STEP P10 threshold retune — see docs/Health_Instrument_Redesign_Build.md
+// Stage 1 decisions table for the full reasoning. Averaging inherently
+// dampens movement (a 4-point single-item swing among 4 items only moves
+// the composite by 1.0), so mobility/cognitive get TWO independent checks
+// instead of one composite-only threshold: the composite itself moving
+// HEALTH_ALERT_COMPOSITE_THRESHOLD+, OR any single item moving
+// HEALTH_ALERT_ITEM_THRESHOLD+ on its own — which catches a real
+// single-domain spike (e.g. Stairs got much worse, everything else flat)
+// that a composite-only check would miss entirely. Energy/appetite (single
+// values, no averaging) keep one direct threshold, proportionally scaled
+// from the old 2-points-of-8 to HEALTH_ALERT_SINGLE_VALUE_THRESHOLD
+// (3-points-of-10). All three numbers are still provisional guesses
+// pending real-data tuning, same as the original.
 // ============================================
-const HEALTH_ALERT_THRESHOLD = 2; // points, provisional
+const HEALTH_ALERT_COMPOSITE_THRESHOLD = 1.0;
+const HEALTH_ALERT_ITEM_THRESHOLD = 3;
+const HEALTH_ALERT_SINGLE_VALUE_THRESHOLD = 3;
 const HEALTH_ALERT_DEDUP_DAYS = 14;
 
-async function detectHealthAlerts(dog_id, dogName, current, previous) {
+const HEALTH_ALERT_ITEM_LABELS = {
+  mobility: { getting_up: 'Getting Up', stairs: 'Stairs', stiffness_after_rest: 'Stiffness After Rest', walk_distance: 'Walk Distance' },
+  cognitive: { orientation: 'Orientation', memory: 'Memory/Recognition', interest: 'Interest/Engagement', sleep_wake: 'Sleep-Wake Pattern' }
+};
+
+// currentItems/previousItems are only populated for mobility/cognitive
+// (the two domains with items) — shape: { mobility: {getting_up, stairs,
+// stiffness_after_rest, walk_distance} | undefined, cognitive: {...} |
+// undefined }. Absent/undefined for a domain simply skips the item-level
+// check for it (e.g. on a non-cadence week, cognitive has no items to check).
+async function detectHealthAlerts(dog_id, dogName, current, previous, currentItems, previousItems) {
   const metrics = [
-    { key: 'mobility', label: 'mobility' },
-    { key: 'energy', label: 'energy' },
-    { key: 'appetite', label: 'appetite' },
-    { key: 'cognitive', label: 'cognitive sharpness' }
+    { key: 'mobility', label: 'mobility', hasItems: true },
+    { key: 'energy', label: 'energy', hasItems: false },
+    { key: 'appetite', label: 'appetite', hasItems: false },
+    { key: 'cognitive', label: 'cognitive sharpness', hasItems: true }
   ];
 
   const fourteenDaysAgo = new Date(Date.now() - HEALTH_ALERT_DEDUP_DAYS * 24 * 60 * 60 * 1000).toISOString();
@@ -1721,16 +1753,49 @@ async function detectHealthAlerts(dog_id, dogName, current, previous) {
   for (const m of metrics) {
     if (current[m.key] == null || previous[m.key] == null) continue;
 
-    const diff = current[m.key] - previous[m.key];
-    if (Math.abs(diff) < HEALTH_ALERT_THRESHOLD) continue; // didn't cross threshold
+    const compositeDiff = current[m.key] - previous[m.key];
 
-    const direction = diff > 0 ? 'up' : 'down';
-    const magnitude = Math.abs(diff);
+    // Find the single item (if any) with the largest movement past its own
+    // threshold — more specific and, per the Stage 1 reasoning, a better
+    // trigger than the composite alone when a real single-domain change is
+    // hiding inside an otherwise-flat average.
+    let biggestItem = null; // { key, label, diff }
+    if (m.hasItems && currentItems?.[m.key] && previousItems?.[m.key]) {
+      for (const itemKey of Object.keys(currentItems[m.key])) {
+        const curVal = currentItems[m.key][itemKey];
+        const prevVal = previousItems[m.key][itemKey];
+        if (curVal == null || prevVal == null) continue;
+        const itemDiff = curVal - prevVal;
+        if (Math.abs(itemDiff) < HEALTH_ALERT_ITEM_THRESHOLD) continue;
+        if (!biggestItem || Math.abs(itemDiff) > Math.abs(biggestItem.diff)) {
+          biggestItem = { key: itemKey, label: HEALTH_ALERT_ITEM_LABELS[m.key]?.[itemKey] || itemKey, diff: itemDiff };
+        }
+      }
+    }
+
+    const compositeThreshold = m.hasItems ? HEALTH_ALERT_COMPOSITE_THRESHOLD : HEALTH_ALERT_SINGLE_VALUE_THRESHOLD;
+    const compositeTriggered = Math.abs(compositeDiff) >= compositeThreshold;
+
+    if (!compositeTriggered && !biggestItem) continue; // neither check crossed threshold
+
+    // Prefer the item-level trigger for the message when it's the larger/
+    // more specific signal — more useful to the owner than a vague
+    // domain-wide note, and a stronger future trigger for STEP 27E's
+    // confounder-branching questions.
+    const useItem = biggestItem && (!compositeTriggered || Math.abs(biggestItem.diff) > Math.abs(compositeDiff));
+    const triggerDiff = useItem ? biggestItem.diff : compositeDiff;
+    const direction = triggerDiff > 0 ? 'up' : 'down';
+    const magnitude = Math.abs(triggerDiff);
+    const subject = useItem ? biggestItem.label : m.label;
 
     // De-dup: skip if this dog already got an alert for this exact metric AND
     // direction within the last 14 days. Direction-specific on purpose — a
     // decline alert shouldn't suppress a later improvement alert for the same
     // metric (a recovery is worth surfacing even if a drop fired recently).
+    // Still keyed by domain (metric), not per-item — health_alerts has no
+    // item-level column, and adding one is a schema change out of scope for
+    // this stage; an item-triggered alert is still stored under its
+    // domain's metric key, with a message naming the specific item.
     const { data: recentAlerts } = await supabase
       .from('health_alerts')
       .select('id')
@@ -1745,9 +1810,16 @@ async function detectHealthAlerts(dog_id, dogName, current, previous) {
     // SAFE, non-diagnostic framing — no treatment claims, always points to the vet.
     // See project compliance framework: observational only, never interprets
     // what a change "means" medically.
-    const message = direction === 'down'
-      ? `${dogName}'s ${m.label} dropped ${magnitude} points compared to a recent check-in. This isn't a diagnosis — just a pattern that might be worth mentioning at ${dogName}'s next vet visit.`
-      : `${dogName}'s ${m.label} improved ${magnitude} points compared to a recent check-in. Worth noting what's been different lately.`;
+    //
+    // STEP P10: higher = more concerning now, so the vet-mention/concerning
+    // template fires on direction === 'up' (score rose) and the improved
+    // template fires on 'down' (score fell) — flipped from the old scale.
+    // `direction` itself is UNCHANGED: it's still a literal description of
+    // which way the raw number moved, used only as a stable dedup bucket
+    // key, not a "good/bad" label.
+    const message = direction === 'up'
+      ? `${dogName}'s ${subject} increased ${magnitude} points compared to a recent check-in. This isn't a diagnosis — just a pattern that might be worth mentioning at ${dogName}'s next vet visit.`
+      : `${dogName}'s ${subject} improved ${magnitude} points compared to a recent check-in. Worth noting what's been different lately.`;
 
     const { error: alertError } = await supabase
       .from('health_alerts')
@@ -1889,11 +1961,13 @@ app.post('/api/checkin-senior', async (req, res) => {
     // as 0 or negative, which silently breaks streak counting downstream.
     const weekNumber = Math.max(1, Math.floor((now - created) / (7 * 24 * 60 * 60 * 1000)) + 1);
 
-    // Get previous check-in for comparison — pulling all 4 scores now, not just mobility,
-    // so the post-log insight (STEP 27B) can comment on whichever metric actually moved most.
+    // Get previous check-in for comparison — pulling all 4 composites AND the
+    // 8 item columns now, so the post-log insight (STEP 27B) can comment on
+    // whichever metric actually moved most, and detectHealthAlerts (STEP 27D)
+    // can check individual items, not just composites.
     const { data: prevCheckins } = await supabase
       .from('mobility_checkins')
-      .select('mobility_score, energy_score, appetite_score, cognitive_score')
+      .select('mobility_score, energy_score, appetite_score, cognitive_score, mobility_getting_up, mobility_stairs, mobility_stiffness_after_rest, mobility_walk_distance, cognitive_orientation, cognitive_memory, cognitive_interest, cognitive_sleep_wake')
       .eq('dog_id', dog_id)
       .order('created_at', { ascending: false })
       .limit(1);
@@ -1901,10 +1975,13 @@ app.post('/api/checkin-senior', async (req, res) => {
     const previousScore = prevCheckins?.[0]?.mobility_score || dog.baseline_mobility_score;
     const scoreDiff = mobilityComposite - previousScore;
 
-    // Determine segment (A=improving, B=flat, C=declining)
+    // Determine segment (A=improving, B=flat, C=declining). STEP P10: higher
+    // now = more concerning, so a NEGATIVE scoreDiff (score fell) is the
+    // improving case — flipped from the old 1-8 scale, where a positive
+    // diff meant genuine improvement.
     let segment = 'B'; // default moderate
-    if (scoreDiff >= 1) segment = 'A'; // improving
-    if (scoreDiff <= -1) segment = 'C'; // declining
+    if (scoreDiff <= -1) segment = 'A'; // improving
+    if (scoreDiff >= 1) segment = 'C'; // declining
 
     // ============================================
     // CAPTURE SUBMISSION TIME & CALCULATE REMINDER PREFERENCE
@@ -2018,10 +2095,45 @@ app.post('/api/checkin-senior', async (req, res) => {
 
     const changeText = generatePostLogInsight(dog.dog_name, currentScores, previousScores);
 
+    // STEP P10: item-level current/previous, for detectHealthAlerts' per-item
+    // threshold check (see its own comment for why composite-only isn't
+    // enough). Mobility items are always present this week; cognitive items
+    // are only built when this submission actually included them (a
+    // cadence week) — detectHealthAlerts skips the item-level check
+    // entirely when currentItems.cognitive is undefined.
+    const currentItems = {
+      mobility: {
+        getting_up: cleanMobilityItems[0],
+        stairs: cleanMobilityItems[1],
+        stiffness_after_rest: cleanMobilityItems[2],
+        walk_distance: cleanMobilityItems[3]
+      },
+      cognitive: cognitiveComposite != null ? {
+        orientation: cleanCognitiveItems[0],
+        memory: cleanCognitiveItems[1],
+        interest: cleanCognitiveItems[2],
+        sleep_wake: cleanCognitiveItems[3]
+      } : undefined
+    };
+    const previousItems = {
+      mobility: {
+        getting_up: prevRow?.mobility_getting_up ?? dog.baseline_mobility_getting_up,
+        stairs: prevRow?.mobility_stairs ?? dog.baseline_mobility_stairs,
+        stiffness_after_rest: prevRow?.mobility_stiffness_after_rest ?? dog.baseline_mobility_stiffness_after_rest,
+        walk_distance: prevRow?.mobility_walk_distance ?? dog.baseline_mobility_walk_distance
+      },
+      cognitive: {
+        orientation: prevRow?.cognitive_orientation ?? dog.baseline_cognitive_orientation,
+        memory: prevRow?.cognitive_memory ?? dog.baseline_cognitive_memory,
+        interest: prevRow?.cognitive_interest ?? dog.baseline_cognitive_interest,
+        sleep_wake: prevRow?.cognitive_sleep_wake ?? dog.baseline_cognitive_sleep_wake
+      }
+    };
+
     // STEP 27D: Health Alert Triggers — dashboard-only, no SMS. Runs after
     // the insight so it reuses the same current/previous data. Doesn't block
     // or affect the response either way — alerts show up on next dashboard load.
-    await detectHealthAlerts(dog_id, dog.dog_name, currentScores, previousScores);
+    await detectHealthAlerts(dog_id, dog.dog_name, currentScores, previousScores, currentItems, previousItems);
 
     // Export to Google Sheets (CheckIns tab) — real-time, one row per
     // check-in. Doesn't block or affect the response if this fails.
