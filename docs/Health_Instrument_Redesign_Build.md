@@ -1,6 +1,6 @@
 # CompanionCommons — Health Check-In Instrument Redesign Build
 **Started:** August 23, 2026
-**Status:** Stages 1-3 complete, Stage 4 split into 4a/4b — 4a (insight & alert logic) complete. Migration still not run against Supabase. Stage 4b (dashboard display) not started.
+**Status:** Stages 1-3 complete, Stage 4 (split into 4a/4b) fully complete. Migration still not run against Supabase. Stage 5 (Google Sheets headers) not started.
 **Purpose:** Standalone tracking document for STEP P10 (see `SENIOR_DOGS_MVP_CHECKLIST.md`), the pre-beta-blocker rebuild of the weekly/baseline health check-in instrument. Tracked separately from the main build log given the scope, matching the pattern set by `Multi_Dog_Signup_Build.md`. Full design rationale, literature grounding, and the locked item-by-item instrument live in `CompanionCommons_Health_Instrument_Design.md` — not duplicated here.
 
 ---
@@ -69,8 +69,8 @@ Header rows for `Signups` and `CheckIns` reference the old column names (server.
 2. **Signup surfaces** ✅ complete — `baseline-health-journey.html` + `/api/send-magic-link`; `add-dog.html` + `/api/add-dog`
 3. **Check-in surfaces** ✅ complete — standalone `/check-in/:dog_id` + dashboard's inline modal + `/api/checkin-senior`
 4. **Display/interpretation logic** — split into two sub-stages Aug 23 given the size (8 distinct sign-dependent pieces) and because one of them (the alert threshold retune) requires extending `/api/checkin-senior` again, which is a meaningfully different risk profile than the pure dashboard-rendering pieces:
-   - **4a — Insight & alert logic** ← next — `generatePostLogInsight`, `detectHealthAlerts` (sign-flip + the Stage 1 two-check threshold retune), the `segment` A/B/C field found during Stage 3. Pure functions plus one `/api/checkin-senior` field, no dashboard HTML.
-   - **4b — Dashboard display** — "at a glance" trend text, Chart.js Y-axis max 8→10, peer/community comparison card (rank formula, `/8` literal, "Above average!" wording), Journey Summary (`describeJourneyTrend`, week-by-week table), breed guide `/8` literal. All inside the one large dashboard route — the higher-risk half.
+   - **4a — Insight & alert logic** ✅ complete — `generatePostLogInsight`, `detectHealthAlerts` (sign-flip + the Stage 1 two-check threshold retune), the `segment` A/B/C field found during Stage 3. Pure functions plus one `/api/checkin-senior` field, no dashboard HTML.
+   - **4b — Dashboard display** ✅ complete — "at a glance" trend text, Chart.js Y-axis max 8→10, peer/community comparison card (rank formula, `/8` literal, "Above average!" wording, plus a found-and-fixed `latestPerDog` falsy-zero bug), Journey Summary (`describeJourneyTrend`), breed guide `/8` literal, and the Baseline Score box's 3 `/8` literals (found via a fresh sweep, not in the original spec).
 5. **Google Sheets headers** — `Signups` and `CheckIns` tabs
 6. **Verification pass** — effectively the first real pass of STEP P8, scoped to just the new instrument, before P8 runs in full against everything else
 
@@ -225,6 +225,31 @@ Given that, verification for this stage was **direct unit testing of the exact c
 **Standing gap, not new to this stage**: this stage's logic still can't be exercised end-to-end until the migration runs — Stage 6's verification pass will need to confirm it live once that happens, not just trust the unit tests forever.
 
 **Not yet done**: Stage 4b (dashboard display — the trend text, chart, peer/community card, Journey Summary, breed guide) not started, per the split above.
+
+### Stage 4b — Dashboard display ✅ Complete (Aug 23)
+
+Built to the OLD→NEW spec written above, with one real addition the spec missed on first pass (see below) — caught by re-running a fresh `/8` sweep against the current file rather than trusting the original investigation's list.
+
+**`describeTrendForGlance`**: flipped exactly per spec — `diff < 0` (score fell) now returns "improved", `diff > 0` returns "declined (+N)". Null-checks (`current == null`) were already correct, not truthy checks, so no additional fix needed there.
+
+**Chart.js**: `scales.y.max` changed `8` → `10`.
+
+**Peer/community comparison card**: `peerAverage` display `/8` → `/10`. Rank formula (`s < currentScore`) left **deliberately unchanged**, with a new comment explaining why (the scale flip alone fixes what was actually a backwards "worst dog = rank #1" formula under the old scale — verified by a concrete example, documented inline so a future reader doesn't "fix" it back into being wrong). "Above average!" wording replaced with neutral factual language (`"Lower/About the same as/Higher than the community average"`), dropping the exclamation point — motivated by the project's own "never make a health judgment" standing rule, not just the math, per the spec's reasoning.
+
+**A real, live falsy-zero bug found and fixed while touching this card, not part of the original spec**: `latestPerDog[checkin.dog_id]` (building "each dog's most recent mobility score" from a newest-first-ordered query) used a truthy check (`if (!latestPerDog[checkin.dog_id])`) to decide whether a dog's slot was already filled. A dog whose most recent real score was `0` would have that slot look "not filled yet" to the truthy check, letting an OLDER row for the same dog silently overwrite the correct, most-recent `0`. Changed to `if (!(checkin.dog_id in latestPerDog))`. Exactly the class of bug John asked to watch for proactively in this stage, not just the spots already flagged — found by re-reading the block while touching it for the wording change, not by a dedicated hunt.
+
+**Journey Summary**: `describeJourneyTrend`'s three `/8` literals (7 actual occurrences once counted precisely) → `/10`. Wording left unchanged as spec'd — confirmed the function already uses `latest ?? baseline` (not `||`) and `== null` checks throughout, so it was already safe from the falsy-zero trap and already used neutral "up/down/steady" language with no "improved/declined" judgment to flip.
+
+**Breed guide**: `currentMobility` `/8` → `/10`.
+
+**Found beyond the original spec, via a fresh full-file `/8` sweep run before considering the stage done (not trusting the earlier investigation's list as final)**: three more `/8` literals in the dashboard's "Baseline Score" box (`dog.baseline_mobility_score ?? '—'}/8`, same for energy/appetite) — these display fields P10 already changed to a 0-10 scale, so unlike the Cognitive/Weight-column *addition* to this same box (explicitly out of scope, tracked separately as `SENIOR_DOGS_MVP_CHECKLIST.md` NEXT STEP #11), correcting the scale label on fields already shown is squarely in scope — leaving them would have shipped a visibly wrong "6.8/8" label for a value that's actually 0-10. Fixed; already used `??`, no falsy-zero issue there.
+
+**Verification — thorough, and for once not blocked by the pending migration.** Unlike Stages 3-4a, the dashboard route only ever `SELECT`s from `mobility_checkins`/`senior_dogs` — it never `INSERT`s — so it doesn't hit the "column not found" wall the save endpoints do, and could be exercised close to fully live:
+- Unit-tested the four pure/near-pure functions directly (not reimplemented — the actual code, run via `node -e`), specifically probing the `0`-is-valid edge case throughout: `describeTrendForGlance` correctly returns "improved (-3)" for a real `current: 0` (not "Baseline recorded" fallback text) and "declined (+2)" for a real `previous: 0`; `describeJourneyTrend` correctly shows "3/10 → 0/10 (down 3...)" for a real `latest: 0` and "0/10 → 2/10 (up 2...)" for a real `baseline: 0`, including the baseline-only branch with `baseline: 0`; the peer-card status-text logic across better/worse/equal cases including a real `currentScore: 0`; and the `latestPerDog` fix directly, confirming a real `0` for the most recent row is no longer overwritten by an older row's non-zero value.
+- **Live in the browser**, stray `node.exe` confirmed at 0 first: inserted one test dog directly via Supabase (same reason as every prior stage — the app's own save routes require the still-unmigrated columns) with a **deliberately real `baseline_mobility_score: 0`**, specifically to catch a live falsy-zero regression, not just a happy-path render. Loaded `/dashboard/:dog_id` for real: confirmed the Baseline Score box shows "0/10" (not "—/10" or a crash), the peer/community card renders "0/10" and "About the same as the community average" without erroring on the empty-peer-population edge case (0 other dogs logging — a pre-existing edge case, unchanged by this stage, confirmed it still degrades gracefully), "This week at a glance" correctly shows the baseline-only message for all four rows, and `Chart.instances[0].options.scales.y.max === 10` confirmed directly via JS. Loaded `/breed-guide/:dog_id` for real: confirmed "current mobility: 0/10". Opened the Journey Summary modal for real: confirmed "Mobility: 0/10 (baseline only — no check-ins yet)" and the same for energy/appetite/cognitive. Zero console errors and all three requests (`/dashboard`, `/breed-guide`, reload) returned 200 throughout.
+- Test dog deleted immediately after; confirmed 0 rows remaining with that ID. Preview server stopped; confirmed 0 `node.exe` processes running afterward.
+
+**Standing gap, same as 4a**: the *check-in-driven* trend text (a real week-over-week comparison via `describeTrendForGlance` with two genuine data points, not the baseline-only branch) still can't be exercised live until the migration runs and a real check-in can be saved — covered by the unit tests above in the meantime, same honesty as 4a's note.
 
 ### Between-stage fix — `||` vs `??` on score fallbacks ✅ Complete (Aug 23)
 

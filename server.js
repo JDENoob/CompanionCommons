@@ -2646,7 +2646,7 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
           <p>${seniorSectionCopy}</p>
 
           <div class="dog-snapshot">
-            <strong>${escapeHtml(dog.dog_name)}'s current mobility:</strong> ${currentMobility}/8
+            <strong>${escapeHtml(dog.dog_name)}'s current mobility:</strong> ${currentMobility}/10
             <p style="margin: 8px 0 0 0; font-size: 13px; color: #888;">This is just ${escapeHtml(dog.dog_name)}'s own number — not a comparison to other dogs. Keep logging to build a clearer picture over time.</p>
           </div>
 
@@ -2892,8 +2892,11 @@ app.get('/dashboard/:dog_id', async (req, res) => {
       // check-in yet," not a generic missing-data case.
       if (current == null || previous == null) return "Baseline recorded — first weekly update will show your dog's trend";
       const diff = current - previous;
-      if (diff > 0) return `improved (+${diff})`;
-      if (diff < 0) return `declined (${diff})`;
+      // STEP P10: higher = more concerning now, so a score DECREASE is the
+      // improvement — flipped from the old scale. diff is already negative
+      // when the score fell, so it prints correctly as e.g. "improved (-2)".
+      if (diff < 0) return `improved (${diff})`;
+      if (diff > 0) return `declined (+${diff})`;
       return 'held steady';
     }
 
@@ -2934,10 +2937,17 @@ app.get('/dashboard/:dog_id', async (req, res) => {
       .select('dog_id, mobility_score, created_at')
       .order('created_at', { ascending: false });
 
+    // `in`, not a truthy check — found during Stage 4b review, same bug
+    // class as the || vs ?? fixes elsewhere. allLatestScores is ordered
+    // newest-first per dog, so the FIRST row seen for a dog_id is meant to
+    // win; a truthy check (`!latestPerDog[checkin.dog_id]`) would treat a
+    // real mobility_score of 0 (a legitimate, perfectly healthy value on
+    // the new 0-10 scale) as "not set yet" and let an OLDER row for that
+    // same dog silently overwrite it.
     const latestPerDog = {};
     if (allLatestScores) {
       for (const checkin of allLatestScores) {
-        if (!latestPerDog[checkin.dog_id]) {
+        if (!(checkin.dog_id in latestPerDog)) {
           latestPerDog[checkin.dog_id] = checkin.mobility_score;
         }
       }
@@ -2948,7 +2958,17 @@ app.get('/dashboard/:dog_id', async (req, res) => {
       ? (peerScores.reduce((a, b) => a + b, 0) / peerScores.length).toFixed(1)
       : 0;
 
-    // Calculate rank (how many dogs have lower scores)
+    // STEP P10: this comparator is DELIBERATELY left unchanged — not an
+    // oversight. Under the OLD scale (higher = better), "count dogs with a
+    // lower score than mine, +1" actually gave the WORST dog rank #1
+    // (verified with a concrete example during Stage 4 planning — beating
+    // more dogs made your rank number go UP, backwards from a normal
+    // leaderboard). Under the NEW scale (lower = better), this exact same
+    // comparator now counts dogs with a lower (better) score than mine,
+    // which correctly gives the BEST dog rank #1. The scale flip fixes this
+    // formula for free; flipping the comparator here would have
+    // re-introduced the old backwards behavior. See
+    // docs/Health_Instrument_Redesign_Build.md Stage 4 spec.
     const dogsWithLowerScores = peerScores.filter(s => s < currentScore).length;
     const rank = dogsWithLowerScores + 1;
     const totalDogs = peerScores.length;
@@ -3045,12 +3065,17 @@ app.get('/dashboard/:dog_id', async (req, res) => {
         return `${label}: not enough data yet`;
       }
       if (baseline == null || latest == null || checkins.length === 0) {
-        return `${label}: ${latest ?? baseline}/8 (baseline only — no check-ins yet)`;
+        return `${label}: ${latest ?? baseline}/10 (baseline only — no check-ins yet)`;
       }
       const diff = latest - baseline;
-      if (diff > 0) return `${label}: ${baseline}/8 → ${latest}/8 (up ${diff} since baseline)`;
-      if (diff < 0) return `${label}: ${baseline}/8 → ${latest}/8 (down ${Math.abs(diff)} since baseline)`;
-      return `${label}: ${baseline}/8 → ${latest}/8 (steady since baseline)`;
+      // STEP P10: wording NOT changed here — "up"/"down" already describe
+      // the raw number's literal movement, not a good/bad judgment (no
+      // "improved"/"declined" language exists in this function), so it
+      // stays accurate under the new scale exactly as written. Only the
+      // /8 -> /10 scale literals change.
+      if (diff > 0) return `${label}: ${baseline}/10 → ${latest}/10 (up ${diff} since baseline)`;
+      if (diff < 0) return `${label}: ${baseline}/10 → ${latest}/10 (down ${Math.abs(diff)} since baseline)`;
+      return `${label}: ${baseline}/10 → ${latest}/10 (steady since baseline)`;
     }
 
     // Weight-specific variant of describeJourneyTrend — "lb" instead of "/8",
@@ -3536,15 +3561,15 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                       <div style="display: flex; gap: 8px; margin-top: 4px;">
                         <div style="flex: 1; text-align: center;">
                           <div style="font-size: 9px; color: #AAA; text-transform: uppercase; letter-spacing: 0.3px;">Mobility</div>
-                          <div class="baseline-info-value" style="font-size: 15px;">${dog.baseline_mobility_score ?? '—'}/8</div>
+                          <div class="baseline-info-value" style="font-size: 15px;">${dog.baseline_mobility_score ?? '—'}/10</div>
                         </div>
                         <div style="flex: 1; text-align: center;">
                           <div style="font-size: 9px; color: #AAA; text-transform: uppercase; letter-spacing: 0.3px;">Energy</div>
-                          <div class="baseline-info-value" style="font-size: 15px;">${dog.baseline_energy_score ?? '—'}/8</div>
+                          <div class="baseline-info-value" style="font-size: 15px;">${dog.baseline_energy_score ?? '—'}/10</div>
                         </div>
                         <div style="flex: 1; text-align: center;">
                           <div style="font-size: 9px; color: #AAA; text-transform: uppercase; letter-spacing: 0.3px;">Appetite</div>
-                          <div class="baseline-info-value" style="font-size: 15px;">${dog.baseline_appetite_score ?? '—'}/8</div>
+                          <div class="baseline-info-value" style="font-size: 15px;">${dog.baseline_appetite_score ?? '—'}/10</div>
                         </div>
                         <div style="flex: 1; text-align: center;">
                           <div style="font-size: 9px; color: #AAA; text-transform: uppercase; letter-spacing: 0.3px;">Weight</div>
@@ -3628,11 +3653,19 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                 </div>
                 <div class="peer-stat">
                   <span class="peer-stat-label">Community average score</span>
-                  <span class="peer-stat-value">${peerAverage}/8</span>
+                  <span class="peer-stat-value">${peerAverage}/10</span>
                 </div>
                 <div class="peer-stat">
                   <span class="peer-stat-label">Status</span>
-                  <span class="peer-stat-value" style="font-size: 14px; color: #A89968; font-weight: 600;"><i data-lucide="target"></i> ${currentScore > peerAverage ? 'Above average!' : currentScore === parseFloat(peerAverage) ? 'At average' : 'Below average'}</span>
+                  <!-- STEP P10: wording rewritten, not just re-triggered on the
+                       flipped comparison — the old "Above average!" framing
+                       (exclamation point, positive-coded) was already a soft
+                       value judgment that happened to align with "more=good"
+                       under the old scale. Continuing it under the new scale
+                       would mean celebrating a HIGHER (more concerning) score,
+                       a real violation of "never make a health judgment."
+                       Neutral factual comparison instead. -->
+                  <span class="peer-stat-value" style="font-size: 14px; color: #A89968; font-weight: 600;"><i data-lucide="target"></i> ${currentScore < parseFloat(peerAverage) ? 'Lower than the community average' : currentScore === parseFloat(peerAverage) ? 'About the same as the community average' : 'Higher than the community average'}</span>
                 </div>
                 <p style="margin: 12px 0 0 0; font-size: 12px; color: #999; line-height: 1.5;">This compares ${escapeHtml(dog.dog_name)} to all dogs currently logging, not specifically ${escapeHtml(dog.breed) || 'this breed'} — breed-specific comparisons will be added once enough dogs of the same breed are logging regularly.</p>
               </div>
@@ -4093,7 +4126,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
               scales: {
                 y: {
                   beginAtZero: true,
-                  max: 8,
+                  max: 10,
                   ticks: { stepSize: 1 },
                   grid: { drawBorder: false }
                 },
