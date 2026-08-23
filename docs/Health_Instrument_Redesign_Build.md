@@ -1,6 +1,6 @@
 # CompanionCommons — Health Check-In Instrument Redesign Build
 **Started:** August 23, 2026
-**Status:** Stage 1 — Schema + shared helpers (complete, not yet run/wired live)
+**Status:** Stages 1-2 complete (schema/helpers, signup surfaces). Migration still not run against Supabase. Stage 3 (check-in surfaces) not started.
 **Purpose:** Standalone tracking document for STEP P10 (see `SENIOR_DOGS_MVP_CHECKLIST.md`), the pre-beta-blocker rebuild of the weekly/baseline health check-in instrument. Tracked separately from the main build log given the scope, matching the pattern set by `Multi_Dog_Signup_Build.md`. Full design rationale, literature grounding, and the locked item-by-item instrument live in `CompanionCommons_Health_Instrument_Design.md` — not duplicated here.
 
 ---
@@ -65,9 +65,9 @@ Header rows for `Signups` and `CheckIns` reference the old column names (server.
 
 ## Stage plan
 
-1. **Schema + shared helpers** ← this session
-2. **Signup surfaces** — `baseline-health-journey.html` + `/api/send-magic-link`; `add-dog.html` + `/api/add-dog`
-3. **Check-in surfaces** — standalone `/check-in/:dog_id` + dashboard's inline modal + `/api/checkin-senior`
+1. **Schema + shared helpers** ✅ complete
+2. **Signup surfaces** ✅ complete — `baseline-health-journey.html` + `/api/send-magic-link`; `add-dog.html` + `/api/add-dog`
+3. **Check-in surfaces** ← next — standalone `/check-in/:dog_id` + dashboard's inline modal + `/api/checkin-senior`
 4. **Display/interpretation logic** — dashboard "at a glance" trend text, Chart.js (Y-axis max 8→10), peer/community comparison card (currently mobility-only, has a literal `/8`), Journey Summary (trend lines, week-by-week table, chart image capture), breed guide "current status" (one `/8` literal), `generatePostLogInsight`, `detectHealthAlerts` + threshold retune. This is where the sign-flip work concentrates.
 5. **Google Sheets headers** — `Signups` and `CheckIns` tabs
 6. **Verification pass** — effectively the first real pass of STEP P8, scoped to just the new instrument, before P8 runs in full against everything else
@@ -102,3 +102,25 @@ Neither is wired to any form's submit event yet — there's no real form to wire
 **Verified**: `node --check server.js` passes (syntax-only — no route calls any of this yet, so there's no live behavior to test end-to-end until Stage 2/3 wire it in).
 
 **Not yet done**: migration not run against Supabase; no form, route, or display logic touched yet. Stage 2 starts once Stage 1 is reviewed.
+
+### Stage 2 — Signup surfaces ✅ Complete (Aug 23)
+
+**Both static forms rebuilt** (`Public/baseline-health-journey.html`, `Public/add-dog.html`) — the old 4 single 1-8 sliders replaced with the full 10-widget instrument (4 mobility items, energy, appetite, 4 cognitive items), grouped under Mobility/Energy/Appetite/Cognitive & Behavior subheadings. Field names match `itemColumnName()`'s output exactly (e.g. `baseline_mobility_stiffness_after_rest`, `baseline_cognitive_sleep_wake`). Both files carry the widget markup, CSS, and JS hand-copied from `buildScoreItemWidget()`/`SCORE_ITEM_WIDGET_STYLES`/`SCORE_ITEM_WIDGET_SCRIPT` verbatim (as Stage 1 flagged they'd need to be, being static files that can't call a server.js function directly) — each carries a comment pointing at the other two copies so a future markup change doesn't get applied to only one surface. Both forms' submit handlers now call `formHasAllScoreItemsAnswered()` before building the request and `highlightUnansweredScoreItem()` on failure, per Stage 1's requirement. The old per-slider hint-dictionary JS blocks (4 per file) are gone.
+
+**Backend rewritten to match**: `/api/send-magic-link`, `/verify`, and `/api/add-dog` all updated.
+- `/api/send-magic-link` and `/api/add-dog` (which independently re-implement the whole validation+insert path, same duplication the old 1-8 version already had) now destructure the 10 item/single-value fields, validate every one with `isValidInstrumentValue()`, and compute `cleanMobilityComposite`/`cleanCognitiveComposite` via `computeCompositeScore()` — this is the real server-side gate Stage 1 flagged as required regardless of what the client-side widget already checked. The old combined `isNaN(cleanBaseline) || ...` check and the four `< 1 || > 8` range checks are gone, replaced by the four `isValidInstrumentValue()` checks (each its own 400 with a specific message) run before the combined name/breed/age check.
+- Both routes' inserts (`magic_link_tokens` in send-magic-link, `senior_dogs` in add-dog) now write all 8 item columns plus the two composite columns.
+- `/verify`'s `senior_dogs` insert now copies all 8 item columns from `tokenData` (fetched via `.select('*')`, so the new columns flow through automatically) alongside the two composites, which it already copied.
+- Google Sheets export call sites (`Signups` tab, both in `/verify` and `/api/add-dog`) were **not changed** — they already only reference the composite fields, matching the Stage 1 "export composites only" decision, so decimal composite values now flow through unchanged. Header text updates are still Stage 5's job.
+
+**A real bug caught during this session's own review, before verification**: `/api/add-dog`'s Google Sheets export line still referenced `cleanBaseline`/`cleanCognitive` — variables that no longer exist after the rewrite (replaced by `cleanMobilityComposite`/`cleanCognitiveComposite`). This would have thrown a `ReferenceError` on every single add-dog submission. Caught by grepping the whole file for `cleanBaseline\b|cleanCognitive\b` after the rewrite and finding the one remaining hit; fixed before any testing.
+
+**Verified live**, local dev server (`TZ` unchanged, no stray `node.exe` — confirmed 0 running before starting, per standing rule), driven entirely through the real browser UI:
+- `node --check server.js` passes.
+- Loaded `baseline-health-journey.html` for real (through the site's password gate): confirmed all 10 widgets render with correct labels/anchor text, confirmed tapping a button sets the hidden input and highlights the button.
+- Confirmed `formHasAllScoreItemsAnswered()` correctly blocks submission when items are left unanswered — filled every field except two score items, clicked the real submit button, confirmed the form did NOT submit, confirmed the *first* unanswered item ("Stairs" — "Getting Up" had been answered) got the red outline, the inline "Please choose a value for this before submitting." message, and a scroll-into-view, all visually confirmed via screenshot.
+- Filled all 10 items and submitted for real: request reached `/api/send-magic-link` and returned 500, with the server log showing exactly `"Could not find the 'baseline_cognitive_interest' column of 'magic_link_tokens' in the schema cache"` — confirming the request payload, validation, and column names are all correct, and the only reason it fails is the still-unrun migration, not a code bug. No malformed data was written (the insert failed atomically before writing anything), so no cleanup was needed.
+- Loaded `add-dog.html` and confirmed the same 10 widgets render with the same field names, and that `formHasAllScoreItemsAnswered`/`highlightUnansweredScoreItem` are defined and available to its submit handler. Did not submit this form for real (would hit the same pending-migration 500 as above, and add-dog also requires a real `owner_id` this session didn't have).
+- Preview server stopped cleanly afterward.
+
+**Not yet done**: migration still not run (Stage 2 didn't need it — server-side validation and the correct-but-failing insert were both confirmed without it). Stage 3 (check-in surfaces) not started.

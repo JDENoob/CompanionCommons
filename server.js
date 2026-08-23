@@ -4421,10 +4421,16 @@ app.post('/api/send-magic-link', async (req, res) => {
       breed,
       age,
       gender,
-      baseline_mobility_score,
+      baseline_mobility_getting_up,
+      baseline_mobility_stairs,
+      baseline_mobility_stiffness_after_rest,
+      baseline_mobility_walk_distance,
       baseline_energy_score,
       baseline_appetite_score,
-      baseline_cognitive_score,
+      baseline_cognitive_orientation,
+      baseline_cognitive_memory,
+      baseline_cognitive_interest,
+      baseline_cognitive_sleep_wake,
       observations,
       email,
       phone,
@@ -4470,57 +4476,79 @@ app.post('/api/send-magic-link', async (req, res) => {
     const cleanOwnerName = owner_name ? sanitizeName(owner_name, 100) : '';
     const cleanAge = parseInt(age);
     const cleanGender = sanitizeSelect(gender, ['male', 'female', 'unknown']);
-    const cleanBaseline = parseInt(baseline_mobility_score);
-    const cleanEnergy = parseInt(baseline_energy_score);
-    const cleanAppetite = parseInt(baseline_appetite_score);
-    const cleanCognitive = parseInt(baseline_cognitive_score);
     const cleanEmail = sanitizeEmail(email);
     const cleanPhone = sanitizePhone(phone);
     const cleanObservations = sanitizeString(observations, 500);
 
-    console.log(`📝 Baseline received for ${cleanName}: mobility=${cleanBaseline}, energy=${cleanEnergy}, appetite=${cleanAppetite}, cognitive=${cleanCognitive}`);
+    // STEP P10 instrument: mobility/cognitive are each 4 items, composited
+    // server-side via computeCompositeScore(); energy/appetite stay single
+    // 0-10 values. isValidInstrumentValue() enforces integer 0-10 for
+    // every item — the client-side widget check is UX only, this is the
+    // real gate (see docs/Health_Instrument_Redesign_Build.md Stage 1).
+    const mobilityItemValues = [
+      baseline_mobility_getting_up,
+      baseline_mobility_stairs,
+      baseline_mobility_stiffness_after_rest,
+      baseline_mobility_walk_distance
+    ];
+    const cognitiveItemValues = [
+      baseline_cognitive_orientation,
+      baseline_cognitive_memory,
+      baseline_cognitive_interest,
+      baseline_cognitive_sleep_wake
+    ];
+
+    if (mobilityItemValues.some(v => !isValidInstrumentValue(v))) {
+      return res.status(400).json({
+        success: false,
+        error: 'Each mobility item must be a whole number from 0 to 10'
+      });
+    }
+    if (cognitiveItemValues.some(v => !isValidInstrumentValue(v))) {
+      return res.status(400).json({
+        success: false,
+        error: 'Each cognitive item must be a whole number from 0 to 10'
+      });
+    }
+    if (!isValidInstrumentValue(baseline_energy_score)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Energy score must be a whole number from 0 to 10'
+      });
+    }
+    if (!isValidInstrumentValue(baseline_appetite_score)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Appetite score must be a whole number from 0 to 10'
+      });
+    }
+
+    const cleanMobilityItems = mobilityItemValues.map(Number);
+    const cleanCognitiveItems = cognitiveItemValues.map(Number);
+    const cleanEnergy = Number(baseline_energy_score);
+    const cleanAppetite = Number(baseline_appetite_score);
+    // computeCompositeScore() only returns null on an incomplete set, which
+    // isValidInstrumentValue() already ruled out above for every item — so
+    // these are guaranteed non-null here, but the || null keeps the insert
+    // honest if that ever stops being true rather than writing NaN.
+    const cleanMobilityComposite = computeCompositeScore(cleanMobilityItems) ?? null;
+    const cleanCognitiveComposite = computeCompositeScore(cleanCognitiveItems) ?? null;
+
+    console.log(`📝 Baseline received for ${cleanName}: mobility=${cleanMobilityComposite}, energy=${cleanEnergy}, appetite=${cleanAppetite}, cognitive=${cleanCognitiveComposite}`);
 
     // Validate parsed values
-    if (!cleanName || !cleanBreed || isNaN(cleanAge) || isNaN(cleanBaseline) || isNaN(cleanEnergy) || isNaN(cleanAppetite) || isNaN(cleanCognitive)) {
+    if (!cleanName || !cleanBreed || isNaN(cleanAge)) {
       return res.status(400).json({
         success: false,
         error: 'Invalid input values'
       });
     }
 
-    // Validate age and mobility score ranges
+    // Validate age range
     if (cleanAge < 1 || cleanAge > 30) {
       return res.status(400).json({
         success: false,
         error: 'Age must be between 1 and 30'
-      });
-    }
-
-    if (cleanBaseline < 1 || cleanBaseline > 8) {
-      return res.status(400).json({
-        success: false,
-        error: 'Mobility score must be between 1 and 8'
-      });
-    }
-
-    if (cleanEnergy < 1 || cleanEnergy > 8) {
-      return res.status(400).json({
-        success: false,
-        error: 'Energy score must be between 1 and 8'
-      });
-    }
-
-    if (cleanAppetite < 1 || cleanAppetite > 8) {
-      return res.status(400).json({
-        success: false,
-        error: 'Appetite score must be between 1 and 8'
-      });
-    }
-
-    if (cleanCognitive < 1 || cleanCognitive > 8) {
-      return res.status(400).json({
-        success: false,
-        error: 'Cognitive score must be between 1 and 8'
       });
     }
 
@@ -4639,10 +4667,18 @@ app.post('/api/send-magic-link', async (req, res) => {
         breed: cleanBreed,
         age: cleanAge,
         gender: cleanGender,
-        baseline_mobility_score: cleanBaseline,
+        baseline_mobility_getting_up: cleanMobilityItems[0],
+        baseline_mobility_stairs: cleanMobilityItems[1],
+        baseline_mobility_stiffness_after_rest: cleanMobilityItems[2],
+        baseline_mobility_walk_distance: cleanMobilityItems[3],
+        baseline_mobility_score: cleanMobilityComposite,
         baseline_energy_score: cleanEnergy,
         baseline_appetite_score: cleanAppetite,
-        baseline_cognitive_score: cleanCognitive,
+        baseline_cognitive_orientation: cleanCognitiveItems[0],
+        baseline_cognitive_memory: cleanCognitiveItems[1],
+        baseline_cognitive_interest: cleanCognitiveItems[2],
+        baseline_cognitive_sleep_wake: cleanCognitiveItems[3],
+        baseline_cognitive_score: cleanCognitiveComposite,
         observations: cleanObservations,
         // Derived boolean, kept for senior_dogs.sms_consent (still a
         // boolean per Stage 1's mapping) — 'sms' or 'both' count as
@@ -5040,9 +5076,17 @@ app.get('/verify', async (req, res) => {
         breed: tokenData.breed,
         age: tokenData.age,
         gender: tokenData.gender,
+        baseline_mobility_getting_up: tokenData.baseline_mobility_getting_up,
+        baseline_mobility_stairs: tokenData.baseline_mobility_stairs,
+        baseline_mobility_stiffness_after_rest: tokenData.baseline_mobility_stiffness_after_rest,
+        baseline_mobility_walk_distance: tokenData.baseline_mobility_walk_distance,
         baseline_mobility_score: tokenData.baseline_mobility_score,
         baseline_energy_score: tokenData.baseline_energy_score,
         baseline_appetite_score: tokenData.baseline_appetite_score,
+        baseline_cognitive_orientation: tokenData.baseline_cognitive_orientation,
+        baseline_cognitive_memory: tokenData.baseline_cognitive_memory,
+        baseline_cognitive_interest: tokenData.baseline_cognitive_interest,
+        baseline_cognitive_sleep_wake: tokenData.baseline_cognitive_sleep_wake,
         baseline_cognitive_score: tokenData.baseline_cognitive_score,
         baseline_notes: tokenData.observations,
         phone: ownerPhone,
@@ -5200,10 +5244,16 @@ app.post('/api/add-dog', async (req, res) => {
       breed,
       age,
       gender,
-      baseline_mobility_score,
+      baseline_mobility_getting_up,
+      baseline_mobility_stairs,
+      baseline_mobility_stiffness_after_rest,
+      baseline_mobility_walk_distance,
       baseline_energy_score,
       baseline_appetite_score,
-      baseline_cognitive_score,
+      baseline_cognitive_orientation,
+      baseline_cognitive_memory,
+      baseline_cognitive_interest,
+      baseline_cognitive_sleep_wake,
       observations,
       consent,
       weight_lbs,
@@ -5242,30 +5292,51 @@ app.post('/api/add-dog', async (req, res) => {
     const cleanBreed = sanitizeName(breed);
     const cleanAge = parseInt(age);
     const cleanGender = sanitizeSelect(gender, ['male', 'female', 'unknown']);
-    const cleanBaseline = parseInt(baseline_mobility_score);
-    const cleanEnergy = parseInt(baseline_energy_score);
-    const cleanAppetite = parseInt(baseline_appetite_score);
-    const cleanCognitive = parseInt(baseline_cognitive_score);
     const cleanObservations = sanitizeString(observations, 500);
 
-    if (!cleanName || !cleanBreed || isNaN(cleanAge) || isNaN(cleanBaseline) || isNaN(cleanEnergy) || isNaN(cleanAppetite) || isNaN(cleanCognitive)) {
+    // STEP P10 instrument — same validation shape as /api/send-magic-link.
+    // Duplicated here rather than shared because this route independently
+    // re-implements the whole validation+insert path (no magic-link token
+    // staging step) — same duplication the old 1-8 version already had.
+    const mobilityItemValues = [
+      baseline_mobility_getting_up,
+      baseline_mobility_stairs,
+      baseline_mobility_stiffness_after_rest,
+      baseline_mobility_walk_distance
+    ];
+    const cognitiveItemValues = [
+      baseline_cognitive_orientation,
+      baseline_cognitive_memory,
+      baseline_cognitive_interest,
+      baseline_cognitive_sleep_wake
+    ];
+
+    if (mobilityItemValues.some(v => !isValidInstrumentValue(v))) {
+      return res.status(400).json({ success: false, error: 'Each mobility item must be a whole number from 0 to 10' });
+    }
+    if (cognitiveItemValues.some(v => !isValidInstrumentValue(v))) {
+      return res.status(400).json({ success: false, error: 'Each cognitive item must be a whole number from 0 to 10' });
+    }
+    if (!isValidInstrumentValue(baseline_energy_score)) {
+      return res.status(400).json({ success: false, error: 'Energy score must be a whole number from 0 to 10' });
+    }
+    if (!isValidInstrumentValue(baseline_appetite_score)) {
+      return res.status(400).json({ success: false, error: 'Appetite score must be a whole number from 0 to 10' });
+    }
+
+    const cleanMobilityItems = mobilityItemValues.map(Number);
+    const cleanCognitiveItems = cognitiveItemValues.map(Number);
+    const cleanEnergy = Number(baseline_energy_score);
+    const cleanAppetite = Number(baseline_appetite_score);
+    const cleanMobilityComposite = computeCompositeScore(cleanMobilityItems) ?? null;
+    const cleanCognitiveComposite = computeCompositeScore(cleanCognitiveItems) ?? null;
+
+    if (!cleanName || !cleanBreed || isNaN(cleanAge)) {
       return res.status(400).json({ success: false, error: 'Invalid input values' });
     }
 
     if (cleanAge < 1 || cleanAge > 30) {
       return res.status(400).json({ success: false, error: 'Age must be between 1 and 30' });
-    }
-    if (cleanBaseline < 1 || cleanBaseline > 8) {
-      return res.status(400).json({ success: false, error: 'Mobility score must be between 1 and 8' });
-    }
-    if (cleanEnergy < 1 || cleanEnergy > 8) {
-      return res.status(400).json({ success: false, error: 'Energy score must be between 1 and 8' });
-    }
-    if (cleanAppetite < 1 || cleanAppetite > 8) {
-      return res.status(400).json({ success: false, error: 'Appetite score must be between 1 and 8' });
-    }
-    if (cleanCognitive < 1 || cleanCognitive > 8) {
-      return res.status(400).json({ success: false, error: 'Cognitive score must be between 1 and 8' });
     }
 
     const cleanWeight = parseInt(weight_lbs);
@@ -5310,10 +5381,18 @@ app.post('/api/add-dog', async (req, res) => {
         breed: cleanBreed,
         age: cleanAge,
         gender: cleanGender,
-        baseline_mobility_score: cleanBaseline,
+        baseline_mobility_getting_up: cleanMobilityItems[0],
+        baseline_mobility_stairs: cleanMobilityItems[1],
+        baseline_mobility_stiffness_after_rest: cleanMobilityItems[2],
+        baseline_mobility_walk_distance: cleanMobilityItems[3],
+        baseline_mobility_score: cleanMobilityComposite,
         baseline_energy_score: cleanEnergy,
         baseline_appetite_score: cleanAppetite,
-        baseline_cognitive_score: cleanCognitive,
+        baseline_cognitive_orientation: cleanCognitiveItems[0],
+        baseline_cognitive_memory: cleanCognitiveItems[1],
+        baseline_cognitive_interest: cleanCognitiveItems[2],
+        baseline_cognitive_sleep_wake: cleanCognitiveItems[3],
+        baseline_cognitive_score: cleanCognitiveComposite,
         baseline_notes: cleanObservations,
         phone: owner.phone,
         email: owner.email,
@@ -5350,10 +5429,10 @@ app.post('/api/add-dog', async (req, res) => {
       cleanAge,
       cleanGender,
       cleanWeight ?? '',
-      cleanBaseline ?? '',
+      cleanMobilityComposite ?? '',
       cleanEnergy ?? '',
       cleanAppetite ?? '',
-      cleanCognitive ?? ''
+      cleanCognitiveComposite ?? ''
     ]);
 
     // STAGE 5: this path is only reachable from a link the owner already

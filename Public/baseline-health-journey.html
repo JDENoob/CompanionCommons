@@ -216,83 +216,247 @@
               </div>
             </fieldset>
 
-            <!-- Baseline Health Snapshot Section -->
+            <!-- Baseline Health Snapshot Section — STEP P10 instrument.
+                 0 = normal/no difficulty, 10 = severe/most concerning, for
+                 every item below (higher = more concerning, not better).
+                 This markup must stay byte-for-byte in sync with
+                 buildScoreItemWidget()/SCORE_ITEM_WIDGET_STYLES/
+                 SCORE_ITEM_WIDGET_SCRIPT in server.js and the matching
+                 section of Public/add-dog.html — see the comment there. -->
             <fieldset>
               <legend>Current Health Snapshot</legend>
+              <p style="font-size: 13px; color: #999; margin: -8px 0 16px 0;">
+                For each item, 0 means no difficulty/completely normal, and 10 means severe/most concerning.
+              </p>
 
-              <div class="form-group">
-                <label for="mobilityScore">
-                  On a scale of 1-8, how is your dog's mobility this week?
-                  <span class="hint">(1 = very stiff, 8 = excellent movement)</span> *
-                </label>
-                <input
-                  type="range"
-                  id="mobilityScore"
-                  name="baseline_mobility_score"
-                  min="1"
-                  max="8"
-                  value="4"
-                  required
-                />
-                <div id="mobilityHint" style="margin-top: 8px; font-size: 14px; color: #666;">
-                  4 — Some good days, some bad days
+              <h3 class="snapshot-subhead">Mobility</h3>
+
+              <div class="form-group score-item" data-score-item>
+                <label>Getting Up</label>
+                <div class="score-buttons" role="group" aria-label="Getting Up">
+                  <button type="button" class="score-btn" data-value="0">0</button>
+                  <button type="button" class="score-btn" data-value="1">1</button>
+                  <button type="button" class="score-btn" data-value="2">2</button>
+                  <button type="button" class="score-btn" data-value="3">3</button>
+                  <button type="button" class="score-btn" data-value="4">4</button>
+                  <button type="button" class="score-btn" data-value="5">5</button>
+                  <button type="button" class="score-btn" data-value="6">6</button>
+                  <button type="button" class="score-btn" data-value="7">7</button>
+                  <button type="button" class="score-btn" data-value="8">8</button>
+                  <button type="button" class="score-btn" data-value="9">9</button>
+                  <button type="button" class="score-btn" data-value="10">10</button>
+                </div>
+                <input type="hidden" name="baseline_mobility_getting_up" value="">
+                <div class="score-anchor-hint">
+                  <span class="anchor-low">No difficulty, gets up right away</span>
+                  <span class="anchor-high">Severe difficulty, struggles significantly or needs help</span>
                 </div>
               </div>
 
-              <div class="form-group">
-                <label for="energyScore">
-                  On a scale of 1-8, how is your dog's energy level?
-                  <span class="hint">(1 = very low energy, 8 = very active)</span> *
-                </label>
-                <input
-                  type="range"
-                  id="energyScore"
-                  name="baseline_energy_score"
-                  min="1"
-                  max="8"
-                  value="4"
-                  required
-                />
-                <div id="energyHint" style="margin-top: 8px; font-size: 14px; color: #666;">
-                  4 — Average energy
+              <div class="form-group score-item" data-score-item>
+                <label>Stairs</label>
+                <div class="score-buttons" role="group" aria-label="Stairs">
+                  <button type="button" class="score-btn" data-value="0">0</button>
+                  <button type="button" class="score-btn" data-value="1">1</button>
+                  <button type="button" class="score-btn" data-value="2">2</button>
+                  <button type="button" class="score-btn" data-value="3">3</button>
+                  <button type="button" class="score-btn" data-value="4">4</button>
+                  <button type="button" class="score-btn" data-value="5">5</button>
+                  <button type="button" class="score-btn" data-value="6">6</button>
+                  <button type="button" class="score-btn" data-value="7">7</button>
+                  <button type="button" class="score-btn" data-value="8">8</button>
+                  <button type="button" class="score-btn" data-value="9">9</button>
+                  <button type="button" class="score-btn" data-value="10">10</button>
+                </div>
+                <input type="hidden" name="baseline_mobility_stairs" value="">
+                <div class="score-anchor-hint">
+                  <span class="anchor-low">No difficulty, moves easily</span>
+                  <span class="anchor-high">Severe difficulty, avoids stairs entirely or needs to be carried</span>
                 </div>
               </div>
 
-              <div class="form-group">
-                <label for="appetiteScore">
-                  On a scale of 1-8, how is your dog's appetite?
-                  <span class="hint">(1 = barely eating, 8 = excellent appetite)</span> *
-                </label>
-                <input
-                  type="range"
-                  id="appetiteScore"
-                  name="baseline_appetite_score"
-                  min="1"
-                  max="8"
-                  value="4"
-                  required
-                />
-                <div id="appetiteHint" style="margin-top: 8px; font-size: 14px; color: #666;">
-                  4 — Eating normally
+              <div class="form-group score-item" data-score-item>
+                <label>Stiffness After Rest</label>
+                <div class="score-buttons" role="group" aria-label="Stiffness After Rest">
+                  <button type="button" class="score-btn" data-value="0">0</button>
+                  <button type="button" class="score-btn" data-value="1">1</button>
+                  <button type="button" class="score-btn" data-value="2">2</button>
+                  <button type="button" class="score-btn" data-value="3">3</button>
+                  <button type="button" class="score-btn" data-value="4">4</button>
+                  <button type="button" class="score-btn" data-value="5">5</button>
+                  <button type="button" class="score-btn" data-value="6">6</button>
+                  <button type="button" class="score-btn" data-value="7">7</button>
+                  <button type="button" class="score-btn" data-value="8">8</button>
+                  <button type="button" class="score-btn" data-value="9">9</button>
+                  <button type="button" class="score-btn" data-value="10">10</button>
+                </div>
+                <input type="hidden" name="baseline_mobility_stiffness_after_rest" value="">
+                <div class="score-anchor-hint">
+                  <span class="anchor-low">Moves normally right away</span>
+                  <span class="anchor-high">Remains very stiff even after moving around, doesn't fully loosen up</span>
                 </div>
               </div>
 
-              <div class="form-group">
-                <label for="cognitiveScore">
-                  On a scale of 1-8, how is your dog's alertness and behavior?
-                  <span class="hint">(1 = often confused/withdrawn, 8 = sharp and engaged)</span> *
-                </label>
-                <input
-                  type="range"
-                  id="cognitiveScore"
-                  name="baseline_cognitive_score"
-                  min="1"
-                  max="8"
-                  value="4"
-                  required
-                />
-                <div id="cognitiveHint" style="margin-top: 8px; font-size: 14px; color: #666;">
-                  4 — Normal alertness
+              <div class="form-group score-item" data-score-item>
+                <label>Walk Distance</label>
+                <div class="score-buttons" role="group" aria-label="Walk Distance">
+                  <button type="button" class="score-btn" data-value="0">0</button>
+                  <button type="button" class="score-btn" data-value="1">1</button>
+                  <button type="button" class="score-btn" data-value="2">2</button>
+                  <button type="button" class="score-btn" data-value="3">3</button>
+                  <button type="button" class="score-btn" data-value="4">4</button>
+                  <button type="button" class="score-btn" data-value="5">5</button>
+                  <button type="button" class="score-btn" data-value="6">6</button>
+                  <button type="button" class="score-btn" data-value="7">7</button>
+                  <button type="button" class="score-btn" data-value="8">8</button>
+                  <button type="button" class="score-btn" data-value="9">9</button>
+                  <button type="button" class="score-btn" data-value="10">10</button>
+                </div>
+                <input type="hidden" name="baseline_mobility_walk_distance" value="">
+                <div class="score-anchor-hint">
+                  <span class="anchor-low">No limitation, walks normal distances easily</span>
+                  <span class="anchor-high">Severe limitation, unable to walk normal distances</span>
+                </div>
+              </div>
+
+              <h3 class="snapshot-subhead">Energy</h3>
+
+              <div class="form-group score-item" data-score-item>
+                <label>Energy Level</label>
+                <div class="score-buttons" role="group" aria-label="Energy Level">
+                  <button type="button" class="score-btn" data-value="0">0</button>
+                  <button type="button" class="score-btn" data-value="1">1</button>
+                  <button type="button" class="score-btn" data-value="2">2</button>
+                  <button type="button" class="score-btn" data-value="3">3</button>
+                  <button type="button" class="score-btn" data-value="4">4</button>
+                  <button type="button" class="score-btn" data-value="5">5</button>
+                  <button type="button" class="score-btn" data-value="6">6</button>
+                  <button type="button" class="score-btn" data-value="7">7</button>
+                  <button type="button" class="score-btn" data-value="8">8</button>
+                  <button type="button" class="score-btn" data-value="9">9</button>
+                  <button type="button" class="score-btn" data-value="10">10</button>
+                </div>
+                <input type="hidden" name="baseline_energy_score" value="">
+                <div class="score-anchor-hint">
+                  <span class="anchor-low">Normal, active energy level</span>
+                  <span class="anchor-high">Very low energy, lethargic most or all of the time</span>
+                </div>
+              </div>
+
+              <h3 class="snapshot-subhead">Appetite</h3>
+
+              <div class="form-group score-item" data-score-item>
+                <label>Appetite</label>
+                <div class="score-buttons" role="group" aria-label="Appetite">
+                  <button type="button" class="score-btn" data-value="0">0</button>
+                  <button type="button" class="score-btn" data-value="1">1</button>
+                  <button type="button" class="score-btn" data-value="2">2</button>
+                  <button type="button" class="score-btn" data-value="3">3</button>
+                  <button type="button" class="score-btn" data-value="4">4</button>
+                  <button type="button" class="score-btn" data-value="5">5</button>
+                  <button type="button" class="score-btn" data-value="6">6</button>
+                  <button type="button" class="score-btn" data-value="7">7</button>
+                  <button type="button" class="score-btn" data-value="8">8</button>
+                  <button type="button" class="score-btn" data-value="9">9</button>
+                  <button type="button" class="score-btn" data-value="10">10</button>
+                </div>
+                <input type="hidden" name="baseline_appetite_score" value="">
+                <div class="score-anchor-hint">
+                  <span class="anchor-low">Normal, healthy appetite</span>
+                  <span class="anchor-high">Barely eating or refusing food</span>
+                </div>
+              </div>
+
+              <h3 class="snapshot-subhead">Cognitive &amp; Behavior</h3>
+              <p style="font-size: 12px; color: #999; margin: -8px 0 16px 0;">
+                We'll only ask these again every 4th week — answering now gives us a real baseline to compare against.
+              </p>
+
+              <div class="form-group score-item" data-score-item>
+                <label>Orientation</label>
+                <div class="score-buttons" role="group" aria-label="Orientation">
+                  <button type="button" class="score-btn" data-value="0">0</button>
+                  <button type="button" class="score-btn" data-value="1">1</button>
+                  <button type="button" class="score-btn" data-value="2">2</button>
+                  <button type="button" class="score-btn" data-value="3">3</button>
+                  <button type="button" class="score-btn" data-value="4">4</button>
+                  <button type="button" class="score-btn" data-value="5">5</button>
+                  <button type="button" class="score-btn" data-value="6">6</button>
+                  <button type="button" class="score-btn" data-value="7">7</button>
+                  <button type="button" class="score-btn" data-value="8">8</button>
+                  <button type="button" class="score-btn" data-value="9">9</button>
+                  <button type="button" class="score-btn" data-value="10">10</button>
+                </div>
+                <input type="hidden" name="baseline_cognitive_orientation" value="">
+                <div class="score-anchor-hint">
+                  <span class="anchor-low">Not at all, fully alert and aware</span>
+                  <span class="anchor-high">Frequently disoriented or confused</span>
+                </div>
+              </div>
+
+              <div class="form-group score-item" data-score-item>
+                <label>Memory / Recognition</label>
+                <div class="score-buttons" role="group" aria-label="Memory / Recognition">
+                  <button type="button" class="score-btn" data-value="0">0</button>
+                  <button type="button" class="score-btn" data-value="1">1</button>
+                  <button type="button" class="score-btn" data-value="2">2</button>
+                  <button type="button" class="score-btn" data-value="3">3</button>
+                  <button type="button" class="score-btn" data-value="4">4</button>
+                  <button type="button" class="score-btn" data-value="5">5</button>
+                  <button type="button" class="score-btn" data-value="6">6</button>
+                  <button type="button" class="score-btn" data-value="7">7</button>
+                  <button type="button" class="score-btn" data-value="8">8</button>
+                  <button type="button" class="score-btn" data-value="9">9</button>
+                  <button type="button" class="score-btn" data-value="10">10</button>
+                </div>
+                <input type="hidden" name="baseline_cognitive_memory" value="">
+                <div class="score-anchor-hint">
+                  <span class="anchor-low">No signs of forgetting</span>
+                  <span class="anchor-high">Frequent signs of forgetting</span>
+                </div>
+              </div>
+
+              <div class="form-group score-item" data-score-item>
+                <label>Interest / Engagement</label>
+                <div class="score-buttons" role="group" aria-label="Interest / Engagement">
+                  <button type="button" class="score-btn" data-value="0">0</button>
+                  <button type="button" class="score-btn" data-value="1">1</button>
+                  <button type="button" class="score-btn" data-value="2">2</button>
+                  <button type="button" class="score-btn" data-value="3">3</button>
+                  <button type="button" class="score-btn" data-value="4">4</button>
+                  <button type="button" class="score-btn" data-value="5">5</button>
+                  <button type="button" class="score-btn" data-value="6">6</button>
+                  <button type="button" class="score-btn" data-value="7">7</button>
+                  <button type="button" class="score-btn" data-value="8">8</button>
+                  <button type="button" class="score-btn" data-value="9">9</button>
+                  <button type="button" class="score-btn" data-value="10">10</button>
+                </div>
+                <input type="hidden" name="baseline_cognitive_interest" value="">
+                <div class="score-anchor-hint">
+                  <span class="anchor-low">Normal interest and engagement</span>
+                  <span class="anchor-high">Little to no interest, seems withdrawn</span>
+                </div>
+              </div>
+
+              <div class="form-group score-item" data-score-item>
+                <label>Sleep-Wake Pattern</label>
+                <div class="score-buttons" role="group" aria-label="Sleep-Wake Pattern">
+                  <button type="button" class="score-btn" data-value="0">0</button>
+                  <button type="button" class="score-btn" data-value="1">1</button>
+                  <button type="button" class="score-btn" data-value="2">2</button>
+                  <button type="button" class="score-btn" data-value="3">3</button>
+                  <button type="button" class="score-btn" data-value="4">4</button>
+                  <button type="button" class="score-btn" data-value="5">5</button>
+                  <button type="button" class="score-btn" data-value="6">6</button>
+                  <button type="button" class="score-btn" data-value="7">7</button>
+                  <button type="button" class="score-btn" data-value="8">8</button>
+                  <button type="button" class="score-btn" data-value="9">9</button>
+                  <button type="button" class="score-btn" data-value="10">10</button>
+                </div>
+                <input type="hidden" name="baseline_cognitive_sleep_wake" value="">
+                <div class="score-anchor-hint">
+                  <span class="anchor-low">Normal sleep pattern</span>
+                  <span class="anchor-high">Significantly disrupted</span>
                 </div>
               </div>
 
@@ -407,74 +571,50 @@
     </footer>
 
     <script>
-      // Mobility score hint
-      const slider = document.getElementById('mobilityScore');
-      const hint = document.getElementById('mobilityHint');
-      const hints = {
-        1: "1 — Very stiff/limited movement",
-        2: "2 — Mostly struggling",
-        3: "3 — Significant issues",
-        4: "4 — Some good days, some bad days",
-        5: "5 — Decent mobility, occasional stiffness",
-        6: "6 — Good mobility most days",
-        7: "7 — Very active",
-        8: "8 — Excellent, no mobility issues"
-      };
-
-      slider.addEventListener('input', () => {
-        hint.textContent = hints[slider.value];
+      // ---- STEP P10 health instrument: shared 0-10 tap-button widget behavior ----
+      // This block must stay byte-for-byte in sync with SCORE_ITEM_WIDGET_SCRIPT
+      // in server.js (and the matching block in Public/add-dog.html) — see the
+      // comment on buildScoreItemWidget() there for why this can't be a shared
+      // file include (this is a plain static HTML file, not a server route).
+      document.querySelectorAll('[data-score-item]').forEach(function(container) {
+        var buttons = container.querySelectorAll('.score-btn');
+        var hiddenInput = container.querySelector('input[type=hidden]');
+        function selectValue(v) {
+          hiddenInput.value = v;
+          buttons.forEach(function(b) {
+            b.classList.toggle('selected', b.getAttribute('data-value') === String(v));
+          });
+          container.classList.remove('score-item-error');
+          var existingMsg = container.querySelector('.score-item-error-message');
+          if (existingMsg) existingMsg.remove();
+        }
+        buttons.forEach(function(btn) {
+          btn.addEventListener('click', function() { selectValue(btn.getAttribute('data-value')); });
+        });
+        if (hiddenInput.value !== '') selectValue(hiddenInput.value);
       });
 
-      // Energy score hint
-      const energySlider = document.getElementById('energyScore');
-      const energyHint = document.getElementById('energyHint');
-      const energyHints = {
-        1: "1 — Very low energy",
-        2: "2 — Mostly lethargic",
-        3: "3 — Below average energy",
-        4: "4 — Average energy",
-        5: "5 — Fairly active",
-        6: "6 — Active",
-        7: "7 — Very active",
-        8: "8 — Extremely energetic"
-      };
-      energySlider.addEventListener('input', () => {
-        energyHint.textContent = energyHints[energySlider.value];
-      });
+      function formHasAllScoreItemsAnswered(formElement) {
+        var containers = formElement.querySelectorAll('[data-score-item]');
+        for (var i = 0; i < containers.length; i++) {
+          var hiddenInput = containers[i].querySelector('input[type=hidden]');
+          if (!hiddenInput || hiddenInput.value === '') {
+            return { valid: false, firstInvalid: containers[i] };
+          }
+        }
+        return { valid: true, firstInvalid: null };
+      }
 
-      // Appetite score hint
-      const appetiteSlider = document.getElementById('appetiteScore');
-      const appetiteHint = document.getElementById('appetiteHint');
-      const appetiteHints = {
-        1: "1 — Barely eating",
-        2: "2 — Eating much less than usual",
-        3: "3 — Eating somewhat less than usual",
-        4: "4 — Eating normally",
-        5: "5 — Good appetite",
-        6: "6 — Very good appetite",
-        7: "7 — Eager to eat",
-        8: "8 — Excellent appetite"
-      };
-      appetiteSlider.addEventListener('input', () => {
-        appetiteHint.textContent = appetiteHints[appetiteSlider.value];
-      });
-
-      // Cognitive/behavior score hint
-      const cognitiveSlider = document.getElementById('cognitiveScore');
-      const cognitiveHint = document.getElementById('cognitiveHint');
-      const cognitiveHints = {
-        1: "1 — Often confused or withdrawn",
-        2: "2 — Frequently disoriented",
-        3: "3 — Occasionally confused",
-        4: "4 — Normal alertness",
-        5: "5 — Alert and responsive",
-        6: "6 — Engaged and attentive",
-        7: "7 — Very sharp",
-        8: "8 — Extremely sharp and engaged"
-      };
-      cognitiveSlider.addEventListener('input', () => {
-        cognitiveHint.textContent = cognitiveHints[cognitiveSlider.value];
-      });
+      function highlightUnansweredScoreItem(container) {
+        container.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        container.classList.add('score-item-error');
+        if (!container.querySelector('.score-item-error-message')) {
+          var msg = document.createElement('div');
+          msg.className = 'score-item-error-message';
+          msg.textContent = 'Please choose a value for this before submitting.';
+          container.appendChild(msg);
+        }
+      }
 
       // "None" checkbox clears other treatment checkboxes, and vice versa
       const treatmentBoxes = document.querySelectorAll('input[name="treatment_category"]');
@@ -492,6 +632,12 @@
       // Form submission
       document.getElementById('baselineHealthJourneyForm').addEventListener('submit', async (e) => {
         e.preventDefault();
+
+        const scoreCheck = formHasAllScoreItemsAnswered(e.target);
+        if (!scoreCheck.valid) {
+          highlightUnansweredScoreItem(scoreCheck.firstInvalid);
+          return;
+        }
 
         const formData = new FormData(e.target);
         const treatmentCategories = formData.getAll('treatment_category');
@@ -634,6 +780,29 @@
       .button:hover {
         background: #0051D5;
       }
+
+      /* ---- STEP P10 health instrument: shared 0-10 tap-button widget styles ----
+         Must stay byte-for-byte in sync with SCORE_ITEM_WIDGET_STYLES in
+         server.js and the matching block in Public/add-dog.html. */
+      .score-item { margin-bottom: 24px; }
+      .score-buttons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+      .score-btn {
+        flex: 1 1 auto; min-width: 32px; padding: 8px 0; border: 1px solid #ddd;
+        border-radius: 6px; background: #fff; font-family: inherit; font-size: 14px;
+        cursor: pointer; text-align: center;
+      }
+      .score-btn:hover { border-color: #A89968; }
+      .score-btn.selected { background: #A89968; border-color: #A89968; color: #fff; font-weight: 600; }
+      .score-anchor-hint {
+        display: flex; justify-content: space-between; gap: 12px; margin-top: 6px;
+        font-size: 12px; color: #999;
+      }
+      .score-anchor-hint .anchor-low { text-align: left; }
+      .score-anchor-hint .anchor-high { text-align: right; }
+      .score-item-error { outline: 2px solid #C0392B; border-radius: 8px; padding: 8px; margin: -8px -8px 16px -8px; }
+      .score-item-error-message { color: #C0392B; font-size: 13px; margin-top: 6px; font-weight: 500; }
+      .snapshot-subhead { font-size: 15px; font-weight: 600; color: #333; margin: 24px 0 12px 0; }
+      .snapshot-subhead:first-of-type { margin-top: 0; }
     </style>
   </body>
 </html>
