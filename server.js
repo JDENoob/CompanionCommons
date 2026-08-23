@@ -147,6 +147,21 @@ function computeCompositeScore(itemValues) {
   return Math.round((sum / itemValues.length) * 10) / 10;
 }
 
+// Rounds to one decimal place, the same precision composite scores
+// themselves already use (see computeCompositeScore above). Needed
+// wherever a DIFF between two composite scores gets computed, not just
+// the composites themselves — subtracting two already-rounded NUMERIC(3,1)
+// values in JS can still produce raw floating-point noise (e.g.
+// 1.3 - 1.0 === 0.30000000000000004), which showed up verbatim in
+// user-facing text and in a stored health_alerts.magnitude value before
+// every diff site below started routing through this. Apply it once,
+// right after computing a diff, so the rounded value is used for both the
+// sign check and the display — an unrounded near-zero diff (float noise
+// around a true 0.0) could otherwise flip a sign check the wrong way too.
+function roundToOneDecimal(n) {
+  return Math.round(n * 10) / 10;
+}
+
 // ---- Shared 0-10 tap-button widget ----
 // One generator, used identically by the standalone check-in page and the
 // dashboard's inline check-in modal (both server-rendered template
@@ -1669,7 +1684,7 @@ function generatePostLogInsight(dogName, current, previous) {
   // internal wording is rewritten to match its real direction, not just
   // reassigned. See docs/Health_Instrument_Redesign_Build.md Stage 4a spec.
   const sentiment = biggest.diff < 0 ? 'better' : 'worse';
-  const absDiff = Math.abs(biggest.diff);
+  const absDiff = roundToOneDecimal(Math.abs(biggest.diff));
 
   const betterVariants = [
     `${dogName}'s ${biggest.label} is down ${absDiff} point${absDiff > 1 ? 's' : ''} from last week. Keep logging to see how the trend continues.`,
@@ -1809,7 +1824,12 @@ async function detectHealthAlerts(dog_id, dogName, current, previous, currentIte
     const useItem = biggestItem && (!compositeTriggered || Math.abs(biggestItem.diff) > Math.abs(compositeDiff));
     const triggerDiff = useItem ? biggestItem.diff : compositeDiff;
     const direction = triggerDiff > 0 ? 'up' : 'down';
-    const magnitude = Math.abs(triggerDiff);
+    // Rounded: item-triggered magnitudes are always whole numbers already,
+    // but a composite-only magnitude is an average-of-4 and can be
+    // fractional with raw float noise (e.g. 1.2000000000000002) — this
+    // both displays clean and is what gets stored in health_alerts.magnitude
+    // (see migration_widen_health_alert_magnitude.sql).
+    const magnitude = roundToOneDecimal(Math.abs(triggerDiff));
     const subject = useItem ? biggestItem.label : m.label;
 
     // De-dup: skip if this dog already got an alert for this exact metric AND
@@ -2916,7 +2936,13 @@ app.get('/dashboard/:dog_id', async (req, res) => {
       // are required at signup), so this branch is effectively "no real
       // check-in yet," not a generic missing-data case.
       if (current == null || previous == null) return "Baseline recorded — first weekly update will show your dog's trend";
-      const diff = current - previous;
+      // Rounded immediately, before the sign check — current/previous can be
+      // fractional composite scores (mobility), and subtracting two already-
+      // rounded NUMERIC(3,1) values can leave raw float noise (e.g.
+      // 0.30000000000000004). Rounding first also guards the sign check
+      // itself: an unrounded near-zero diff from float noise around a true
+      // 0.0 could otherwise flip "held steady" into a false improved/declined.
+      const diff = roundToOneDecimal(current - previous);
       // STEP P10: higher = more concerning now, so a score DECREASE is the
       // improvement — flipped from the old scale. diff is already negative
       // when the score fell, so it prints correctly as e.g. "improved (-2)".
@@ -3106,7 +3132,11 @@ app.get('/dashboard/:dog_id', async (req, res) => {
       if (baseline == null || latest == null || checkins.length === 0) {
         return `${label}: ${latest ?? baseline}/10 (baseline only — no check-ins yet)`;
       }
-      const diff = latest - baseline;
+      // Rounded — baseline/latest can be fractional composite scores
+      // (mobility/cognitive), and subtracting two already-rounded
+      // NUMERIC(3,1) values can leave raw float noise (e.g.
+      // 0.30000000000000004) that used to print verbatim here.
+      const diff = roundToOneDecimal(latest - baseline);
       // STEP P10: wording NOT changed here — "up"/"down" already describe
       // the raw number's literal movement, not a good/bad judgment (no
       // "improved"/"declined" language exists in this function), so it
