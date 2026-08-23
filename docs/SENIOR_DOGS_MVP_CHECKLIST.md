@@ -419,6 +419,12 @@ Cleanup:
 
 # PHASE 2: PARALLEL APP BUILD (Weeks 3-7)
 
+> ## ⚠️ SUPERSEDED (Aug 23, 2026) — this section's plan is not the current plan
+>
+> The parallel-native-build plan below (React Native + Expo, weeks 3-7, launching by week 8, deciding between web/app via a retention A/B comparison) is **not what's happening this beta.** Kept below for reference only — the tech-stack notes and QA checklist structure may still be useful later — but do not build against it as written.
+>
+> **The actual decision, made Aug 23, 2026:** a PWA layer (manifest, service worker, push notifications, install prompt) layered onto the existing web app, scoped for **mid-beta, roughly weeks 4-6**, once initial beta churn settles. No native build during this beta, and no retention A/B test deciding whether to go native. Native iOS/Android apps are deferred to a later, separate **Petwella** phase — decided explicitly and separately from this beta's retention numbers, not pulled forward and not decided by default. See the NEXT STEP list above for the current, standing pointer to this decision.
+
 ## 🎯 Minimal App Strategy
 
 **Philosophy:** Build ONLY what drives retention. Everything else stays on web or waits.
@@ -988,5 +994,6 @@ TOTAL COST: $0-9k (depends on hiring vs DIY)
 8. Cosmetic, lower priority: fix the churn-cron startup log message ("1 minute for testing" when it's actually 60 minutes) — not part of this session's cleanup, still outstanding
 
 9. **Multi-dog owner project (see `Multi_Dog_Signup_Build.md` for full detail)** — all 5 stages complete: owner entity, `owners` table, signup flow rewritten with returning-owner detection, message consolidation (combined churn emails, combined SMS reminders via `/checkins/:owner_id`, migration run and live-verified), and an additive-only owner-session dashboard dog-switcher (`/dashboard/:dog_id` renders identically for anyone with no session — vets/family sharing links unaffected — and only adds a switcher when a session cookie matches the dog's own owner, verified adversarially against a cross-owner mismatch). A real unescaped-`dog_name` gap found during Stage 5's own build was fixed on the spot (`buildDogSwitcherHtml`). No open items on this project.
+10. **Mobile strategy decision (Aug 23):** PWA layer (manifest, service worker, push notifications, install prompt) — scoped for mid-beta, roughly weeks 4-6, once initial beta churn settles. Native iOS/Android apps stay Phase 2 (Petwella), not pulled forward — decided explicitly, not by default. This supersedes the parallel-native-build plan in the "PHASE 2: PARALLEL APP BUILD" section below (React Native/Expo, weeks 3-7, week-8 A/B decision) — see the superseded notice at the top of that section, kept for reference only.
 
 
