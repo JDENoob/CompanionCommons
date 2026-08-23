@@ -176,3 +176,13 @@ For quick reference — full reasoning for each is in the sections above:
 | "Senior dog" wedge vs. all-ages data collection | ✅ Resolved — senior stays the pitch/marketing wedge, data collection opens to all ages |
 | Free-vs-licensed comparative data line | ⏳ Open, not resolved — queued for future discussion |
 | Data-model separation (identifiable vs. de-identifiable) | ⏳ Flagged as a real prerequisite, not yet started |
+
+---
+
+## 11. Health Instrument Redesign (Aug 22/23)
+
+A later addendum to this document, not part of the original Aug 20 session above — captured here because it's the same kind of load-bearing product/legal decision this document exists to track.
+
+**The decision:** the weekly check-in instrument is being rebuilt from a single ad-hoc 1-8 slider per domain into a real, multi-item, CBPI-inspired design across all four domains (mobility, energy, appetite, cognitive) — structurally modeled on the shape of published veterinary research instruments (CBPI, CCDR), never their actual wording or item structure, specifically so the eventual licensed dataset can answer a commercial buyer's first real question: what instrument was this collected with. Full design rationale, the literature review behind it, the locked item-by-item spec, and the downstream code dependencies all live in the new dedicated document: **`CompanionCommons_Health_Instrument_Design.md`** — not duplicated here.
+
+**The same open legal question already flagged in that document, restated here for visibility:** no wording, response anchors, or item structure were copied from any source instrument — this was built independently, from CompanionCommons's own construct definitions and item generation. That independence claim needs to be confirmed by real IP counsel before the instrument is considered final, either folded into the already-planned privacy/data-monetization lawyer conversation (see Section 9 above) or as a separate IP-specific consult. Not yet scheduled, same as the rest of the lawyer review.
