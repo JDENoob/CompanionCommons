@@ -176,6 +176,7 @@ For quick reference — full reasoning for each is in the sections above:
 | "Senior dog" wedge vs. all-ages data collection | ✅ Resolved — senior stays the pitch/marketing wedge, data collection opens to all ages |
 | Free-vs-licensed comparative data line | ⏳ Open, not resolved — queued for future discussion |
 | Data-model separation (identifiable vs. de-identifiable) | ⏳ Flagged as a real prerequisite, not yet started |
+| Health check-in instrument redesign (CBPI/CCDR-inspired, replacing old 1-8 sliders) | ✅ Decision made and documented — IP counsel confirmation still open (see Section 11) |
 
 ---
 
