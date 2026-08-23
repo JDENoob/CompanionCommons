@@ -1,6 +1,6 @@
 # CompanionCommons — Health Check-In Instrument Redesign Build
 **Started:** August 23, 2026
-**Status:** Stages 1-5 complete, both migrations run and verified live end-to-end. Stage 6 (verification pass) not started.
+**Status:** All 6 stages complete. STEP P10 build is done. Real end-to-end verification covers signup, check-in (single and multi-week), multi-dog ownership, resend-dashboard-link, dashboards, Journey Summary, breed guide, and Google Sheets export.
 **Purpose:** Standalone tracking document for STEP P10 (see `SENIOR_DOGS_MVP_CHECKLIST.md`), the pre-beta-blocker rebuild of the weekly/baseline health check-in instrument. Tracked separately from the main build log given the scope, matching the pattern set by `Multi_Dog_Signup_Build.md`. Full design rationale, literature grounding, and the locked item-by-item instrument live in `CompanionCommons_Health_Instrument_Design.md` — not duplicated here.
 
 ---
@@ -72,7 +72,7 @@ Header rows for `Signups` and `CheckIns` reference the old column names (server.
    - **4a — Insight & alert logic** ✅ complete — `generatePostLogInsight`, `detectHealthAlerts` (sign-flip + the Stage 1 two-check threshold retune), the `segment` A/B/C field found during Stage 3. Pure functions plus one `/api/checkin-senior` field, no dashboard HTML.
    - **4b — Dashboard display** ✅ complete — "at a glance" trend text, Chart.js Y-axis max 8→10, peer/community comparison card (rank formula, `/8` literal, "Above average!" wording, plus a found-and-fixed `latestPerDog` falsy-zero bug), Journey Summary (`describeJourneyTrend`), breed guide `/8` literal, and the Baseline Score box's 3 `/8` literals (found via a fresh sweep, not in the original spec).
 5. **Google Sheets headers** ✅ complete — `Signups` and `CheckIns` tab header labels updated in code (`(0-10)` added to the 8 score columns); confirmed this only affects a freshly-created tab, so a manual header edit on the live sheet is still needed from John.
-6. **Verification pass** ← next — effectively the first real pass of STEP P8, scoped to just the new instrument, before P8 runs in full against everything else
+6. **Verification pass** ✅ complete — effectively the first real pass of STEP P8, scoped to just the new instrument, before P8 runs in full against everything else
 
 ---
 
@@ -317,3 +317,58 @@ This closes out the last standing gap both Stage 4a and 4b's write-ups flagged (
 **Not tested live, deliberately**: the only way to actually exercise the tab-creation code path would be to delete the real `Signups`/`CheckIns`/`Notes` tabs from the live, shared Google Sheet and let the code recreate them — a destructive action against real shared infrastructure this business actually uses, not something to do just to test a label change. `node --check server.js` passes; the array-literal edit itself is low-risk (same values, same order, just longer strings).
 
 **Manual step needed from John, not something code can do**: the live spreadsheet's actual `Signups` and `CheckIns` header rows need the same `(0-10)` suffix added by hand, same pattern as the Aug 20 precedent. Worth deciding at the same time whether any pre-P10 rows already in those tabs (old 1-8-scale data, if any survived the various test-data wipes) should be visually separated or annotated — not something to guess at without visibility into the actual current sheet content, so left as John's call rather than assumed.
+
+---
+
+## Stage 6 — Verification pass ✅ Complete (Aug 23)
+
+Scoped deliberately to the breadth the earlier real end-to-end pass hadn't covered: multi-dog ownership against the new instrument, resend-dashboard-link, a genuine second cadence cycle (checkin-to-checkin, not baseline-to-checkin), and a read-through of the checklist's own STEP P8 task list to check it against stale assumptions.
+
+### A real testing-environment bug found and fixed first: local dev timezone parsing
+
+Before any of the planned testing, `/checkins/:owner_id` showed "Week 1 check-in is ready" for two dogs created seconds earlier — they should have still been in the 7-day baseline-blocked period. Traced to the **exact same class of bug already documented in this project's own history** (Aug 22: "Supabase's timezone-suffix-less timestamps... parse incorrectly" without `TZ=UTC`): Supabase stores `created_at` without a timezone suffix, and without `TZ=UTC` set, Node parses that string as *local* time (this dev machine is CDT, UTC-5) rather than the UTC it was actually written in — producing a ~5-hour skew that, combined with `Math.floor()` rounding toward negative infinity on the resulting negative `daysSinceSignup`, silently bypassed the baseline gate.
+
+Confirmed empirically before concluding anything (not assumed): a direct comparison of `new Date('2026-08-23T18:45:21.519')` with and without `process.env.TZ = 'UTC'` set showed the exact ~5-hour discrepancy, and confirmed that setting `TZ` via `process.env` *after* the process has already started still works correctly on this platform (Windows/this Node version) — meaning `server.js`'s existing first line, `require('dotenv').config()`, is sufficient to apply a `TZ=UTC` line added to `.env`, no code change needed.
+
+**Fix: added `TZ=UTC` to `.env`** (git-ignored, confirmed via `git check-ignore` before touching it — this is a local-only environment change, not a secret or a code fix). Restarted the preview server; re-checked `/checkins/:owner_id` and got the correct "First check-in available in 7 days" for both dogs, confirming the *application logic* was correct all along — this was purely a local-testing artifact, not a bug in anything built during this project. Left in `.env` permanently going forward rather than removed after testing, since it prevents this exact confusion recurring in any future local session, not just this one.
+
+### Real multi-dog-owner interaction against the new instrument
+
+Full real flow, not synthetic data: signed up **Dog A** (Labrador Retriever) through the real form, then followed the real "+ Add Another Dog" link to add **Dog B** (Poodle) via `/api/add-dog` under the same owner — both succeeded (200/200), both real `senior_dogs` rows confirmed with correct item + composite values via direct query.
+
+- **`/checkins/:owner_id`**: correctly lists both dogs with accurate per-dog status, verified across two real states — "First check-in available in 7 days" (fresh signup) and, after backdating both dogs' `created_at`, "Week 2 check-in is ready" (gate open).
+- **Dashboard dog-switcher, with a real session**: loaded Dog A's dashboard in the same browser tab that had just completed `/verify` — switcher correctly shows both `StageDogA`/`StageDogB` tabs. Confirmed the session cookie persists correctly across a server restart and a brand-new tab in the same browser profile (expected — cookies are stored per-origin, not per-tab).
+- **Dashboard dog-switcher, no session — re-confirmed adversarially, not just assumed to still work**: since a fresh tab in the same browser profile turned out to *share* the existing session cookie (confirmed directly — a brand-new tab still showed the switcher), a genuine no-session test required explicitly calling the real `POST /api/clear-owner-session` endpoint first. After clearing: switcher correctly disappeared, and — the actual guarantee that matters — **the full dashboard still rendered completely**, confirming the additive-only, vet/family-link-safe design this feature was built around (Aug 22) still holds with new-instrument data present.
+
+### Resend-dashboard-link, against a new-instrument dog
+
+Called the real `POST /api/resend-dashboard-link` for the test owner's phone number. Response was the correct generic success message (never reveals whether a number is registered, by design); confirmed via server logs that it actually found the real owner and sent a real SMS (`✅ resend-dashboard-link SMS sent to +15005550006`, real Twilio SID) rather than just returning the generic response blindly. This feature predates P10 — the point of testing it here was confirming it still works correctly now that the dogs it's finding have the new instrument's schema, which it does.
+
+### A genuine second cadence cycle — checkin-to-checkin, not baseline-to-checkin
+
+This is the piece the earlier milestone verification explicitly couldn't cover (it only had baseline + one check-in). Submitted a real Week 2 check-in for Dog A (mobility composite 2.0 → 3.0), then backdated `created_at` further to reach Week 3 and submitted a second real check-in (mobility 3.0 → 5.0, energy steady, appetite 3.0 → 4.0) — deliberately chosen to be large enough to exercise `detectHealthAlerts` a second time.
+
+- **Smart Defaults (STEP P1B) prefill, confirmed item-by-item**: the Week 3 form correctly pre-filled every widget from Week 2's actual submitted values (`3,3,3,3,2,3`), not baseline — confirming the Stage 3 prefill logic works correctly across a real multi-week history, not just baseline→week-1.
+- **Streak**: correctly counted "2 week streak" with the real STEP 27C milestone message, across two genuine consecutive real weeks.
+- **`generatePostLogInsight`, live, on a real checkin-to-checkin diff**: *"Heads up: StageDogA's mobility increased by 2 points since last week."* — confirms the comparison is against the real prior check-in (3.0), not baseline (2.0), and the Stage 4a sign-flip wording is correct on organically-generated data.
+- **Dashboard's `describeTrendForGlance`, live, on a real two-week comparison**: *"Mobility: declined (+2)"*, *"Appetite: declined (+1)"*, *"Energy: held steady"* — the first time this function's live output has been checked against two genuine check-ins rather than baseline-only.
+- **`detectHealthAlerts` dedup, confirmed correct via direct inspection, not assumed**: the dashboard's alert banner showed magnitude `1` (from the Week 2 submission) rather than the Week 3 submission's larger `2.0` diff. Investigated rather than dismissed: queried `health_alerts` directly and confirmed exactly one row exists, from Week 2. This is **correct, expected dedup behavior**, not a bug — the 14-day dedup window is keyed on the alert's real wall-clock `created_at`, and both check-ins were submitted seconds apart in real time (only the simulated `week_number` advanced via backdating `created_at` on the dog). A real user logging real, calendar-spaced weeks would see both alerts fire independently; this test's compressed timeline correctly triggered the same protection the feature is designed to provide. Confirmed this is a testing-methodology artifact, not a code issue, before moving on.
+- **Journey Summary**: correctly shows both real weeks in the table (`Week 3: 5,2,4` / `Week 2: 3,2,3`, most-recent-first) and correct baseline-vs-latest trend lines for all 4 domains.
+
+### Breed guide, second breed
+
+Loaded Dog B's (Poodle) breed guide alongside Dog A's (Labrador Retriever, already confirmed via the dashboard's "guide unlocked" link). Poodle isn't in the specific-breed list, so it correctly fell back to the generic senior-dogs guide — pre-existing breed-matching behavior, unrelated to and unaffected by P10 — with the correct `/10` label. Breed-guide lock/unlock logic itself (`currentWeek < 2`) was confirmed unaffected back in Stage 1's investigation (age/breed-tier and check-in-count only, no score dependency) and wasn't re-tested in the locked state here, since both test dogs were past week 2 by this point and that mechanic is untouched by anything built in this project.
+
+### Final pass through the checklist's own STEP P8 task list
+
+Read every task line item against what P10 actually changed, specifically checking whether any of the wording assumes the old single-slider design (the concern the checklist's own STEP P10 section had flagged: *"P8's existing scope was written against the old single-slider design and doesn't yet reflect this"*). **Conclusion: that flag was accurate when written, but the actual task list text doesn't need rewriting** — every line item is already phrased generically ("check-in flow," "trend," "streak," "breed guide") with no scale-specific or slider-specific language anywhere in it. The flag was written when the redesign was still conceptual, before anyone had checked the literal task text against it.
+
+**What this session's testing (both the earlier milestone pass and this stage) actually covers of the P8 list, checked off below where genuinely verified** — Signup flow (all 3 items), Check-in flow (standalone page, dashboard modal, real multi-week history/streak/trend — **not** mid-week notes specifically, which weren't exercised this session), Multi-dog specific (all 3 items), Breed guide (2 breeds viewed, **not** the locked state specifically). **Still genuinely open, not silently checked off**: Journey Summary print-to-PDF (this project's own history already notes the local browser tooling can't drive a native print dialog — needs John's own direct testing, same as every prior print verification in this project), mid-week notes display, and the Communications section (reminder SMS, churn alert email) — none of these are P10-specific risk, they just haven't been exercised in this session and shouldn't be marked done without actually running them.
+
+### Cleanup and final state
+
+All test data (2 dogs, 1 owner, 2 check-ins, 1 health alert, 2 queued SMS, 1 magic-link token) deleted; every table involved confirmed back to 0 rows by direct follow-up query. Preview server stopped; confirmed 0 `node.exe` processes running. **Zero code changes to `server.js` this stage** — confirmed via `git status` before writing anything up — this was a pure verification pass; the only fix needed (`TZ=UTC`) was a local dev-environment setting, not an application bug.
+
+### STEP P10 — done
+
+All 6 stages complete. The health check-in instrument redesign is built, migrated, and verified live across signup, check-in (single and multi-week), multi-dog ownership, resend-dashboard-link, dashboard, Journey Summary, breed guide, and Google Sheets export. Two real bugs were found and fixed along the way that weren't part of the original plan: the pre-existing `mobility_check` legacy constraint (found via the first real signup after the main migration ran) and the `latestPerDog` falsy-zero bug in the peer-comparison card (found during Stage 4b's own review). Remaining open items are explicitly **not** P10-specific: the manual Google Sheets header edit (Stage 5), and the genuinely-still-open pieces of STEP P8 (print-to-PDF, notes, reminders, churn email) that were always going to need a dedicated pass regardless of the instrument redesign.
