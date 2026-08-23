@@ -2536,6 +2536,21 @@ function isSeniorForBreed(age, breedName) {
   return age >= SENIOR_AGE_BY_TIER[tier];
 }
 
+// Direct parallel to isSeniorForBreed above: pure, nothing stored, computed
+// fresh on every page load from the breed's existing typicalWeight string.
+// No added margin — true only when currentWeight exceeds the parsed range's
+// own max, same "just report the number, no interpretation" framing as
+// compareWeightToBreedRange below. Returns false (not null) for mixed
+// breed / the generic fallback, same as their weight range being
+// unknowable — nothing to flag as "overweight" without a real range.
+function isOverweightForBreed(currentWeight, breedName) {
+  if (currentWeight == null) return false;
+  const guide = getBreedGuide(breedName);
+  const range = parseWeightRange(guide.typicalWeight);
+  if (!range) return false;
+  return currentWeight > range.max;
+}
+
 // Forward-looking copy shown on the breed guide for dogs NOT YET flagged
 // senior — one per size tier (not per breed), same non-diagnostic register
 // as each breed's own seniorPatterns copy above. Deliberately doesn't state
@@ -3043,6 +3058,15 @@ app.get('/dashboard/:dog_id', async (req, res) => {
     const chartCognitiveScores = checkins.length > 0
       ? checkins.map(c => c.cognitive_score)
       : [dog.baseline_cognitive_score];
+    // Same null-per-week pattern as chartCognitiveScores — weight is only
+    // recorded on cadence weeks. Deliberately uses the SAME chartWeeks
+    // x-axis as the main chart (not compressed to only the weeks weight was
+    // recorded), so a weight change lines up visually against that same
+    // week's mobility/energy movement on the main chart — the actual point
+    // of tracking weight for an already-overweight dog.
+    const chartWeightScores = checkins.length > 0
+      ? checkins.map(c => c.weight_lbs)
+      : [dog.weight_lbs];
     const chartWeeks = checkins.length > 0
       ? checkins.map(c => `W${c.week_number}`)
       : ['Baseline'];
@@ -3082,6 +3106,17 @@ app.get('/dashboard/:dog_id', async (req, res) => {
     // Senior-by-breed-size flag — live, nothing stored (see helpers defined
     // near getBreedGuide/BREED_GUIDES above).
     const isSenior = isSeniorForBreed(dog.age, dog.breed);
+
+    // Overweight-by-breed flag, same live/nothing-stored pattern. Reuses
+    // currentWeightValue (already resolved above: latest weight-bearing
+    // check-in, falling back to dog.weight_lbs) rather than a second
+    // lookup. weightDataPointCount counts baseline (always present, weight
+    // is required at signup) plus every real check-in that recorded a
+    // weight — the weight mini-chart only renders once there are at least
+    // 2 of these, the point where a real trend (not just one number) exists.
+    const isOverweight = isOverweightForBreed(currentWeightValue, dog.breed);
+    const weightDataPointCount = 1 + weightCheckins.length;
+    const showWeightChart = isOverweight && weightDataPointCount >= 2;
 
     // Calculate the actual current week (matches /api/checkin-senior's calculation)
     // so we know whether to show the every-4th-week cognitive/behavior slider.
@@ -3710,6 +3745,14 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                 </div>
               </div>
 
+              ${showWeightChart ? `
+              <div class="chart-card">
+                <h2>Weight</h2>
+                <p style="margin: 0 0 12px 0; font-size: 13px; color: #888;">You're seeing this graph because ${escapeHtml(dog.dog_name)} is considered overweight for their size. This reflects just ${escapeHtml(dog.dog_name)}'s own recorded weight — not a diagnosis or a comparison to other dogs.</p>
+                <canvas id="weightChart" style="max-height: 160px;"></canvas>
+              </div>
+              ` : ''}
+
               <div class="chart-card">
                 <h2><i data-lucide="file-text"></i> Notes</h2>
                 <p style="font-size: 13px; color: #999; margin: -8px 0 16px 0;">Jot down anything worth remembering between check-ins — these are saved with ${escapeHtml(dog.dog_name)}'s health journey.</p>
@@ -4238,6 +4281,58 @@ app.get('/dashboard/:dog_id', async (req, res) => {
               }
             }
           });
+
+          ${showWeightChart ? `
+          // Separate chart, own y-axis (lbs, not the 0-10 score scale) —
+          // same x-axis weeks as the main chart above (not compressed to
+          // only the weeks weight was recorded), so a weight change lines
+          // up visually against that same week's mobility/energy movement.
+          // Neutral brand color, not one of the four score-line colors, so
+          // this doesn't read as "a 5th health metric" alongside them.
+          const weightCtx = document.getElementById('weightChart').getContext('2d');
+          new Chart(weightCtx, {
+            type: 'line',
+            data: {
+              labels: ${JSON.stringify(chartWeeks)},
+              datasets: [
+                {
+                  label: 'Weight (lb)',
+                  data: ${JSON.stringify(chartWeightScores)},
+                  borderColor: '#A89968',
+                  backgroundColor: 'rgba(168, 153, 104, 0.08)',
+                  borderWidth: 2,
+                  fill: false,
+                  tension: 0.4,
+                  pointStyle: 'circle',
+                  pointRadius: 3,
+                  pointBackgroundColor: '#A89968',
+                  pointBorderColor: '#fff',
+                  pointBorderWidth: 2,
+                  pointHoverRadius: 6
+                }
+              ]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: true,
+              plugins: {
+                legend: { display: false },
+                tooltip: { mode: 'index', intersect: false }
+              },
+              interaction: { mode: 'index', intersect: false },
+              scales: {
+                y: {
+                  beginAtZero: false,
+                  ticks: { callback: (value) => value + ' lb' },
+                  grid: { drawBorder: false }
+                },
+                x: {
+                  grid: { display: false }
+                }
+              }
+            }
+          });
+          ` : ''}
         </script>
         <script src="https://unpkg.com/lucide@1.33.0"></script>
         <script>lucide.createIcons({ attrs: { width: '1em', height: '1em' } });</script>
