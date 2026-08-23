@@ -3036,6 +3036,13 @@ app.get('/dashboard/:dog_id', async (req, res) => {
     const chartAppetiteScores = checkins.length > 0
       ? checkins.map(c => c.appetite_score)
       : [dog.baseline_appetite_score];
+    // Cognitive is only asked every 4th week, so most entries are null here
+    // by design — Chart.js's default spanGaps:false leaves a genuine gap
+    // rather than interpolating across weeks it wasn't actually measured,
+    // which is the honest representation, not a bug to work around.
+    const chartCognitiveScores = checkins.length > 0
+      ? checkins.map(c => c.cognitive_score)
+      : [dog.baseline_cognitive_score];
     const chartWeeks = checkins.length > 0
       ? checkins.map(c => `W${c.week_number}`)
       : ['Baseline'];
@@ -3180,6 +3187,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
           <td style="padding: 8px 10px; border-bottom: 1px solid #eee; text-align: center;">${c.energy_score ?? '—'}</td>
           <td style="padding: 8px 10px; border-bottom: 1px solid #eee; text-align: center;">${c.appetite_score ?? '—'}</td>
           <td style="padding: 8px 10px; border-bottom: 1px solid #eee; text-align: center;">${c.cognitive_score ?? '—'}</td>
+          <td style="padding: 8px 10px; border-bottom: 1px solid #eee; text-align: center;">${c.weight_lbs != null ? `${c.weight_lbs} lb` : '—'}</td>
         </tr>`;
       }).join('');
 
@@ -3644,6 +3652,10 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                           <div style="font-size: 9px; color: #AAA; text-transform: uppercase; letter-spacing: 0.3px;">Weight</div>
                           <div class="baseline-info-value" style="font-size: 15px;">${dog.weight_lbs ?? '—'} lb</div>
                         </div>
+                        <div style="flex: 1; text-align: center;">
+                          <div style="font-size: 9px; color: #AAA; text-transform: uppercase; letter-spacing: 0.3px;">Cognitive</div>
+                          <div class="baseline-info-value" style="font-size: 15px;">${dog.baseline_cognitive_score ?? '—'}/10</div>
+                        </div>
                       </div>
                     </div>
                     <div class="baseline-info-item">
@@ -3688,6 +3700,10 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                       <tr>
                         <td style="padding: 6px 10px; color: #4CAF50; font-weight: 600; white-space: nowrap;">Appetite</td>
                         ${chartAppetiteScores.map(v => `<td style="text-align: center; padding: 6px 10px;">${v ?? '—'}</td>`).join('')}
+                      </tr>
+                      <tr>
+                        <td style="padding: 6px 10px; color: #9B59B6; font-weight: 600; white-space: nowrap;">Cognitive</td>
+                        ${chartCognitiveScores.map(v => `<td style="text-align: center; padding: 6px 10px;">${v ?? '—'}</td>`).join('')}
                       </tr>
                     </tbody>
                   </table>
@@ -3894,7 +3910,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
 
             <hr style="border: none; border-top: 1px solid #eee; margin: 0 0 8px 0;">
 
-            <h3 style="font-size: 15px; margin-bottom: 8px; color: #2C2C2C;">Weekly log</h3>
+            <h3 style="font-size: 15px; margin-bottom: 8px; color: #2C2C2C; break-after: avoid; page-break-after: avoid;">Weekly log</h3>
             ${journeyTableRows ? `
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 13px; break-inside: avoid; page-break-inside: avoid;">
               <thead>
@@ -3905,6 +3921,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                   <th style="padding: 8px 10px; text-align: center; font-weight: 600; color: #666;">Energy</th>
                   <th style="padding: 8px 10px; text-align: center; font-weight: 600; color: #666;">Appetite</th>
                   <th style="padding: 8px 10px; text-align: center; font-weight: 600; color: #666;">Cognitive</th>
+                  <th style="padding: 8px 10px; text-align: center; font-weight: 600; color: #666;">Weight</th>
                 </tr>
               </thead>
               <tbody>
@@ -4168,6 +4185,22 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                   pointStyle: 'rect',
                   pointRadius: 3,
                   pointBackgroundColor: '#4CAF50',
+                  pointBorderColor: '#fff',
+                  pointBorderWidth: 2,
+                  pointHoverRadius: 6
+                },
+                {
+                  label: 'Cognitive',
+                  data: ${JSON.stringify(chartCognitiveScores)},
+                  borderColor: '#9B59B6',
+                  backgroundColor: 'rgba(155, 89, 182, 0.08)',
+                  borderWidth: 2,
+                  borderDash: [8, 3, 2, 3],
+                  fill: false,
+                  tension: 0.4,
+                  pointStyle: 'star',
+                  pointRadius: 3,
+                  pointBackgroundColor: '#9B59B6',
                   pointBorderColor: '#fff',
                   pointBorderWidth: 2,
                   pointHoverRadius: 6
