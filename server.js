@@ -257,6 +257,29 @@ const SCORE_ITEM_WIDGET_SCRIPT = `
   }
 `;
 
+// ---- Stage 3 additions: render a whole domain's widgets from HEALTH_INSTRUMENT ----
+// Used by the two server-rendered check-in surfaces (standalone check-in
+// page, dashboard's inline modal) so their markup is generated from the
+// same config as everything else, instead of a 4th/5th hand-typed copy.
+// currentValuesByItemKey is keyed by item.key (e.g. 'stiffness_after_rest'),
+// not by full column name.
+function buildDomainItemWidgetsHtml(domainKey, currentValuesByItemKey, { baseline = false } = {}) {
+  const domain = HEALTH_INSTRUMENT[domainKey];
+  return domain.items.map(item => {
+    const fieldName = itemColumnName(domainKey, item.key, { baseline });
+    const currentValue = currentValuesByItemKey ? currentValuesByItemKey[item.key] : undefined;
+    return buildScoreItemWidget(fieldName, item.label, item.anchorLow, item.anchorHigh, currentValue);
+  }).join('');
+}
+
+// Same idea for a single-item domain (energy, appetite) — one widget, field
+// name is the domain's own composite column (no averaging to do).
+function buildSingleItemWidgetHtml(domainKey, currentValue, { baseline = false } = {}) {
+  const domain = HEALTH_INSTRUMENT[domainKey];
+  const fieldName = baseline ? domain.baselineCompositeColumn : domain.compositeColumn;
+  return buildScoreItemWidget(fieldName, domain.label, domain.singleItem.anchorLow, domain.singleItem.anchorHigh, currentValue);
+}
+
 // ============================================
 // VALIDATE REQUIRED ENVIRONMENT VARIABLES
 // ============================================
@@ -1319,16 +1342,36 @@ app.get('/check-in/:dog_id', async (req, res) => {
     // Get check-in history for comparison. No .limit(1) — weight isn't
     // recorded every week (only every 4th, same as cognitive), so the full
     // history is fetched to find the latest check-in that actually has one.
+    // STEP P10: also selects the 8 item columns, ordered newest-first so
+    // [0] is always "most recent check-in of any kind."
     const { data: latestCheckins } = await supabase
       .from('mobility_checkins')
-      .select('mobility_score, energy_score, appetite_score, cognitive_score, weight_lbs, week_number')
+      .select('mobility_getting_up, mobility_stairs, mobility_stiffness_after_rest, mobility_walk_distance, energy_score, appetite_score, cognitive_orientation, cognitive_memory, cognitive_interest, cognitive_sleep_wake, weight_lbs, week_number')
       .eq('dog_id', dog_id)
       .order('created_at', { ascending: false });
 
-    const latestScore = latestCheckins?.[0]?.mobility_score ?? dog.baseline_mobility_score ?? null;
-    const latestEnergy = latestCheckins?.[0]?.energy_score ?? dog.baseline_energy_score ?? null;
-    const latestAppetite = latestCheckins?.[0]?.appetite_score ?? dog.baseline_appetite_score ?? null;
-    const latestCognitive = latestCheckins?.[0]?.cognitive_score ?? dog.baseline_cognitive_score ?? null;
+    // Mobility is asked every week, so the most recent row (if any) always
+    // has real item values. Cognitive is only asked every 4th week, so the
+    // most recent row often has null cognitive_* — find the most recent row
+    // that actually HAS cognitive values instead, same pattern already used
+    // for weight below.
+    const latestRow = latestCheckins?.[0];
+    const latestCognitiveRow = latestCheckins?.find(c => c.cognitive_orientation != null);
+
+    const mobilityPrefill = {
+      getting_up: latestRow?.mobility_getting_up ?? dog.baseline_mobility_getting_up ?? null,
+      stairs: latestRow?.mobility_stairs ?? dog.baseline_mobility_stairs ?? null,
+      stiffness_after_rest: latestRow?.mobility_stiffness_after_rest ?? dog.baseline_mobility_stiffness_after_rest ?? null,
+      walk_distance: latestRow?.mobility_walk_distance ?? dog.baseline_mobility_walk_distance ?? null
+    };
+    const cognitivePrefill = {
+      orientation: latestCognitiveRow?.cognitive_orientation ?? dog.baseline_cognitive_orientation ?? null,
+      memory: latestCognitiveRow?.cognitive_memory ?? dog.baseline_cognitive_memory ?? null,
+      interest: latestCognitiveRow?.cognitive_interest ?? dog.baseline_cognitive_interest ?? null,
+      sleep_wake: latestCognitiveRow?.cognitive_sleep_wake ?? dog.baseline_cognitive_sleep_wake ?? null
+    };
+    const latestEnergy = latestRow?.energy_score ?? dog.baseline_energy_score ?? null;
+    const latestAppetite = latestRow?.appetite_score ?? dog.baseline_appetite_score ?? null;
     const latestWeight = latestCheckins?.find(c => c.weight_lbs != null)?.weight_lbs ?? dog.weight_lbs ?? null;
 
     // Calculate the actual current week based on when the dog was enrolled
@@ -1398,6 +1441,7 @@ app.get('/check-in/:dog_id', async (req, res) => {
           }
           button:hover { background: #0051D5; }
           button:active { opacity: 0.8; }
+          ${SCORE_ITEM_WIDGET_STYLES}
         </style>
       </head>
       <body>
@@ -1406,50 +1450,19 @@ app.get('/check-in/:dog_id', async (req, res) => {
           <p class="subtitle">Week ${weekNumber} Health Tracker</p>
 
           <form id="checkinForm">
-            <label for="mobility">How's ${escapeHtml(dog.dog_name)}'s mobility this week?</label>
-            <input
-              type="range"
-              id="mobility"
-              name="mobility_score"
-              min="1"
-              max="8"
-              value="${latestScore || 4}"
-            >
-            <div class="hint" id="mobilityHint">4/8 - Some good days, some bad days</div>
+            <h3 style="font-size: 15px; font-weight: 600; color: #333; margin: 0 0 4px 0;">Mobility</h3>
+            ${buildDomainItemWidgetsHtml('mobility', mobilityPrefill)}
 
-            <label for="energy" style="margin-top: 20px;">How's ${escapeHtml(dog.dog_name)}'s energy level this week?</label>
-            <input
-              type="range"
-              id="energy"
-              name="energy_score"
-              min="1"
-              max="8"
-              value="${latestEnergy || 4}"
-            >
-            <div class="hint" id="energyHint">4/8 - Average energy</div>
+            <h3 style="font-size: 15px; font-weight: 600; color: #333; margin: 24px 0 4px 0;">Energy</h3>
+            ${buildSingleItemWidgetHtml('energy', latestEnergy)}
 
-            <label for="appetite" style="margin-top: 20px;">How's ${escapeHtml(dog.dog_name)}'s appetite this week?</label>
-            <input
-              type="range"
-              id="appetite"
-              name="appetite_score"
-              min="1"
-              max="8"
-              value="${latestAppetite || 4}"
-            >
-            <div class="hint" id="appetiteHint">4/8 - Average appetite</div>
+            <h3 style="font-size: 15px; font-weight: 600; color: #333; margin: 24px 0 4px 0;">Appetite</h3>
+            ${buildSingleItemWidgetHtml('appetite', latestAppetite)}
 
             ${showCognitive ? `
-            <label for="cognitive" style="margin-top: 20px;">How's ${escapeHtml(dog.dog_name)}'s alertness &amp; behavior this week?</label>
-            <input
-              type="range"
-              id="cognitive"
-              name="cognitive_score"
-              min="1"
-              max="8"
-              value="${latestCognitive || 4}"
-            >
-            <div class="hint" id="cognitiveHint">4/8 - Average alertness</div>
+            <h3 style="font-size: 15px; font-weight: 600; color: #333; margin: 24px 0 4px 0;">Cognitive &amp; Behavior</h3>
+            <p class="hint" style="margin: 0 0 16px 0;">Asked every 4th week.</p>
+            ${buildDomainItemWidgetsHtml('cognitive', cognitivePrefill)}
             ` : ''}
 
             ${showCognitive ? `
@@ -1479,70 +1492,16 @@ app.get('/check-in/:dog_id', async (req, res) => {
         </div>
 
         <script>
-          const mobilitySlider = document.getElementById('mobility');
-          const mobilityHints = {
-            1: "1/8 - Very stiff/limited movement",
-            2: "2/8 - Mostly struggling",
-            3: "3/8 - Significant issues",
-            4: "4/8 - Some good days, some bad days",
-            5: "5/8 - Moderate improvement",
-            6: "6/8 - Noticeably better",
-            7: "7/8 - Very active",
-            8: "8/8 - Excellent, no mobility issues"
-          };
-          mobilitySlider.addEventListener('input', () => {
-            document.getElementById('mobilityHint').textContent = mobilityHints[mobilitySlider.value];
-          });
-
-          const energySlider = document.getElementById('energy');
-          const energyHints = {
-            1: "1/8 - Very low energy",
-            2: "2/8 - Mostly lethargic",
-            3: "3/8 - Below average energy",
-            4: "4/8 - Average energy",
-            5: "5/8 - Fairly active",
-            6: "6/8 - Active",
-            7: "7/8 - Very active",
-            8: "8/8 - Extremely energetic"
-          };
-          energySlider.addEventListener('input', () => {
-            document.getElementById('energyHint').textContent = energyHints[energySlider.value];
-          });
-
-          const appetiteSlider = document.getElementById('appetite');
-          const appetiteHints = {
-            1: "1/8 - Barely eating",
-            2: "2/8 - Eating very little",
-            3: "3/8 - Below average appetite",
-            4: "4/8 - Average appetite",
-            5: "5/8 - Good appetite",
-            6: "6/8 - Very good appetite",
-            7: "7/8 - Excellent appetite",
-            8: "8/8 - Eating everything in sight"
-          };
-          appetiteSlider.addEventListener('input', () => {
-            document.getElementById('appetiteHint').textContent = appetiteHints[appetiteSlider.value];
-          });
-
-          const cognitiveSlider = document.getElementById('cognitive');
-          if (cognitiveSlider) {
-            const cognitiveHints = {
-              1: "1/8 - Often confused/withdrawn",
-              2: "2/8 - Frequently disoriented",
-              3: "3/8 - Below average alertness",
-              4: "4/8 - Average alertness",
-              5: "5/8 - Fairly engaged",
-              6: "6/8 - Engaged and responsive",
-              7: "7/8 - Very sharp",
-              8: "8/8 - Sharp and fully engaged"
-            };
-            cognitiveSlider.addEventListener('input', () => {
-              document.getElementById('cognitiveHint').textContent = cognitiveHints[cognitiveSlider.value];
-            });
-          }
+          ${SCORE_ITEM_WIDGET_SCRIPT}
 
           document.getElementById('checkinForm').addEventListener('submit', async (e) => {
             e.preventDefault();
+
+            const scoreCheck = formHasAllScoreItemsAnswered(e.target);
+            if (!scoreCheck.valid) {
+              highlightUnansweredScoreItem(scoreCheck.firstInvalid);
+              return;
+            }
 
             const formData = new FormData(e.target);
             try {
@@ -1551,10 +1510,16 @@ app.get('/check-in/:dog_id', async (req, res) => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   dog_id: '${dog_id}',
-                  mobility_score: parseInt(formData.get('mobility_score')),
+                  mobility_getting_up: parseInt(formData.get('mobility_getting_up')),
+                  mobility_stairs: parseInt(formData.get('mobility_stairs')),
+                  mobility_stiffness_after_rest: parseInt(formData.get('mobility_stiffness_after_rest')),
+                  mobility_walk_distance: parseInt(formData.get('mobility_walk_distance')),
                   energy_score: parseInt(formData.get('energy_score')),
                   appetite_score: parseInt(formData.get('appetite_score')),
-                  cognitive_score: formData.get('cognitive_score') ? parseInt(formData.get('cognitive_score')) : null,
+                  cognitive_orientation: formData.get('cognitive_orientation') ? parseInt(formData.get('cognitive_orientation')) : null,
+                  cognitive_memory: formData.get('cognitive_memory') ? parseInt(formData.get('cognitive_memory')) : null,
+                  cognitive_interest: formData.get('cognitive_interest') ? parseInt(formData.get('cognitive_interest')) : null,
+                  cognitive_sleep_wake: formData.get('cognitive_sleep_wake') ? parseInt(formData.get('cognitive_sleep_wake')) : null,
                   weight_lbs: formData.get('weight_lbs') ? parseInt(formData.get('weight_lbs')) : null,
                   observation: formData.get('observation') || null
                 })
@@ -1586,7 +1551,7 @@ app.get('/check-in/:dog_id', async (req, res) => {
                   <div class="card" style="text-align: center;">
                     <h2 style="color: green;">✅ Check-In Submitted!</h2>
                     <p style="font-size: 18px; color: #007AFF; margin: 20px 0;">
-                      ${escapeHtml(dog.dog_name)}'s mobility: \${result.mobility_score}/8
+                      ${escapeHtml(dog.dog_name)}'s mobility: \${result.mobility_score}/10
                     </p>
                     \${streakBadge}
                     \${milestoneBanner}
@@ -1800,50 +1765,79 @@ async function detectHealthAlerts(dog_id, dogName, current, previous) {
 
 app.post('/api/checkin-senior', async (req, res) => {
   try {
-    const { dog_id, mobility_score, energy_score, appetite_score, cognitive_score, weight_lbs, observation } = req.body;
+    const {
+      dog_id,
+      mobility_getting_up,
+      mobility_stairs,
+      mobility_stiffness_after_rest,
+      mobility_walk_distance,
+      energy_score,
+      appetite_score,
+      cognitive_orientation,
+      cognitive_memory,
+      cognitive_interest,
+      cognitive_sleep_wake,
+      weight_lbs,
+      observation
+    } = req.body;
 
-    // Validation
-    if (!dog_id || !mobility_score || !energy_score || !appetite_score) {
+    if (!dog_id) {
+      return res.status(400).json({ success: false, error: 'Missing required field: dog_id' });
+    }
+
+    // STEP P10 instrument: mobility is 4 items, always required (asked every
+    // week). Energy/appetite stay single 0-10 values, always required.
+    // Cognitive is an all-or-nothing 4-item bundle, only actually sent by
+    // the client on a 4th-week cadence submission (see showCognitive on the
+    // check-in page / showCognitiveThisWeek on the dashboard modal) — but
+    // this endpoint doesn't itself enforce that cadence, matching the OLD
+    // single-slider version's behavior exactly: it only ever cared whether
+    // cognitive was present at all, never which week it was (see
+    // docs/Health_Instrument_Redesign_Build.md Stage 3). Do NOT use `!value`
+    // truthy checks anywhere on these fields — 0 is a valid, common answer
+    // ("no difficulty") on this scale, and `!0` is true in JS.
+    const mobilityItemValues = [mobility_getting_up, mobility_stairs, mobility_stiffness_after_rest, mobility_walk_distance];
+    if (mobilityItemValues.some(v => !isValidInstrumentValue(v))) {
       return res.status(400).json({
         success: false,
-        error: 'Missing required fields: dog_id, mobility_score, energy_score, appetite_score'
+        error: 'Each mobility item must be a whole number from 0 to 10'
+      });
+    }
+    if (!isValidInstrumentValue(energy_score)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Energy score must be a whole number from 0 to 10'
+      });
+    }
+    if (!isValidInstrumentValue(appetite_score)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Appetite score must be a whole number from 0 to 10'
       });
     }
 
-    const mobilityScoreInt = parseInt(mobility_score);
-    if (isNaN(mobilityScoreInt) || mobilityScoreInt < 1 || mobilityScoreInt > 8) {
-      return res.status(400).json({
-        success: false,
-        error: 'Mobility score must be between 1 and 8'
-      });
-    }
+    const cleanMobilityItems = mobilityItemValues.map(Number);
+    const mobilityComposite = computeCompositeScore(cleanMobilityItems);
+    const cleanEnergy = Number(energy_score);
+    const cleanAppetite = Number(appetite_score);
 
-    const energyScoreInt = parseInt(energy_score);
-    if (isNaN(energyScoreInt) || energyScoreInt < 1 || energyScoreInt > 8) {
-      return res.status(400).json({
-        success: false,
-        error: 'Energy score must be between 1 and 8'
-      });
-    }
-
-    const appetiteScoreInt = parseInt(appetite_score);
-    if (isNaN(appetiteScoreInt) || appetiteScoreInt < 1 || appetiteScoreInt > 8) {
-      return res.status(400).json({
-        success: false,
-        error: 'Appetite score must be between 1 and 8'
-      });
-    }
-
-    // Cognitive/behavior is only asked every 4th week, so it's optional here
-    let cognitiveScoreInt = null;
-    if (cognitive_score !== undefined && cognitive_score !== null && cognitive_score !== '') {
-      cognitiveScoreInt = parseInt(cognitive_score);
-      if (isNaN(cognitiveScoreInt) || cognitiveScoreInt < 1 || cognitiveScoreInt > 8) {
+    // Cognitive: none provided -> not a cadence week, store all null.
+    // Some-but-not-all provided -> a malformed submission, reject it rather
+    // than silently discarding partial answers. All 4 provided -> validate
+    // and composite, same shape as mobility.
+    const cognitiveItemValues = [cognitive_orientation, cognitive_memory, cognitive_interest, cognitive_sleep_wake];
+    const cognitiveProvidedCount = cognitiveItemValues.filter(v => v !== undefined && v !== null && v !== '').length;
+    let cleanCognitiveItems = [null, null, null, null];
+    let cognitiveComposite = null;
+    if (cognitiveProvidedCount > 0) {
+      if (cognitiveProvidedCount < 4 || cognitiveItemValues.some(v => !isValidInstrumentValue(v))) {
         return res.status(400).json({
           success: false,
-          error: 'Cognitive score must be between 1 and 8'
+          error: 'If submitting cognitive/behavior this week, all 4 items must be a whole number from 0 to 10'
         });
       }
+      cleanCognitiveItems = cognitiveItemValues.map(Number);
+      cognitiveComposite = computeCompositeScore(cleanCognitiveItems);
     }
 
     // Weight is also only asked every 4th week, same trigger as cognitive —
@@ -1905,7 +1899,7 @@ app.post('/api/checkin-senior', async (req, res) => {
       .limit(1);
 
     const previousScore = prevCheckins?.[0]?.mobility_score || dog.baseline_mobility_score;
-    const scoreDiff = mobilityScoreInt - previousScore;
+    const scoreDiff = mobilityComposite - previousScore;
 
     // Determine segment (A=improving, B=flat, C=declining)
     let segment = 'B'; // default moderate
@@ -1943,10 +1937,18 @@ app.post('/api/checkin-senior', async (req, res) => {
       .insert({
         dog_id: dog_id,
         week_number: weekNumber,
-        mobility_score: mobilityScoreInt,
-        energy_score: energyScoreInt,
-        appetite_score: appetiteScoreInt,
-        cognitive_score: cognitiveScoreInt,
+        mobility_getting_up: cleanMobilityItems[0],
+        mobility_stairs: cleanMobilityItems[1],
+        mobility_stiffness_after_rest: cleanMobilityItems[2],
+        mobility_walk_distance: cleanMobilityItems[3],
+        mobility_score: mobilityComposite,
+        energy_score: cleanEnergy,
+        appetite_score: cleanAppetite,
+        cognitive_orientation: cleanCognitiveItems[0],
+        cognitive_memory: cleanCognitiveItems[1],
+        cognitive_interest: cleanCognitiveItems[2],
+        cognitive_sleep_wake: cleanCognitiveItems[3],
+        cognitive_score: cognitiveComposite,
         weight_lbs: weightLbsInt,
         observation: observation || null,
         segment: segment
@@ -2002,10 +2004,10 @@ app.post('/api/checkin-senior', async (req, res) => {
     // on weeks it isn't asked, since it's only collected every 4th week).
     const prevRow = prevCheckins?.[0];
     const currentScores = {
-      mobility: mobilityScoreInt,
-      energy: energyScoreInt,
-      appetite: appetiteScoreInt,
-      cognitive: cognitiveScoreInt // null on non-4th weeks, that's fine — diff just skips it
+      mobility: mobilityComposite,
+      energy: cleanEnergy,
+      appetite: cleanAppetite,
+      cognitive: cognitiveComposite // null on non-4th weeks, that's fine — diff just skips it
     };
     const previousScores = {
       mobility: prevRow?.mobility_score ?? dog.baseline_mobility_score,
@@ -2041,7 +2043,7 @@ app.post('/api/checkin-senior', async (req, res) => {
 
     res.json({
       success: true,
-      mobility_score: mobilityScoreInt,
+      mobility_score: mobilityComposite,
       weight_lbs: weightLbsInt,
       change_text: changeText,
       week_number: weekNumber,
@@ -2851,14 +2853,31 @@ app.get('/dashboard/:dog_id', async (req, res) => {
       ? checkins.map(c => `W${c.week_number}`)
       : ['Baseline'];
 
-    // Latest scores for pre-filling the check-in modal sliders (STEP P1B: Smart
-    // Defaults). Falls back to the dog's baseline score, not a hardcoded 4, so
-    // a dog with no prior weekly check-in still gets a real starting point.
+    // Latest scores for pre-filling the check-in modal widgets (STEP P1B: Smart
+    // Defaults). Falls back to the dog's baseline value, not a hardcoded
+    // number, so a dog with no prior weekly check-in still gets a real
+    // starting point. `checkins` is select('*'), so item columns are
+    // already present on each row.
     const latestCheckinRow = checkins[checkins.length - 1];
-    const latestMobilityScore = latestCheckinRow?.mobility_score ?? dog.baseline_mobility_score ?? 4;
-    const latestEnergyScore = latestCheckinRow?.energy_score ?? dog.baseline_energy_score ?? 4;
-    const latestAppetiteScore = latestCheckinRow?.appetite_score ?? dog.baseline_appetite_score ?? 4;
-    const latestCognitiveScore = latestCheckinRow?.cognitive_score ?? dog.baseline_cognitive_score ?? 4;
+    // Cognitive is only asked every 4th week, so the most recent row often
+    // has null cognitive_* — find the most recent row that actually HAS
+    // cognitive values instead, same pattern as weightCheckins below.
+    const latestCognitiveRow = [...checkins].reverse().find(c => c.cognitive_orientation != null);
+
+    const mobilityPrefill = {
+      getting_up: latestCheckinRow?.mobility_getting_up ?? dog.baseline_mobility_getting_up ?? null,
+      stairs: latestCheckinRow?.mobility_stairs ?? dog.baseline_mobility_stairs ?? null,
+      stiffness_after_rest: latestCheckinRow?.mobility_stiffness_after_rest ?? dog.baseline_mobility_stiffness_after_rest ?? null,
+      walk_distance: latestCheckinRow?.mobility_walk_distance ?? dog.baseline_mobility_walk_distance ?? null
+    };
+    const cognitivePrefill = {
+      orientation: latestCognitiveRow?.cognitive_orientation ?? dog.baseline_cognitive_orientation ?? null,
+      memory: latestCognitiveRow?.cognitive_memory ?? dog.baseline_cognitive_memory ?? null,
+      interest: latestCognitiveRow?.cognitive_interest ?? dog.baseline_cognitive_interest ?? null,
+      sleep_wake: latestCognitiveRow?.cognitive_sleep_wake ?? dog.baseline_cognitive_sleep_wake ?? null
+    };
+    const latestEnergyScore = latestCheckinRow?.energy_score ?? dog.baseline_energy_score ?? null;
+    const latestAppetiteScore = latestCheckinRow?.appetite_score ?? dog.baseline_appetite_score ?? null;
     // Weight pre-fill uses the same weightCheckins list computed above (not
     // latestCheckinRow), since the most recent check-in overall often won't
     // be the one that actually recorded a weight.
@@ -3291,6 +3310,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
           .btn-secondary:hover {
             opacity: 0.85;
           }
+          ${SCORE_ITEM_WIDGET_STYLES}
         </style>
       </head>
       <body>
@@ -3566,22 +3586,19 @@ app.get('/dashboard/:dog_id', async (req, res) => {
             </div>
 
             <form id="checkInForm">
-              <label style="display: block; margin: 15px 0 5px 0; font-weight: 500; color: #333;">How's ${escapeHtml(dog.dog_name)}'s mobility this week?</label>
-              <input type="range" id="mobility" name="mobility_score" min="1" max="8" value="${latestMobilityScore}" style="width: 100%; cursor: pointer;">
-              <div id="mobilityHint" style="font-size: 12px; color: #666; margin: 5px 0 0 0;">4/8 - Some good days, some bad days</div>
+              <h3 style="font-size: 15px; font-weight: 600; color: #333; margin: 0 0 4px 0;">Mobility</h3>
+              ${buildDomainItemWidgetsHtml('mobility', mobilityPrefill)}
 
-              <label style="display: block; margin: 20px 0 5px 0; font-weight: 500; color: #333;">How's ${escapeHtml(dog.dog_name)}'s energy level this week?</label>
-              <input type="range" id="energy" name="energy_score" min="1" max="8" value="${latestEnergyScore}" style="width: 100%; cursor: pointer;">
-              <div id="energyHint" style="font-size: 12px; color: #666; margin: 5px 0 0 0;">4/8 - Average energy</div>
+              <h3 style="font-size: 15px; font-weight: 600; color: #333; margin: 24px 0 4px 0;">Energy</h3>
+              ${buildSingleItemWidgetHtml('energy', latestEnergyScore)}
 
-              <label style="display: block; margin: 20px 0 5px 0; font-weight: 500; color: #333;">How's ${escapeHtml(dog.dog_name)}'s appetite this week?</label>
-              <input type="range" id="appetite" name="appetite_score" min="1" max="8" value="${latestAppetiteScore}" style="width: 100%; cursor: pointer;">
-              <div id="appetiteHint" style="font-size: 12px; color: #666; margin: 5px 0 0 0;">4/8 - Average appetite</div>
+              <h3 style="font-size: 15px; font-weight: 600; color: #333; margin: 24px 0 4px 0;">Appetite</h3>
+              ${buildSingleItemWidgetHtml('appetite', latestAppetiteScore)}
 
               ${showCognitiveThisWeek ? `
-              <label style="display: block; margin: 20px 0 5px 0; font-weight: 500; color: #333;">How's ${escapeHtml(dog.dog_name)}'s alertness &amp; behavior this week?</label>
-              <input type="range" id="cognitive" name="cognitive_score" min="1" max="8" value="${latestCognitiveScore}" style="width: 100%; cursor: pointer;">
-              <div id="cognitiveHint" style="font-size: 12px; color: #666; margin: 5px 0 0 0;">4/8 - Average alertness</div>
+              <h3 style="font-size: 15px; font-weight: 600; color: #333; margin: 24px 0 4px 0;">Cognitive &amp; Behavior</h3>
+              <p style="font-size: 12px; color: #666; margin: 0 0 16px 0;">Asked every 4th week.</p>
+              ${buildDomainItemWidgetsHtml('cognitive', cognitivePrefill)}
               ` : ''}
 
               ${showCognitiveThisWeek ? `
@@ -3721,53 +3738,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
           const openBtn = document.getElementById('openCheckInBtn');
           const closeBtn = document.getElementById('closeCheckInBtn');
 
-          const mobilitySlider = document.getElementById('mobility');
-          const mobilityHints = {
-            1: "1/8 - Very stiff/limited movement",
-            2: "2/8 - Mostly struggling",
-            3: "3/8 - Significant issues",
-            4: "4/8 - Some good days, some bad days",
-            5: "5/8 - Moderate improvement",
-            6: "6/8 - Noticeably better",
-            7: "7/8 - Very active",
-            8: "8/8 - Excellent, no mobility issues"
-          };
-
-          const energySlider = document.getElementById('energy');
-          const energyHints = {
-            1: "1/8 - Very low energy",
-            2: "2/8 - Mostly lethargic",
-            3: "3/8 - Below average energy",
-            4: "4/8 - Average energy",
-            5: "5/8 - Fairly active",
-            6: "6/8 - Active",
-            7: "7/8 - Very active",
-            8: "8/8 - Extremely energetic"
-          };
-
-          const appetiteSlider = document.getElementById('appetite');
-          const appetiteHints = {
-            1: "1/8 - Barely eating",
-            2: "2/8 - Eating very little",
-            3: "3/8 - Below average appetite",
-            4: "4/8 - Average appetite",
-            5: "5/8 - Good appetite",
-            6: "6/8 - Very good appetite",
-            7: "7/8 - Excellent appetite",
-            8: "8/8 - Eating everything in sight"
-          };
-
-          const cognitiveSlider = document.getElementById('cognitive');
-          const cognitiveHints = {
-            1: "1/8 - Often confused/withdrawn",
-            2: "2/8 - Frequently disoriented",
-            3: "3/8 - Below average alertness",
-            4: "4/8 - Average alertness",
-            5: "5/8 - Fairly engaged",
-            6: "6/8 - Engaged and responsive",
-            7: "7/8 - Very sharp",
-            8: "8/8 - Sharp and fully engaged"
-          };
+          ${SCORE_ITEM_WIDGET_SCRIPT}
 
           // openBtn won't exist during the baseline period (disabled button
           // has no id then) — guard so this doesn't crash the rest of the
@@ -3817,21 +3788,6 @@ app.get('/dashboard/:dog_id', async (req, res) => {
             }
           });
 
-          mobilitySlider.addEventListener('input', () => {
-            document.getElementById('mobilityHint').textContent = mobilityHints[mobilitySlider.value];
-          });
-          energySlider.addEventListener('input', () => {
-            document.getElementById('energyHint').textContent = energyHints[energySlider.value];
-          });
-          appetiteSlider.addEventListener('input', () => {
-            document.getElementById('appetiteHint').textContent = appetiteHints[appetiteSlider.value];
-          });
-          if (cognitiveSlider) {
-            cognitiveSlider.addEventListener('input', () => {
-              document.getElementById('cognitiveHint').textContent = cognitiveHints[cognitiveSlider.value];
-            });
-          }
-
           // Journey Summary — opens a real modal built from actual check-in
           // history, notes, and any active alert (see journeySummaryModal below).
           const journeyModal = document.getElementById('journeySummaryModal');
@@ -3859,6 +3815,13 @@ app.get('/dashboard/:dog_id', async (req, res) => {
           // Form submission
           document.getElementById('checkInForm').addEventListener('submit', async (e) => {
             e.preventDefault();
+
+            const scoreCheck = formHasAllScoreItemsAnswered(e.target);
+            if (!scoreCheck.valid) {
+              highlightUnansweredScoreItem(scoreCheck.firstInvalid);
+              return;
+            }
+
             const formData = new FormData(e.target);
             try {
               const response = await fetch('/api/checkin-senior', {
@@ -3866,10 +3829,16 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   dog_id: '${dog_id}',
-                  mobility_score: parseInt(formData.get('mobility_score')),
+                  mobility_getting_up: parseInt(formData.get('mobility_getting_up')),
+                  mobility_stairs: parseInt(formData.get('mobility_stairs')),
+                  mobility_stiffness_after_rest: parseInt(formData.get('mobility_stiffness_after_rest')),
+                  mobility_walk_distance: parseInt(formData.get('mobility_walk_distance')),
                   energy_score: parseInt(formData.get('energy_score')),
                   appetite_score: parseInt(formData.get('appetite_score')),
-                  cognitive_score: formData.get('cognitive_score') ? parseInt(formData.get('cognitive_score')) : null,
+                  cognitive_orientation: formData.get('cognitive_orientation') ? parseInt(formData.get('cognitive_orientation')) : null,
+                  cognitive_memory: formData.get('cognitive_memory') ? parseInt(formData.get('cognitive_memory')) : null,
+                  cognitive_interest: formData.get('cognitive_interest') ? parseInt(formData.get('cognitive_interest')) : null,
+                  cognitive_sleep_wake: formData.get('cognitive_sleep_wake') ? parseInt(formData.get('cognitive_sleep_wake')) : null,
                   weight_lbs: formData.get('weight_lbs') ? parseInt(formData.get('weight_lbs')) : null,
                   observation: formData.get('observation') || null
                 })

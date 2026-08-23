@@ -297,7 +297,7 @@ Cleanup:
 
 **STEP P8 (Full End-to-End Testing) needs to be re-run against this new instrument once it's built** — P8's existing scope was written against the old single-slider design and doesn't yet reflect this.
 
-**Scoped Aug 23 — full build tracked in `Health_Instrument_Redesign_Build.md`.** Staged into 6 sub-steps, matching the multi-dog project's pattern: (1) schema + shared helpers, (2) signup surfaces, (3) check-in surfaces, (4) dashboard/Journey Summary/breed-guide display logic + sign-convention flip, (5) Google Sheets headers, (6) verification pass. **Stages 1-2 complete**, verified live in the browser — migration still not run against Supabase (the two signup routes correctly 500 on real submission until it is). Stages 3-6 not started.
+**Scoped Aug 23 — full build tracked in `Health_Instrument_Redesign_Build.md`.** Staged into 6 sub-steps, matching the multi-dog project's pattern: (1) schema + shared helpers, (2) signup surfaces, (3) check-in surfaces, (4) dashboard/Journey Summary/breed-guide display logic + sign-convention flip, (5) Google Sheets headers, (6) verification pass. **Stages 1-3 complete**, verified live in the browser — migration still not run against Supabase (every save route correctly 500s on real submission until it is). Stages 4-6 not started.
 
 ---
 
