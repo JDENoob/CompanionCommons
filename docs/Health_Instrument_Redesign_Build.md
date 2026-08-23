@@ -225,3 +225,16 @@ Given that, verification for this stage was **direct unit testing of the exact c
 **Standing gap, not new to this stage**: this stage's logic still can't be exercised end-to-end until the migration runs — Stage 6's verification pass will need to confirm it live once that happens, not just trust the unit tests forever.
 
 **Not yet done**: Stage 4b (dashboard display — the trend text, chart, peer/community card, Journey Summary, breed guide) not started, per the split above.
+
+### Between-stage fix — `||` vs `??` on score fallbacks ✅ Complete (Aug 23)
+
+Found during John's review of Stage 4a, not caught by the stage itself since neither spot was touched by it. Two pre-existing fallback expressions used `mobility_score || dog.baseline_mobility_score` — under the old 1-8 scale `mobility_score` could never legitimately be `0`, so `||` and `??` were equivalent there. Under the new 0-10 scale, `0` is a fully legitimate real value (a perfectly healthy week), and `||` treats it as falsy, so a dog whose real most-recent composite genuinely was `0` would have that real value silently discarded and replaced with baseline instead. Same bug class `isValidInstrumentValue()` was built in Stage 1 to guard against in validation — this was the same class surviving in two places validation never touched.
+
+Fixed:
+- `server.js:1975` (`/api/checkin-senior`, feeding `scoreDiff`/`segment`)
+- `server.js:6329` (`evaluateDogForChurn`, feeds `lastScore` into the churn re-engagement email)
+- **A third instance found independently while checking these**, not part of John's original report: `server.js:4319`, inside the manual `/api/test-email` test endpoint — `lastScore || 5` would silently override an intentionally-passed `lastScore: 0` test payload with the default `5`. Same bug class (a falsy-0 getting discarded), different flavor (a test-tooling default, not a DB-read fallback) — fixed for the same reason.
+
+A full independent grep for `<score-column-name> ||` across the whole file (not trusting the two spots already found) turned up exactly those two; a second, broader sweep for `Score ||`/`score ||` (catching camelCase local variables, not just snake_case column names) is what surfaced the third. No other instances found either way.
+
+**Verified**: `node --check server.js` passes; a direct comparison (`0 || fallback` vs `0 ?? fallback` vs `undefined ?? fallback`) confirms the fix preserves a real `0` while still falling back correctly on genuinely missing data. Not reachable live yet, same standing gap as the rest of Stage 4a (the DB insert fails pre-migration before `previousScore`/`segment` ever compute; `evaluateDogForChurn`'s query only returns real rows once real check-ins exist, which also needs the migration first). `/api/test-email` *is* independently reachable live pre-migration (it doesn't touch `mobility_checkins`), but wasn't exercised this round since it sends a real email via SendGrid — not run without a deliberate reason to.

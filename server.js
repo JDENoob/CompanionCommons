@@ -1972,7 +1972,11 @@ app.post('/api/checkin-senior', async (req, res) => {
       .order('created_at', { ascending: false })
       .limit(1);
 
-    const previousScore = prevCheckins?.[0]?.mobility_score || dog.baseline_mobility_score;
+    // ?? not || — under the old 1-8 scale mobility_score could never be 0,
+    // so they were equivalent, but 0 is a fully legitimate value on the new
+    // 0-10 scale (a perfectly healthy week). || would silently discard a
+    // real 0 and fall back to baseline instead. Found in Stage 4a review.
+    const previousScore = prevCheckins?.[0]?.mobility_score ?? dog.baseline_mobility_score;
     const scoreDiff = mobilityComposite - previousScore;
 
     // Determine segment (A=improving, B=flat, C=declining). STEP P10: higher
@@ -4312,7 +4316,11 @@ app.post('/api/test-email', async (req, res) => {
     const result = await sendChurnAlertEmail(
       email,
       dogName,
-      lastScore || 5,
+      // ?? not || — same bug class as the two fixes in /api/checkin-senior
+      // and evaluateDogForChurn (Stage 4a review): 0 is a legitimate
+      // mobility score on the new 0-10 scale, and || would silently
+      // override an intentional lastScore: 0 test payload with the default.
+      lastScore ?? 5,
       lastCheckInDate || new Date().toISOString(),
       dogId
     );
@@ -6319,7 +6327,10 @@ async function evaluateDogForChurn(dog, options = {}) {
     .order('created_at', { ascending: false })
     .limit(1);
 
-  const lastScore = lastCheckin?.[0]?.mobility_score || dog.baseline_mobility_score;
+  // ?? not || — see the identical fix in /api/checkin-senior (Stage 4a
+  // review): 0 is a legitimate mobility_score on the new 0-10 scale, and
+  // || would silently discard a real 0 in favor of the baseline instead.
+  const lastScore = lastCheckin?.[0]?.mobility_score ?? dog.baseline_mobility_score;
   // null (not dog.created_at) when there's no real check-in yet — see
   // sendChurnAlertEmail, which branches on this instead of citing the
   // signup date as if it were a check-in date.
