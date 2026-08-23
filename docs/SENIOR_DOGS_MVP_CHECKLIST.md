@@ -297,7 +297,7 @@ Cleanup:
 
 **STEP P8 (Full End-to-End Testing) needs to be re-run against this new instrument once it's built** — P8's existing scope was written against the old single-slider design and doesn't yet reflect this.
 
-**Scoped Aug 23 — full build tracked in `Health_Instrument_Redesign_Build.md`.** Staged into 6 sub-steps, matching the multi-dog project's pattern: (1) schema + shared helpers, (2) signup surfaces, (3) check-in surfaces, (4) dashboard/Journey Summary/breed-guide display logic + sign-convention flip — split into 4a (insight/alert logic) and 4b (dashboard display) given its size, (5) Google Sheets headers, (6) verification pass. **Stages 1-4 complete** (4b verified fully live, including a real `0`-value test dog — the SELECT-only dashboard/breed-guide routes aren't blocked by the still-unrun migration the way the save routes are). Stage 5 onward not started.
+**Scoped Aug 23 — full build tracked in `Health_Instrument_Redesign_Build.md`.** Staged into 6 sub-steps, matching the multi-dog project's pattern: (1) schema + shared helpers, (2) signup surfaces, (3) check-in surfaces, (4) dashboard/Journey Summary/breed-guide display logic + sign-convention flip — split into 4a (insight/alert logic) and 4b (dashboard display) given its size, (5) Google Sheets headers, (6) verification pass. **Stages 1-4 complete.** Main migration run — but a real end-to-end signup test immediately after (deliberately using a real all-zero mobility answer) found a pre-existing DB constraint the migration didn't know to remove, still blocking real submissions outside the old 1-8 range. Fix migration written (`migration_drop_legacy_mobility_check.sql`), not yet run. **Stage 5 blocked until it lands.**
 
 ---
 

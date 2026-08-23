@@ -1,6 +1,6 @@
 # CompanionCommons — Health Check-In Instrument Redesign Build
 **Started:** August 23, 2026
-**Status:** Stages 1-3 complete, Stage 4 (split into 4a/4b) fully complete. Migration still not run against Supabase. Stage 5 (Google Sheets headers) not started.
+**Status:** Stages 1-4 complete. Main migration run (Aug 23). A real end-to-end verification pass immediately after found a live-blocking legacy constraint the migration didn't know to remove — fix migration written (`migration_drop_legacy_mobility_check.sql`), not yet run. Stage 5 (Google Sheets headers) blocked on that fix landing.
 **Purpose:** Standalone tracking document for STEP P10 (see `SENIOR_DOGS_MVP_CHECKLIST.md`), the pre-beta-blocker rebuild of the weekly/baseline health check-in instrument. Tracked separately from the main build log given the scope, matching the pattern set by `Multi_Dog_Signup_Build.md`. Full design rationale, literature grounding, and the locked item-by-item instrument live in `CompanionCommons_Health_Instrument_Design.md` — not duplicated here.
 
 ---
@@ -263,3 +263,24 @@ Fixed:
 A full independent grep for `<score-column-name> ||` across the whole file (not trusting the two spots already found) turned up exactly those two; a second, broader sweep for `Score ||`/`score ||` (catching camelCase local variables, not just snake_case column names) is what surfaced the third. No other instances found either way.
 
 **Verified**: `node --check server.js` passes; a direct comparison (`0 || fallback` vs `0 ?? fallback` vs `undefined ?? fallback`) confirms the fix preserves a real `0` while still falling back correctly on genuinely missing data. Not reachable live yet, same standing gap as the rest of Stage 4a (the DB insert fails pre-migration before `previousScore`/`segment` ever compute; `evaluateDogForChurn`'s query only returns real rows once real check-ins exist, which also needs the migration first). `/api/test-email` *is* independently reachable live pre-migration (it doesn't touch `mobility_checkins`), but wasn't exercised this round since it sends a real email via SendGrid — not run without a deliberate reason to.
+
+---
+
+## Main migration run — and a real bug it surfaced (Aug 23)
+
+**`migration_redesign_health_instrument.sql` run successfully in Supabase.** Confirmed empirically before recommending the timing: at John's request for a clear recommendation (not an assumption), advised running it *before* Stage 5 rather than saving it for Stage 6, since Stage 5 (Google Sheets header text) has no dependency on the migration in either direction, the tables were confirmed genuinely empty (ideal condition for the migration's own empty-table guard), and running it early would upgrade every remaining stage's verification from "confirmed the expected pending-migration failure" to an actual real insert — plus unblock re-verifying everything from Stages 2-4b that had only been unit-tested so far. John ran it and confirmed success.
+
+**Re-verification, done immediately per that plan, before starting Stage 5**: confirmed all new columns exist across all three tables via read queries, then attempted a full real signup through the actual `baseline-health-journey.html` form — deliberately answering all 4 mobility items as `0` (composite `0.0`), a real, common "perfectly healthy week" answer, specifically because this exact edge case is the one this whole project has been most careful about.
+
+**That real submission failed** — not with the expected success, and not with a bug in any of Stages 1-4b's own code. `POST /api/send-magic-link` returned a 500: `new row for relation "magic_link_tokens" violates check constraint "mobility_check"`. `"mobility_check"` is **not** a constraint this project's migration created (my own constraint on that column is separately named `magic_link_tokens_baseline_mobility_score_range`) — it's a pre-existing, older constraint on `magic_link_tokens.baseline_mobility_score` that `migration_redesign_health_instrument.sql` never checked for, and so never dropped, still silently enforcing the OLD 1-8 range underneath the new 0-10 one.
+
+**Isolated systematically, not guessed at**: since Supabase's REST client can't run arbitrary SQL to inspect `pg_constraint` directly, confirmed the exact bounds and scope by direct-inserting real rows with the service-role key and reading which values succeeded or failed:
+- `magic_link_tokens.baseline_mobility_score`: `0` and `10` both rejected, `1`/`4`/`8` all accepted — confirms the stale constraint is exactly the old `[1,8]` range, still live.
+- Every other composite/single-value column tested at both `0` and `10` across all three tables (`senior_dogs.baseline_mobility_score`/`baseline_energy_score`/`baseline_appetite_score`/`baseline_cognitive_score`, `mobility_checkins.mobility_score`/`energy_score`/`appetite_score`/`cognitive_score`, and `magic_link_tokens`' other three composite columns) — all correctly accept the full 0-10 range. **This problem is isolated to exactly one column on one table.**
+- All diagnostic rows this required were inserted and immediately deleted; a follow-up count confirmed all three tables back to 0 rows.
+
+**Fix written, not run**: `migration_drop_legacy_mobility_check.sql` — a single `ALTER TABLE magic_link_tokens DROP CONSTRAINT IF EXISTS mobility_check;`, with the full empirical trail documented in the file itself so a future reader doesn't have to re-derive it. Per standing project rule, John runs this manually in Supabase's SQL Editor.
+
+**Lesson for future migrations in this project, worth carrying forward**: `migration_redesign_health_instrument.sql` assumed the only constraints on these columns were the ones already known from prior migration files, and never checked live `pg_constraint` state for surprises before adding new constraints alongside old ones. A real end-to-end test with a deliberately-chosen edge-case value (here, a genuine `0`) is what caught this — a happy-path smoke test with a safely-mid-range value would not have.
+
+**Stage 5 is blocked on this fix landing** — a real signup needs to succeed end-to-end to meaningfully verify Sheets export, and right now one specific real answer pattern (all-zero mobility, or any composite landing outside 1-8) still can't be saved at all.
