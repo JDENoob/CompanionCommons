@@ -144,6 +144,13 @@ function computeCompositeScore(itemValues) {
 // when Stage 2 rebuilds those forms, copy this exact HTML/CSS/JS shape
 // into them so all four surfaces stay in lockstep. If this widget's
 // markup ever changes, all four surfaces need the update, not just here.
+//
+// No `required` attribute on the hidden input — per the HTML spec,
+// `required` doesn't apply to type="hidden" inputs, so browsers silently
+// ignore it there. That would be misleading (implying protection that
+// isn't real) rather than just absent, so it's left off deliberately.
+// Real client-side enforcement is formHasAllScoreItemsAnswered() below,
+// which Stage 2/3's form submit handlers must call explicitly.
 function buildScoreItemWidget(fieldName, label, anchorLow, anchorHigh, currentValue) {
   const buttons = [];
   for (let v = INSTRUMENT_SCALE_MIN; v <= INSTRUMENT_SCALE_MAX; v++) {
@@ -156,7 +163,7 @@ function buildScoreItemWidget(fieldName, label, anchorLow, anchorHigh, currentVa
       <div class="score-buttons" role="group" aria-label="${escapeHtml(label)}">
         ${buttons.join('')}
       </div>
-      <input type="hidden" name="${escapeHtml(fieldName)}" value="${safeValue}" required>
+      <input type="hidden" name="${escapeHtml(fieldName)}" value="${safeValue}">
       <div class="score-anchor-hint">
         <span class="anchor-low">${escapeHtml(anchorLow)}</span>
         <span class="anchor-high">${escapeHtml(anchorHigh)}</span>
@@ -181,6 +188,8 @@ const SCORE_ITEM_WIDGET_STYLES = `
   }
   .score-anchor-hint .anchor-low { text-align: left; }
   .score-anchor-hint .anchor-high { text-align: right; }
+  .score-item-error { outline: 2px solid #C0392B; border-radius: 8px; padding: 8px; margin: -8px -8px 16px -8px; }
+  .score-item-error-message { color: #C0392B; font-size: 13px; margin-top: 6px; font-weight: 500; }
 `;
 
 // Shared behavior for the widget above — one copy, included once per page.
@@ -188,6 +197,17 @@ const SCORE_ITEM_WIDGET_STYLES = `
 // button set, so it works for any number of score-item widgets on a page
 // without a per-metric bespoke listener (unlike the old per-slider hint
 // dictionaries it replaces).
+//
+// Also defines two functions Stage 2/3's form submit handlers must call
+// explicitly (formHasAllScoreItemsAnswered, highlightUnansweredScoreItem)
+// — see the note on buildScoreItemWidget() above for why this is real
+// enforcement and the hidden input's `required` attribute is not. This is
+// a UX convenience only: the actual gate against an incomplete submission
+// is server-side, in computeCompositeScore() returning null on an
+// incomplete item set — Stage 2/3's save endpoints must independently
+// reject that, exactly like every other validated field in this app
+// already does. A user with JS disabled, or a direct POST bypassing the
+// browser entirely, must not be able to save a partial answer.
 const SCORE_ITEM_WIDGET_SCRIPT = `
   document.querySelectorAll('[data-score-item]').forEach(function(container) {
     var buttons = container.querySelectorAll('.score-btn');
@@ -197,12 +217,44 @@ const SCORE_ITEM_WIDGET_SCRIPT = `
       buttons.forEach(function(b) {
         b.classList.toggle('selected', b.getAttribute('data-value') === String(v));
       });
+      container.classList.remove('score-item-error');
+      var existingMsg = container.querySelector('.score-item-error-message');
+      if (existingMsg) existingMsg.remove();
     }
     buttons.forEach(function(btn) {
       btn.addEventListener('click', function() { selectValue(btn.getAttribute('data-value')); });
     });
     if (hiddenInput.value !== '') selectValue(hiddenInput.value);
   });
+
+  // Call from a form's submit handler BEFORE actually submitting, e.g.:
+  //   var check = formHasAllScoreItemsAnswered(formEl);
+  //   if (!check.valid) { e.preventDefault(); highlightUnansweredScoreItem(check.firstInvalid); return; }
+  // Returns { valid: true } or { valid: false, firstInvalid: <element> }.
+  function formHasAllScoreItemsAnswered(formElement) {
+    var containers = formElement.querySelectorAll('[data-score-item]');
+    for (var i = 0; i < containers.length; i++) {
+      var hiddenInput = containers[i].querySelector('input[type=hidden]');
+      if (!hiddenInput || hiddenInput.value === '') {
+        return { valid: false, firstInvalid: containers[i] };
+      }
+    }
+    return { valid: true, firstInvalid: null };
+  }
+
+  // Scrolls to and highlights an unanswered score-item widget with a
+  // clear inline message, so a blocked submission is obvious rather than
+  // a silent no-op or a generic server-side error after the fact.
+  function highlightUnansweredScoreItem(container) {
+    container.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    container.classList.add('score-item-error');
+    if (!container.querySelector('.score-item-error-message')) {
+      var msg = document.createElement('div');
+      msg.className = 'score-item-error-message';
+      msg.textContent = 'Please choose a value for this before submitting.';
+      container.appendChild(msg);
+    }
+  }
 `;
 
 // ============================================

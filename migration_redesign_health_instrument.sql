@@ -20,9 +20,33 @@
 -- mobility_score/cognitive_score values are on an incompatible scale
 -- (1-8, opposite direction) and would silently look like valid 0-10 data
 -- after a bare type change — do not run this against non-empty tables
--- without a real backfill/conversion plan first.
+-- without a real backfill/conversion plan first. This is now an enforced
+-- guard below, not just this comment — the migration refuses to run at
+-- all if any of the three tables have rows.
 --
 -- Run this once in the Supabase SQL Editor.
+
+-- ============================================================
+-- ENFORCED GUARD — refuses to run against non-empty tables.
+-- Same pattern as the row-count check used before dropping the legacy
+-- users/pets/survey_* schema (Aug 22 session). If this raises, nothing
+-- below it executes — the whole script halts on the exception.
+-- ============================================================
+DO $$
+DECLARE
+  mobility_checkins_count INTEGER;
+  senior_dogs_count INTEGER;
+  magic_link_tokens_count INTEGER;
+BEGIN
+  SELECT COUNT(*) INTO mobility_checkins_count FROM mobility_checkins;
+  SELECT COUNT(*) INTO senior_dogs_count FROM senior_dogs;
+  SELECT COUNT(*) INTO magic_link_tokens_count FROM magic_link_tokens;
+
+  IF mobility_checkins_count > 0 OR senior_dogs_count > 0 OR magic_link_tokens_count > 0 THEN
+    RAISE EXCEPTION 'Refusing to run: mobility_checkins has % row(s), senior_dogs has % row(s), magic_link_tokens has % row(s). This migration changes mobility_score/cognitive_score from an old 1-8 "higher=better" scale to a new 0-10 "higher=more concerning" scale — running it against real data would silently corrupt existing scores onto the wrong meaning, not just fail loudly. Wipe test data first, or write a real backfill/conversion plan before running this.',
+      mobility_checkins_count, senior_dogs_count, magic_link_tokens_count;
+  END IF;
+END $$;
 
 -- ============================================================
 -- mobility_checkins — weekly check-in table
