@@ -3328,6 +3328,14 @@ function compareWeightToBreedRange(weightLbs, guide) {
 // shared here so the two can't silently drift apart.
 const BREED_GUIDE_CHAPTER_WEEKS = [2, 4, 8, 12];
 
+// Content-expansion additions (75-breed library): a second, distinct
+// disclaimer specifically about the breed content itself, placed right
+// before someone starts reading it -- separate from the unconditional
+// service-level vet disclaimer already at the bottom of the page (that one
+// covers "not a veterinary service" / emergency guidance and is untouched).
+// [dog name] is a literal placeholder, substituted per-request.
+const BREED_CONTENT_DISCLAIMER_TEMPLATE = 'The breed information below reflects general, publicly available knowledge about the breed as a whole — not a diagnosis, treatment plan, or individualized assessment of [dog name]. For anything specific to your dog, talk to your vet.';
+
 // A not-yet-unlocked chapter stays visible on the page as a locked teaser
 // rather than being hidden entirely (Decision 2).
 function buildLockedChapterTeaser(chapterTitle, unlockWeek) {
@@ -3486,6 +3494,18 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
 
     const guide = getBreedGuide(dog.breed);
 
+    // Content-expansion fix: when the resolved guide is genuinely the
+    // generic fallback -- checked by reference, not by re-deriving the
+    // match -- the page should show the dog's own real typed breed as the
+    // name, not GENERIC_BREED_GUIDE's placeholder displayName ("Senior
+    // Dogs"). Only the name label changes; the rest of the generic content
+    // (History/Temperament/Senior Patterns/Exercise) stays exactly as
+    // GENERIC_BREED_GUIDE wrote it. Falls back to "Senior Dogs" only in the
+    // genuine edge case of no breed typed at all (nothing real to show).
+    const displayBreedName = guide === GENERIC_BREED_GUIDE
+      ? (escapeHtml(dog.breed) || 'Senior Dogs')
+      : guide.displayName;
+
     // Show the dog's own current score neutrally — deliberately NOT compared
     // to other dogs, breed averages, or percentiles (see note at top of section).
     // No .limit(1) here (unlike before) — weight isn't recorded every week,
@@ -3560,13 +3580,25 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
       ? buildMilestoneChapter(escapeHtml(dog.dog_name), chapterTrendLines, chapterStreak)
       : buildLockedChapterTeaser('12-Week Milestone', 12);
 
+    // At-a-Glance strip -- skipped entirely for Mixed Breed and the generic
+    // fallback (neither has an atAGlance field at all, by design, so this
+    // condition alone naturally excludes both without a separate check).
+    const atAGlanceBlock = guide.atAGlance ? `
+          <div class="at-a-glance">
+            <div class="at-a-glance-row"><span class="at-a-glance-label">Energy Level</span><span class="at-a-glance-value">${guide.atAGlance.energyLevel}</span></div>
+            <div class="at-a-glance-row"><span class="at-a-glance-label">Grooming</span><span class="at-a-glance-value">${guide.atAGlance.grooming}</span></div>
+            <div class="at-a-glance-row"><span class="at-a-glance-label">Average Lifespan</span><span class="at-a-glance-value">${guide.atAGlance.averageLifespan}</span></div>
+          </div>` : '';
+
+    const contentDisclaimerText = BREED_CONTENT_DISCLAIMER_TEMPLATE.replace('[dog name]', escapeHtml(dog.dog_name));
+
     res.send(`
       <!DOCTYPE html>
       <html>
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>${escapeHtml(dog.dog_name)}'s ${guide.displayName} Guide</title>
+        <title>${escapeHtml(dog.dog_name)}'s ${displayBreedName} Guide</title>
         <style>
           body { font-family: -apple-system, sans-serif; max-width: 650px; margin: 40px auto; padding: 20px; background: #f5f5f5; color: #333; line-height: 1.6; }
           .card { background: white; border-radius: 12px; padding: 40px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
@@ -3574,9 +3606,16 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
           .dog-photo { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; margin: 0 0 16px 0; display: block; }
           .dog-photo-placeholder { width: 80px; height: 80px; border-radius: 50%; background: #FFF8E7; display: flex; align-items: center; justify-content: center; font-size: 36px; margin: 0 0 16px 0; }
           h1 { font-size: 24px; margin: 0 0 4px 0; }
+          .pronunciation { color: #999; font-size: 15px; font-weight: 400; font-style: italic; }
           .subtitle { color: #999; font-size: 14px; margin: 0 0 30px 0; }
+          .content-disclaimer { color: #888; font-size: 13px; font-style: italic; line-height: 1.5; margin: 0 0 30px 0; }
           h2 { font-size: 16px; color: #A89968; text-transform: uppercase; letter-spacing: 0.5px; margin: 30px 0 10px 0; }
           .dog-snapshot { background: #FFF8E7; border-radius: 8px; padding: 16px 20px; margin: 30px 0; }
+          .at-a-glance { background: #FFF8E7; border-radius: 8px; padding: 4px 20px; margin: 20px 0 30px 0; }
+          .at-a-glance-row { display: flex; justify-content: space-between; gap: 20px; padding: 12px 0; font-size: 14px; border-bottom: 1px solid #EEE4CC; }
+          .at-a-glance-row:last-child { border-bottom: none; }
+          .at-a-glance-label { color: #8A7A4F; font-weight: 600; white-space: nowrap; }
+          .at-a-glance-value { text-align: right; }
           .disclaimer { background: #FAFAFA; border: 1px solid #EEE; border-radius: 8px; padding: 20px; margin-top: 30px; font-size: 13px; color: #777; line-height: 1.6; }
           .disclaimer strong { color: #555; }
           .disclaimer a { color: #A89968; }
@@ -3593,14 +3632,19 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
           }
 
           <p style="font-size: 32px; margin: 0 0 10px 0;"><i data-lucide="book-open"></i></p>
-          <h1>${guide.displayName}: A Health Journey Guide</h1>
+          <h1>${displayBreedName}${guide.pronunciation ? ` &nbsp;•&nbsp; <span class="pronunciation">${guide.pronunciation}</span>` : ''}: A Health Journey Guide</h1>
           <p class="subtitle">Unlocked for ${escapeHtml(dog.dog_name)} — Week ${currentWeek} of 12${guide.typicalWeight ? ` &nbsp;•&nbsp; Typical weight: ${guide.typicalWeight}` : ''}</p>
+          <p class="content-disclaimer">${contentDisclaimerText}</p>
+          ${atAGlanceBlock}
 
           <h2>History</h2>
           <p>${guide.history}</p>
 
           <h2>Temperament</h2>
           <p>${guide.temperament}</p>
+
+          <h2>Exercise & Activity</h2>
+          <p>${guide.exercise}</p>
 
           ${seniorSectionBlock}
 
