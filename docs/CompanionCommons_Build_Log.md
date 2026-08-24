@@ -743,3 +743,43 @@ Commit `051d5e7`.
 No migration required — every field used (`owners.phone`/`email`/`preferred_contact_method`/`id`) already existed.
 
 **Verified end-to-end with real sends:** phone normalization confirmed matching against a differently-formatted input (`"500-555-0001"` against a stored `+15005550001`); the actual SMS text fetched back from Twilio and its link confirmed to resolve to the right dog; email delivery confirmed; the not-found case confirmed to create zero records. Test data and stray processes cleaned up afterward.
+
+---
+
+## August 24, 2026 — Two Real Bugs From John's First Live Reminder-SMS Test, One Confirmed Non-Bug
+
+John received and tapped a real reminder SMS on his own phone for the first time against the new P10 instrument (the previous session's manual `sms_queue` test insert, sent to his real number), landed on the real check-in form, and found two things that looked wrong. Both were investigated fully before touching any code, per standing practice — one turned out to be a real, previously-undetected data-integrity bug; the other checked out as mathematically correct once traced against the real underlying data.
+
+### Bug 1 (real, fixed): score buttons 8, 9, and 10 stretching full-width
+
+**What John saw:** on the check-in widget's 0-10 button rows, buttons 0-7 (or however many fit on the row) rendered at their normal compact size, but the buttons that wrapped to the next row stretched to fill nearly the entire row width — jarring next to the compact row above.
+
+**Root cause, confirmed via `getComputedStyle` (same verification method as the `45785fb` invisible-button fix), not assumed:** `.score-btn { flex: 1 1 auto; }` gives every button `flex-grow: 1`. The widget has 11 buttons (0-10) in a `flex-wrap` row — however many land on the sparse last row (2 buttons, in Winston's case, since 9 fit on row 1 at his container width) still each carry `flex-grow: 1`, so they split the *entire remaining row width* evenly between themselves. Measured live: button "0" computed to 36px while buttons "9" and "10" computed to 180px and 188px respectively — a classic flex-wrap sparse-last-row stretch, not a sizing/padding issue.
+
+**Why it went undetected until now:** the `45785fb` fix (three days earlier) already confirmed computed styles on an *unselected* button across all four real surfaces, but that check sampled a single button per surface rather than every position in the row — a stretched row-2 button and a compact row-1 button both pass a spot-check that only ever looks at one button. This is the first real check-in with 11 real buttons rendered at a real container width where a human actually looked at the whole row.
+
+**Fix:** `flex: 1 1 auto` → `flex: 0 1 auto` in all three real copies of this CSS (`SCORE_ITEM_WIDGET_STYLES` in `server.js`, which covers both the standalone check-in page and the dashboard's inline modal, plus the hand-copied blocks in `baseline-health-journey.html` and `add-dog.html`) — disables grow while leaving shrink/min-width/basis untouched, same "declare it explicitly, don't let it fall through" approach as the earlier width bug.
+
+**Verified:** after restarting the dev server, re-measured `getComputedStyle` on buttons 0, 7, 8, 9, and 10 across all four real surfaces (standalone check-in page, dashboard modal, `add-dog.html`, `baseline-health-journey.html`) — every button now computes to 31.99px with `flexGrow: 0`, confirmed individually on each surface, not inferred from one.
+
+### Bug 2 (investigated, confirmed correct — no code change): "Week 12" next to "11 week streak"
+
+**What John saw:** the dashboard header read "Week 12 of 12" while the streak box read "11 week streak," and the manually-sent test reminder SMS said "12th week" — looked like three numbers disagreeing.
+
+**Investigated against Winston's real `mobility_checkins` rows directly**, not assumed correct or incorrect from the UI alone: `mostRecentSubmittedWeek` (the dashboard header's source, `Math.max(...checkins.map(c => c.week_number))`) correctly reads 12, since a week-12 row exists. `calculateCurrentStreak` counts consecutive weeks present, walking down from the max week to 1 and stopping at the first gap — weeks 2 through 12 were all present (11 distinct week numbers), and week 1 has no row by design (baseline-only, never submittable per this project's own established convention), so the loop correctly stops at 11.
+
+**Conclusion: mathematically consistent, not a bug.** 11 real submissions spanning weeks 2-12 inclusive (12−2+1 = 11) is exactly what the project's week-1-is-baseline-only convention predicts — the same pattern already documented in this project's own history for why milestone messages land on weeks 3/5/9/13 rather than "2/4/8/12." This is not the same bug class as the earlier "Week #0"/"Week -1" floor-guard fixes (no missing `Math.max` guard here — both numbers are already correctly floored and both correctly reflect the real data). No code changed for this. At most it's a UX comprehension gap — "Week 12" and "11 week streak" shown side by side reads as contradictory to someone doing a quick sanity check, even though each number is independently correct — flagged for a possible future copy-only tweak, not queued as a fix.
+
+### The real bug hiding underneath Bug 2's investigation: no guard against submitting the same week twice
+
+Tracing Bug 2's real data surfaced a second, separate, previously-unknown gap: Winston had **two** `mobility_checkins` rows for week 12, not one. Neither `/api/checkin-senior` (the save endpoint) nor the standalone check-in page's `GET /check-in/:dog_id` route had ever checked whether a check-in already existed for the dog's current computed week — the GET route just re-rendered the form, pre-filled with the dog's own last-submitted values, with zero indication a submission already existed for that week; the POST route just inserted unconditionally.
+
+**Why it went undetected until now:** test data in this project has almost always been created via direct Supabase inserts or backdated `created_at` values (see the "12-week stress test" and every prior verification pass), never by the same real link being tapped twice within the same real elapsed week. This is the first time a real person completed the real check-in flow via a real reminder SMS for a dog that already had a check-in for that computed week — which is exactly how John found it.
+
+**Fix, matching the existing baseline-period gate's pattern (same friendly-message style, same defensive-return shape):**
+- `GET /check-in/:dog_id`: after computing `weekNumber`, checks the already-fetched `latestCheckins` array (no new query — `week_number` was already being selected) for an existing row at that week number. If found, renders an "Already checked in this week ✓" card (same visual pattern as the "Not quite ready yet" baseline-gate card) with a link back to the dashboard, instead of the form.
+- `POST /api/checkin-senior`: the real enforcement layer, since the page-level check alone doesn't stop a direct POST. Right after `weekNumber` is computed and before any further processing, queries `mobility_checkins` for an existing `dog_id` + `week_number` row; if one exists, returns `409` with `{ success: false, error: "${dog.dog_name} already has a check-in recorded for week ${weekNumber}. Come back next week for the next update!" }` — surfaces via the existing `alert('Error: ' + result.error)` pattern already used by both the standalone page and the dashboard's inline modal, so no client-side changes were needed on either surface.
+
+**Verified live, not just by code review:** loaded Winston's real check-in page after the fix and confirmed it rendered the new "Already checked in" card (tab title itself changed to match). Called `POST /api/checkin-senior` directly against Winston with real score values and confirmed a `409` with the expected message. Re-queried `mobility_checkins` immediately after and confirmed the row count for Winston's week 12 was still exactly 2 (the pre-existing duplicate, not a new third row) — proving the guard actually blocked the insert rather than just returning an error after inserting anyway.
+
+**Cleanup:** deleted the newer of Winston's two week-12 rows (the one created during this session's live testing), confirmed exactly one week-12 row remains.

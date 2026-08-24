@@ -1418,6 +1418,44 @@ app.get('/check-in/:dog_id', async (req, res) => {
     const now = new Date();
     const weekNumber = Math.max(1, Math.floor((now - created) / (7 * 24 * 60 * 60 * 1000)) + 1);
 
+    // Bug found via real-device testing (Aug 24): this page previously had
+    // no awareness of whether the current computed week already had a real
+    // submission — it just rendered the form pre-filled with the latest
+    // values, giving zero indication a check-in already existed. Someone
+    // revisiting the same link within the same week (e.g. tapping an old
+    // reminder text a second time) would see what looks like a normal,
+    // inviting blank-ish form and could submit again, creating a second
+    // mobility_checkins row for the same dog+week. latestCheckins is
+    // already fetched above with week_number selected, so this is a free
+    // check against data already in hand, not a new query.
+    const alreadySubmittedThisWeek = latestCheckins?.some(c => c.week_number === weekNumber);
+    if (alreadySubmittedThisWeek) {
+      return res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>Already checked in</title>
+          <style>
+            body { font-family: -apple-system, sans-serif; max-width: 500px; margin: 60px auto; padding: 20px; text-align: center; }
+            .card { background: white; border-radius: 12px; padding: 40px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+            .cta { display: inline-block; margin-top: 20px; background: #A89968; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <p style="font-size: 40px; margin: 0 0 10px 0;"><i data-lucide="check-circle"></i></p>
+            <h2 style="margin: 0 0 10px 0;">Already checked in this week ✓</h2>
+            <p style="color: #666;">${dog.dog_name}'s update for week ${weekNumber} is already recorded. Come back next week for the next one.</p>
+            <a href="/dashboard/${dog_id}" class="cta">View Dashboard</a>
+          </div>
+          <script src="https://unpkg.com/lucide@1.33.0"></script>
+          <script>lucide.createIcons({ attrs: { width: '1em', height: '1em' } });</script>
+        </body>
+        </html>
+      `);
+    }
+
     // Cognitive/behavior is only asked every 4th week (4, 8, 12...)
     const showCognitive = weekNumber % 4 === 0;
 
@@ -2005,6 +2043,27 @@ app.post('/api/checkin-senior', async (req, res) => {
     // slightly in the future (found during 27C testing) can save week_number
     // as 0 or negative, which silently breaks streak counting downstream.
     const weekNumber = Math.max(1, Math.floor((now - created) / (7 * 24 * 60 * 60 * 1000)) + 1);
+
+    // Real enforcement of "one check-in per dog per week" — the page-level
+    // guard above blocks the normal path, but this is the actual save
+    // endpoint, so this is the check that actually matters. Found via real
+    // live-device testing (Aug 24): with no guard here, revisiting the same
+    // check-in link within the same computed week (e.g. an old reminder
+    // text tapped a second time) silently inserted a second mobility_checkins
+    // row for the same dog+week, rather than being rejected or treated as an
+    // update. Same pattern as the baseline-period gate just above.
+    const { data: existingWeekCheckin } = await supabase
+      .from('mobility_checkins')
+      .select('id')
+      .eq('dog_id', dog_id)
+      .eq('week_number', weekNumber)
+      .limit(1);
+    if (existingWeekCheckin && existingWeekCheckin.length > 0) {
+      return res.status(409).json({
+        success: false,
+        error: `${dog.dog_name} already has a check-in recorded for week ${weekNumber}. Come back next week for the next update!`
+      });
+    }
 
     // Get previous check-in for comparison — pulling all 4 composites AND the
     // 8 item columns now, so the post-log insight (STEP 27B) can comment on

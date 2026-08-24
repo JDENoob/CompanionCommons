@@ -287,6 +287,8 @@ Cleanup:
 - [ ] No 500s on any route tested
 - [ ] Any real bug found gets fixed before beta recruiting begins, not deferred to "later"
 
+**Note (Aug 24) — two more real bugs surfaced from John's first live reminder-SMS tap, both investigated and resolved, closing per the QA checklist item above rather than deferring.** Full detail and root causes in `CompanionCommons_Build_Log.md`'s Aug 24 entry — summary: (1) score buttons 8/9/10 stretching full-width on the last row of the 0-10 widget, a real `flex-grow` bug found via `getComputedStyle` across all four real surfaces and fixed in all three real copies of the CSS; (2) "Week 12" next to "11 week streak" investigated against Winston's real data and confirmed mathematically consistent (11 real submissions across weeks 2-12, week 1 always baseline-only) — no code change; (3) a real, separate, previously-unknown gap found underneath (2)'s investigation: no guard existed anywhere against submitting a check-in for a week that already had one, which is exactly how Winston ended up with two week-12 rows. Fixed at both the page level (`GET /check-in/:dog_id` now shows an "Already checked in" card) and the real enforcement layer (`POST /api/checkin-senior` now returns 409), verified live against a real second-submission attempt, and Winston's duplicate row cleaned up (one week-12 row remains).
+
 ---
 
 ## STEP P10: Health Check-In Instrument Redesign (Build) ✅ COMPLETE (Aug 23)
