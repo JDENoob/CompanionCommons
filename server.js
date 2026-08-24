@@ -2795,6 +2795,45 @@ function buildChapterPlaceholder(chapterTitle) {
           </div>`;
 }
 
+// STEP P11 Stage 4 — real content for the week 8/12 chapters above,
+// replacing their placeholders. Both chapters share this exact rendering
+// for the per-metric trend lines, matching the <p> styling the dashboard
+// already uses for the identical lines in its own Journey Summary — no
+// visual drift between the two surfaces showing the same numbers.
+function renderTrendLinesHtml(trendLines) {
+  return trendLines.map(line => `<p style="margin: 0 0 6px 0; font-size: 14px; color: #2C2C2C;">${line}</p>`).join('');
+}
+
+// Week 8 — mid-program check-in. Encouraging, non-diagnostic framing; the
+// actual numbers come entirely from the same describeJourneyTrend /
+// calculateCurrentStreak calls the dashboard uses for its own trend text,
+// never a second hand-written interpretation of the data (Decision 3).
+function buildJourneyChapter(dogName, trendLines, streak) {
+  const streakLine = streak > 0
+    ? `${dogName} has logged ${streak} week${streak === 1 ? '' : 's'} in a row.`
+    : `${dogName}'s journey is just getting started.`;
+  return `<h2>Your Dog's Journey</h2>
+          <p>${streakLine} Here's an honest look at how things have moved since the very first baseline — not a verdict on anything, just the real numbers so far.</p>
+          <div class="dog-snapshot">
+            ${renderTrendLinesHtml(trendLines)}
+          </div>
+          <p style="font-size: 13px; color: #888; margin-top: 12px;">These are just numbers to notice. If anything here feels worth a closer look, that's a conversation for ${dogName}'s vet — not something to read into on your own.</p>`;
+}
+
+// Week 12 — program-completion framing. Same trend data as week 8
+// (Decision 2: this is a framing difference, not a data difference).
+// Deliberately does NOT imply logging stops here — nothing in the app
+// gates or ends at week 12, this is just the originally-designed
+// check-in cadence length.
+function buildMilestoneChapter(dogName, trendLines, streak) {
+  return `<h2>12-Week Milestone</h2>
+          <p>${dogName} has built ${streak} week${streak === 1 ? '' : 's'} of real, consistent data — exactly the kind of history that makes patterns worth noticing instead of guessing at. Here's the full picture since baseline:</p>
+          <div class="dog-snapshot">
+            ${renderTrendLinesHtml(trendLines)}
+          </div>
+          <p style="font-size: 13px; color: #888; margin-top: 12px;">12 weeks was the original check-in plan, but there's no reason to stop here — ${dogName}'s dashboard and check-ins keep working exactly the same after this point, and every week you keep logging adds to a real, growing picture.</p>`;
+}
+
 // Extracted from a private closure inside /dashboard/:dog_id (STEP P11
 // Stage 3) so /breed-guide/:dog_id can call the same real implementation
 // once Stage 4 needs it, instead of a second hand-copied version that
@@ -2898,9 +2937,19 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
     // to other dogs, breed averages, or percentiles (see note at top of section).
     // No .limit(1) here (unlike before) — weight isn't recorded every week,
     // so the full history is fetched to find the latest entry that has one.
+    //
+    // STEP P11 Stage 4: widened from 'mobility_score, weight_lbs' to '*'
+    // (matching /dashboard/:dog_id's own select('*') on this table) so this
+    // one query can also feed the week 8/12 chapters' Energy/Appetite/
+    // Cognitive trend lines below, instead of adding a second narrower
+    // query alongside this one. Kept this route's existing newest-first
+    // order (unlike the dashboard's oldest-first) since currentMobility/
+    // currentWeight below already correctly depend on index 0 being most
+    // recent — no reason to touch that working logic just to match the
+    // dashboard's own ordering convention.
     const { data: latestCheckins } = await supabase
       .from('mobility_checkins')
-      .select('mobility_score, weight_lbs')
+      .select('*')
       .eq('dog_id', dog_id)
       .order('created_at', { ascending: false });
     const currentMobility = latestCheckins?.[0]?.mobility_score ?? dog.baseline_mobility_score;
@@ -2909,22 +2958,9 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
     const isSenior = isSeniorForBreed(dog.age, dog.breed);
     const seniorSectionHeading = isSenior ? 'Senior Health Patterns' : 'Looking Ahead';
     const seniorSectionCopy = isSenior ? guide.seniorPatterns : getNotYetSeniorCopy(dog.breed);
-
-    // STEP P11 Stage 3 — progressive chapter unlock (Decision 2). Senior
-    // Health Patterns / Looking Ahead moved here from its old unconditional
-    // week-2 position; weeks 8 and 12 are new chapters. Real week 8/12
-    // content is Stage 4's job — this stage only builds the gating
-    // structure, so an unlocked-but-not-yet-built chapter shows a clearly
-    // marked placeholder, never the locked teaser.
     const seniorSectionBlock = currentWeek >= 4
       ? `<h2>${seniorSectionHeading}</h2>\n          <p>${seniorSectionCopy}</p>`
       : buildLockedChapterTeaser(seniorSectionHeading, 4);
-    const journeyChapterBlock = currentWeek >= 8
-      ? buildChapterPlaceholder("Your Dog's Journey")
-      : buildLockedChapterTeaser("Your Dog's Journey", 8);
-    const milestoneChapterBlock = currentWeek >= 12
-      ? buildChapterPlaceholder('12-Week Milestone')
-      : buildLockedChapterTeaser('12-Week Milestone', 12);
 
     // Most recent weight — a check-in weight if one exists yet, else the
     // baseline weight from signup. Compared non-diagnostically against the
@@ -2933,6 +2969,43 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
     const latestWeightCheckin = latestCheckins?.find(c => c.weight_lbs != null);
     const currentWeight = latestWeightCheckin?.weight_lbs ?? dog.weight_lbs ?? null;
     const weightComparisonText = compareWeightToBreedRange(currentWeight, guide);
+
+    // STEP P11 Stage 4 — weeks 8/12 chapters (Decision 3). Sourced exactly
+    // how the dashboard sources these same four lines: latestCheckins here
+    // is already newest-first (see the widened query above), so "most
+    // recent" is index 0 and finding the latest cognitive entry is a plain
+    // .find() — no .reverse() needed the way the dashboard's oldest-first
+    // `checkins` array requires. Cognitive is only collected every 4th
+    // week, so this can legitimately be null on a dog that hasn't hit a
+    // cognitive-cadence week yet; describeJourneyTrend already handles a
+    // null baseline/latest pair correctly ("not enough data yet").
+    const hasAnyCheckins = latestCheckins.length > 0;
+    const currentEnergyScore = hasAnyCheckins ? latestCheckins[0].energy_score : dog.baseline_energy_score;
+    const currentAppetiteScore = hasAnyCheckins ? latestCheckins[0].appetite_score : dog.baseline_appetite_score;
+    const latestCognitiveCheckin = latestCheckins.find(c => c.cognitive_score != null);
+    const chapterTrendLines = [
+      describeJourneyTrend('Mobility', dog.baseline_mobility_score, hasAnyCheckins ? currentMobility : null, hasAnyCheckins),
+      describeJourneyTrend('Energy', dog.baseline_energy_score, hasAnyCheckins ? currentEnergyScore : null, hasAnyCheckins),
+      describeJourneyTrend('Appetite', dog.baseline_appetite_score, hasAnyCheckins ? currentAppetiteScore : null, hasAnyCheckins),
+      describeJourneyTrend('Cognitive/Behavior', dog.baseline_cognitive_score, latestCognitiveCheckin?.cognitive_score ?? null, hasAnyCheckins),
+      // NOT currentWeight directly — that already falls back to
+      // dog.weight_lbs (baseline) when no check-in has recorded a weight,
+      // for the separate dog-snapshot display below. Feeding that same
+      // fallback value in here as "latest" would compare baseline against
+      // itself and falsely report "steady" during the baseline-only
+      // period — the exact bug already found and fixed once in this
+      // project (Aug 21, dashboard's "held steady" false-trend bug). Only
+      // pass a real value when a real check-in actually recorded one.
+      describeWeightJourneyTrend(dog.weight_lbs, latestWeightCheckin ? currentWeight : null)
+    ];
+    const chapterStreak = await calculateCurrentStreak(dog_id);
+
+    const journeyChapterBlock = currentWeek >= 8
+      ? buildJourneyChapter(escapeHtml(dog.dog_name), chapterTrendLines, chapterStreak)
+      : buildLockedChapterTeaser("Your Dog's Journey", 8);
+    const milestoneChapterBlock = currentWeek >= 12
+      ? buildMilestoneChapter(escapeHtml(dog.dog_name), chapterTrendLines, chapterStreak)
+      : buildLockedChapterTeaser('12-Week Milestone', 12);
 
     res.send(`
       <!DOCTYPE html>
