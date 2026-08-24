@@ -2536,10 +2536,135 @@ const GENERIC_BREED_GUIDE = {
   seniorPatterns: `As dogs enter their senior years, changes in mobility, energy, appetite, and alertness are common across breeds, though the timing and severity vary widely from dog to dog. Regular tracking is one of the most reliable ways to notice real changes early, rather than relying on memory or breed-level assumptions.`
 };
 
+// ============================================
+// BREED MATCHING — layered fallback chain (STEP P11, Stage 2)
+// breed is a free-text field at signup (no dropdown/autocomplete), so a
+// single exact-match lookup was silently sending a real, previously
+// invisible share of dogs to the generic fallback (typos, "X mix",
+// nicknames, or real breeds genuinely outside the curated list) — and
+// isSeniorForBreed/isOverweightForBreed both depend on this same lookup,
+// so a bad match degraded those too. Each layer below is tried in order,
+// first match wins. See Decision 1 in docs/Breed_Guide_Expansion_Build.md
+// for the full design reasoning this implements. No signup UI change —
+// this is purely a smarter read of the same senior_dogs.breed field.
+// ============================================
+
+// c. Alias map — short nicknames/abbreviations that substring matching
+// (layer b) can't reach, since here the INPUT is shorter than the curated
+// KEY, the opposite direction of what layer b handles. Exact-match only
+// against the full normalized breed string (not itself substring-matched),
+// to keep this layer's risk low and easy to reason about. Deliberately
+// excludes "bulldog" (French vs. English/American — English Bulldog isn't
+// even in the curated list, so aliasing it to French Bulldog would be
+// actively wrong, not just imprecise), "chi" (too short, real false-
+// positive risk), and "pit bull"/"pitbull" (no curated match exists to
+// alias to at all — correctly falls through to generic). See Decision 1c.
+const BREED_ALIASES = {
+  'lab': 'labrador',
+  'golden': 'golden retriever',
+  'gsd': 'german shepherd',
+  'frenchie': 'french bulldog',
+  'doxie': 'dachshund',
+  'wiener dog': 'dachshund',
+  'yorkie': 'yorkshire terrier',
+  'husky': 'siberian husky',
+  'doberman': 'doberman pinscher',
+  'gsp': 'german shorthaired pointer',
+  'berner': 'bernese mountain dog',
+  'cavalier': 'cavalier king charles spaniel',
+  'mini schnauzer': 'miniature schnauzer',
+  'rottie': 'rottweiler',
+  'newfie': 'newfoundland',
+  'ridgeback': 'rhodesian ridgeback',
+  'pom': 'pomeranian',
+  'shitzu': 'shih tzu',
+  // Only corgi in the curated list — a Cardigan Welsh Corgi owner typing
+  // "corgi" gets the Pembroke guide. A known simplification, not a bug.
+  'corgi': 'pembroke welsh corgi'
+};
+
+// Standard Levenshtein edit distance, used by layer d below. Inputs here
+// are always short breed-name strings, so no need for a more optimized
+// algorithm than the classic two-row dynamic-programming version.
+function levenshteinDistance(a, b) {
+  const m = a.length, n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  let prevRow = new Array(n + 1);
+  let currRow = new Array(n + 1);
+  for (let j = 0; j <= n; j++) prevRow[j] = j;
+  for (let i = 1; i <= m; i++) {
+    currRow[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      currRow[j] = Math.min(
+        currRow[j - 1] + 1,   // insertion
+        prevRow[j] + 1,       // deletion
+        prevRow[j - 1] + cost // substitution
+      );
+    }
+    [prevRow, currRow] = [currRow, prevRow];
+  }
+  return prevRow[n];
+}
+
+// d. Fuzzy match, last resort, conservative on two axes at once (see
+// Decision 1d): an absolute edit-distance cap AND that distance kept small
+// relative to the candidate key's own length, so a short key like "pug"
+// can't absorb an unrelated short input just because an absolute distance
+// of 2 looks small in isolation — for keys short enough that the ratio cap
+// rounds to 0, fuzzy matching is effectively disabled for that key
+// entirely, which is intentional, not a bug. Requires a minimum input
+// length before running at all, and only accepts a match when exactly one
+// curated key qualifies — two keys landing within threshold of the same
+// input is treated as ambiguous and rejected, not resolved by picking the
+// closer one, since at this distance either could plausibly be intended.
+// This is what keeps "Labradoodle" (a real different breed) from matching
+// "Labrador" as if it were a typo — the edit distance between them is
+// larger than either axis of this cap allows.
+const FUZZY_MIN_INPUT_LENGTH = 4;
+const FUZZY_MAX_ABSOLUTE_DISTANCE = 2;
+const FUZZY_MAX_DISTANCE_RATIO = 0.25;
+
+function findFuzzyBreedMatch(normalized) {
+  if (normalized.length < FUZZY_MIN_INPUT_LENGTH) return null;
+  const candidates = [];
+  for (const key of Object.keys(BREED_GUIDES)) {
+    const maxDistance = Math.min(FUZZY_MAX_ABSOLUTE_DISTANCE, Math.floor(key.length * FUZZY_MAX_DISTANCE_RATIO));
+    if (maxDistance <= 0) continue; // key too short for fuzzy matching to ever be safe
+    if (levenshteinDistance(normalized, key) <= maxDistance) candidates.push(key);
+  }
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
 function getBreedGuide(breedName) {
   if (!breedName) return GENERIC_BREED_GUIDE;
   const normalized = breedName.trim().toLowerCase();
-  return BREED_GUIDES[normalized] || GENERIC_BREED_GUIDE;
+
+  // a. Exact match (original behavior, unchanged).
+  if (BREED_GUIDES[normalized]) return BREED_GUIDES[normalized];
+
+  // b. Substring match — the INPUT contains a curated KEY (handles
+  // "Golden Retriever mix", "Golden Retriever - senior", etc.). Direction
+  // matters: this is the opposite check from a nickname lookup, which is
+  // exactly why aliases (c) are their own separate layer below, not folded
+  // into this one.
+  const substringKey = Object.keys(BREED_GUIDES).find(key => normalized.includes(key));
+  if (substringKey) return BREED_GUIDES[substringKey];
+
+  // c. Alias map.
+  if (BREED_ALIASES[normalized]) return BREED_GUIDES[BREED_ALIASES[normalized]];
+
+  // d. Fuzzy edit-distance match.
+  const fuzzyKey = findFuzzyBreedMatch(normalized);
+  if (fuzzyKey) return BREED_GUIDES[fuzzyKey];
+
+  // e. Fall-through logging — nothing matched. This has been completely
+  // invisible since the feature was built; logging the raw string is what
+  // makes it possible to ever see, and eventually prioritize, the real
+  // long tail of un-matched breed strings.
+  console.log(`ℹ️ No breed guide match for "${breedName}" — using generic fallback`);
+  return GENERIC_BREED_GUIDE;
 }
 
 // ============================================
