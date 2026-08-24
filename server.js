@@ -1773,14 +1773,29 @@ async function calculateCurrentStreak(dog_id) {
 
 // Returns a milestone message for round-number streaks, or null on
 // non-milestone weeks (so the front end can just not show anything extra).
+//
+// Retention discussion, Aug 24: this used to go silent past streak 12 —
+// nothing in the app's original 12-week design anticipated a dog logging
+// longer than that, so no entry existed and every later milestone quietly
+// showed nothing. 26 (six months) and 52 (one year) get real, hand-written
+// copy matching the register of the original four; every OTHER 4-week
+// milestone beyond 12 (16, 20, 24, 28, ...) gets a simple templated message
+// instead of a hardcoded table entry, so this never needs manual upkeep
+// again and streaks never go silent a second time.
 function getStreakMilestoneMessage(dogName, streak) {
   const milestones = {
     2: `2 weeks in a row for ${dogName}! You're building a real health journey.`,
     4: `${dogName}'s first month of consistent tracking — 4 weeks straight!`,
     8: `8-week streak for ${dogName}. Patterns are getting clearer with every check-in.`,
-    12: `${dogName} made it a full 12 weeks! This is exactly the kind of consistency that builds a real picture of ${dogName}'s health over time.`
+    12: `${dogName} made it a full 12 weeks! This is exactly the kind of consistency that builds a real picture of ${dogName}'s health over time.`,
+    26: `${dogName} just crossed six months of consistent logging — 26 weeks straight. That's a real, lasting health record.`,
+    52: `${dogName} completed a full year of logging — 52 weeks straight. That's an exceptional, genuinely rare health record.`
   };
-  return milestones[streak] || null;
+  if (milestones[streak]) return milestones[streak];
+  if (streak > 12 && streak % 4 === 0) {
+    return `${dogName} just hit ${streak} weeks in a row. Every week adds more to a real, lasting picture of ${dogName}'s health.`;
+  }
+  return null;
 }
 
 // ============================================
@@ -3392,7 +3407,8 @@ function buildMilestoneChapter(dogName, trendLines, streak) {
           <div class="dog-snapshot">
             ${renderTrendLinesHtml(trendLines)}
           </div>
-          <p style="font-size: 13px; color: #888; margin-top: 12px;">12 weeks was the original check-in plan, but there's no reason to stop here — ${dogName}'s dashboard and check-ins keep working exactly the same after this point, and every week you keep logging adds to a real, growing picture.</p>`;
+          <p style="font-size: 13px; color: #888; margin-top: 12px;">12 weeks was the original check-in plan, but there's no reason to stop here — ${dogName}'s dashboard and check-ins keep working exactly the same after this point, and every week you keep logging adds to a real, growing picture.</p>
+          <p style="font-size: 13px; color: #888; margin-top: 8px;">${PROGRAM_CONTINUATION_NOTE}</p>`;
 }
 
 // Extracted from a private closure inside /dashboard/:dog_id (STEP P11
@@ -3436,6 +3452,38 @@ function describeWeightJourneyTrend(baseline, latest) {
   if (diff < 0) return `Weight: ${baseline} lb → ${latest} lb (down ${Math.abs(diff)} lb since baseline)`;
   return `Weight: ${baseline} lb → ${latest} lb (steady since baseline)`;
 }
+
+// ============================================
+// Post-week-12 display + framing (retention discussion, Aug 24). Nothing
+// in the app ever gated or ended at week 12 — it was always just the
+// originally-designed check-in cadence length — but every "Week X of 12"
+// label kept hardcoding that framing even once a dog logged past it, and
+// streaks/milestones went silent past week 12 with nothing telling anyone.
+// ============================================
+
+// Shared by the dashboard header, Journey Summary header, and breed guide
+// subtitle — all three call this instead of hand-rolling their own
+// weekNumber > 12 check, so the three surfaces can't drift on wording.
+// Each surface still passes its own existing week-number source in (no new
+// calculation introduced) — only the label text is shared.
+function formatProgramWeekLabel(weekNumber) {
+  return weekNumber > 12
+    ? `Week ${weekNumber} — 12-week program complete`
+    : `Week ${weekNumber} of 12`;
+}
+
+// Shared "keep going" framing, used by both the breed guide's 12-Week
+// Milestone chapter and the dashboard's own one-time week-13 banner below,
+// so the two surfaces read as one consistent message instead of two
+// independently-worded claims. Directionally true, not a fabricated
+// statistic — deliberately no specific percentage.
+const PROGRAM_CONTINUATION_NOTE = 'Most owners keep logging well past this point — the habit tends to stick once it becomes part of the week, and the picture only gets richer with more real data.';
+
+// The exact calendar week the original 12-week program transitions into
+// "past program" (week 12 becoming week 13). Matched with ===, not >=, same
+// exact-week-match pattern as BREED_GUIDE_CHAPTER_WEEKS above, so the
+// dashboard banner below fires exactly once instead of showing forever.
+const PROGRAM_COMPLETE_WEEK = 13;
 
 app.get('/breed-guide/:dog_id', async (req, res) => {
   try {
@@ -3633,7 +3681,7 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
 
           <p style="font-size: 32px; margin: 0 0 10px 0;"><i data-lucide="book-open"></i></p>
           <h1>${displayBreedName}${guide.pronunciation ? ` &nbsp;•&nbsp; <span class="pronunciation">${guide.pronunciation}</span>` : ''}: A Health Journey Guide</h1>
-          <p class="subtitle">Unlocked for ${escapeHtml(dog.dog_name)} — Week ${currentWeek} of 12${guide.typicalWeight ? ` &nbsp;•&nbsp; Typical weight: ${guide.typicalWeight}` : ''}</p>
+          <p class="subtitle">Unlocked for ${escapeHtml(dog.dog_name)} — ${formatProgramWeekLabel(currentWeek)}${guide.typicalWeight ? ` &nbsp;•&nbsp; Typical weight: ${guide.typicalWeight}` : ''}</p>
           <p class="content-disclaimer">${contentDisclaimerText}</p>
           ${atAGlanceBlock}
 
@@ -4500,7 +4548,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
             <div class="week-progress">
               <span>Baseline ✓</span>
               <span>·</span>
-              <span>Week ${mostRecentSubmittedWeek} of 12</span>
+              <span>${formatProgramWeekLabel(mostRecentSubmittedWeek)}</span>
               <div class="week-dots">
                 ${Array.from({length: 12}, (_, i) => {
                   const weekNum = i + 1;
@@ -4508,6 +4556,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                   return `<div class="week-dot ${isCompleted ? 'completed' : ''}"></div>`;
                 }).join('')}
               </div>
+              ${mostRecentSubmittedWeek > 12 ? `<p style="margin: 6px 0 0 0; font-size: 12px; color: #999;">${mostRecentSubmittedWeek - 12} week${mostRecentSubmittedWeek - 12 === 1 ? '' : 's'} logged beyond the original 12.</p>` : ''}
             </div>
             ${isSenior ? `<p style="margin: 8px 0 0 0; font-size: 13px; color: #666;">${escapeHtml(dog.dog_name)} is considered a senior for their breed.</p>` : ''}
           </div>
@@ -4540,6 +4589,13 @@ app.get('/dashboard/:dog_id', async (req, res) => {
               <p style="margin: 0; color: #5D4E37; font-size: 14px;">${escapeHtml(dog.dog_name)}'s ${escapeHtml(dog.breed) || 'breed'} guide is ready to read.</p>
             </div>
             <a href="/breed-guide/${dog_id}" style="background: #A89968; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 500; white-space: nowrap;">Read it →</a>
+          </div>
+          ` : ''}
+
+          ${nextCheckinWeekNumber === PROGRAM_COMPLETE_WEEK ? `
+          <div style="background: #FFF8E7; border-left: 4px solid #A89968; border-radius: 8px; padding: 16px 20px; margin: 20px 0;">
+            <p style="margin: 0 0 4px 0; font-weight: 600; color: #8A7A4F; font-size: 14px;"><i data-lucide="award"></i> 12-week program complete</p>
+            <p style="margin: 0; color: #5D4E37; font-size: 14px;">${escapeHtml(dog.dog_name)} completed the original 12-week check-in plan. ${PROGRAM_CONTINUATION_NOTE}</p>
           </div>
           ` : ''}
 
@@ -4845,7 +4901,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                 ? `<p style="margin: 0 0 8px 0; font-size: 13px; color: #666;">Medications/treatments: ${journeyMeds.join(', ')}</p>`
                 : `<p style="margin: 0 0 8px 0; font-size: 13px; color: #666;"></p>`;
             })()}
-            <p style="margin: 0 0 6px 0; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: #999;">Prepared ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} · Baseline ✓ · Week ${mostRecentSubmittedWeek} of 12</p>
+            <p style="margin: 0 0 6px 0; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: #999;">Prepared ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} · Baseline ✓ · ${formatProgramWeekLabel(mostRecentSubmittedWeek)}</p>
 
             <hr style="border: none; border-top: 1.5px solid #D4CDB8; margin: 0 0 8px 0;">
 
