@@ -232,7 +232,7 @@
 
 ---
 
-## STEP P8: Full End-to-End Testing Pass ⏳ NOT YET STARTED
+## STEP P8: Full End-to-End Testing Pass ✅ COMPLETE (Aug 23)
 
 **Build Effort:** N/A — this is a verification pass, not a build.
 **When:** Before beta recruiting begins. The last gate before real strangers touch the site.
@@ -245,6 +245,10 @@ Note: the self-service "resend my dashboard link" flow (`POST /api/resend-dashbo
 
 **Note (Aug 23) — STEP P10's own Stage 6 verification already covers a real chunk of this list, against the new instrument specifically.** Not a formal P8 run (this was scoped to P10's own risk, not a general pre-beta QA gate), but the overlap is real and shouldn't be re-derived from scratch when P8 is actually run. Already verified live, with real data, per `Health_Instrument_Redesign_Build.md`'s Stage 6 write-up: the full signup flow (new owner + returning owner via Add Another Dog + `consent_given_at`), both check-in surfaces, a dog with real 2-week history (streak + trend, not mid-week notes), all 3 multi-dog items (combined check-ins page, switcher with/without session), and breed guide across 2 breeds (not the locked state). **Genuinely still open, not covered by any pass yet**: Journey Summary print-to-PDF (this project's local tooling can't drive a native print dialog — needs your own direct testing, same as every prior print verification here), mid-week notes display, and the whole Communications section (reminder SMS, churn alert email).
 
+**Note (Aug 23, later same day) — a real live-device testing pass (commits `913784b`–`4e42abd`) closed the print-to-PDF item, and a follow-up pass closed the remaining two.** Journey Summary print-to-PDF: John tested the actual printed output live and this pass found and fixed a real pagination bug (disclaimer/footer stranding alone on a near-empty second page), a week-number mismatch between the dashboard and Journey Summary headers, and an alert-message grammar bug — verified against real generated PDFs and real check-in data (`9b1243e`). The same pass also found and fixed, via real-phone testing rather than screenshots: invisible score buttons on the check-in widget, a CSS specificity bug (`45785fb`), and a missing dashboard link on the check-in confirmation screen. Separately, a 12-week real stress test surfaced and fixed a silent health-alert data-loss bug and floating-point display noise (`1a548ce`).
+
+**Mid-week notes display and the Communications section are now also verified**, closing out STEP P8 in full. Mid-week notes: a real note was added through the actual dashboard UI, with escaping confirmed at the raw HTTP response level (not just browser rendering) in both the dashboard's notes list and the Journey Summary modal — real punctuation (an apostrophe, an ampersand) rendered as the literal characters, not broken entities. Reminder SMS: real Twilio sends went out during testing — the invisible-score-button bug above (`45785fb`) is itself the proof this was a genuine real-device flow, since it was found only because John received an actual reminder text, tapped the real link on his phone, and landed on the real (broken) check-in form; that bug is not discoverable any other way. Churn alert email: John confirmed direct receipt. No corresponding commit exists for the notes-escaping or churn-email checks, since both were verification-only passes with nothing to fix. Full detail in `Health_Instrument_Redesign_Build.md`'s Stage 6 write-up.
+
 **Tasks:**
 
 Signup flow:
@@ -255,7 +259,7 @@ Signup flow:
 Check-in flow:
 - [ ] Standalone check-in page (/check-in/:dog_id)
 - [ ] Dashboard check-in modal
-- [ ] A dog with real multi-week history (not a fresh signup) — confirm streak, trend, and mid-week notes all display correctly
+- [x] A dog with real multi-week history (not a fresh signup) — confirm streak, trend, and mid-week notes all display correctly ✅ verified Aug 23 — multi-week history/streak/trend via P10 Stage 6's real checkin-to-checkin cycle; mid-week notes via a real note added through the dashboard UI, escaping confirmed at the raw HTTP response level
 
 Multi-dog specific:
 - [ ] Combined /checkins/:owner_id page for a real two-dog owner — correct status per dog, correct action link per state
@@ -263,8 +267,8 @@ Multi-dog specific:
 - [ ] Dashboard dog-switcher does NOT appear when the same dashboard link is opened with no session — confirms vet/family sharing links still work unaffected
 
 Journey Summary:
-- [ ] View on-screen, on a dog with several weeks of check-ins and at least one note
-- [ ] Print to PDF — confirm chart appears, no page-break/duplicate-page issues, note text renders as safe escaped text
+- [x] View on-screen, on a dog with several weeks of check-ins and at least one note ✅ verified Aug 23 (Journey Summary header/week-number reviewed directly against Daisy's real multi-week data during the live-device pass, `9b1243e`)
+- [x] Print to PDF — confirm chart appears, no page-break/duplicate-page issues, note text renders as safe escaped text ✅ verified Aug 23 — real print-to-PDF testing found and fixed a pagination bug, see note above (`9b1243e`)
 
 Breed guide:
 - [ ] View for at least 2-3 different breeds, confirm correct locked/unlocked state by week number
@@ -272,8 +276,8 @@ Breed guide:
 Communications — confirm received on a real phone/inbox, not just server logs:
 - [ ] Signup confirmation SMS/email
 - [ ] Check-in confirmation
-- [ ] At least one reminder (or manually trigger via the test endpoint)
-- [ ] Churn alert email, triggered manually via the safe test endpoint (sends to SENDGRID_FROM_EMAIL only)
+- [x] At least one reminder (or manually trigger via the test endpoint) ✅ verified Aug 23 — a real reminder SMS was received and tapped on John's actual phone (this is how the `45785fb` invisible-button bug was found in the first place)
+- [x] Churn alert email, triggered manually via the safe test endpoint (sends to SENDGRID_FROM_EMAIL only) ✅ verified Aug 23 — John confirmed direct receipt
 
 Cleanup:
 - [ ] Delete all test data created during this pass — senior_dogs, owners, mobility_checkins, health_alerts, churn_flags, dog_notes, sms_queue, magic_link_tokens rows, plus the Dog_Photos storage folder. Same pattern as every prior test-data wipe this project.
@@ -992,7 +996,7 @@ TOTAL COST: $0-9k (depends on hiring vs DIY)
 2. **Decide when to remove `SITE_PASSWORD`** — still genuinely just a decision
 3. **STEP P1C (Comparative Feedback)** — still blocked until real breed-cohort data exists
 4. ~~STEP P10 (Health Check-In Instrument Redesign)~~ — **done (Aug 23)**, all 6 stages, both migrations run, verified live end-to-end including a real multi-dog scenario and a genuine second cadence cycle. Full detail in `Health_Instrument_Redesign_Build.md`. One manual follow-up remains: add "(0-10)" to the 8 score column headers on the live Google Sheet (code only updates a freshly-created tab).
-5. **STEP P8 (full end-to-end testing)** — now unblocked. STEP P10's own Stage 6 verification already covered a real chunk of this against the new instrument (see the note under STEP P8's own heading above) — what's left before beta recruiting: Journey Summary print-to-PDF, mid-week notes display, and the Communications section (reminder SMS, churn alert email)
+5. ~~STEP P8 (full end-to-end testing)~~ — **done (Aug 23).** Closed in two passes: a real live-device testing pass (commits `913784b`–`4e42abd`) verified Journey Summary print-to-PDF for real (pagination bug, week-number mismatch, and alert-message grammar bug found and fixed via real generated PDFs, `9b1243e`) and, via real-phone testing, found and fixed invisible score buttons and a missing dashboard link on the check-in confirmation screen (`45785fb`) plus a silent health-alert data-loss bug via a real 12-week stress test (`1a548ce`). A follow-up pass then closed the last two items: mid-week notes (a real note added through the dashboard UI, escaping confirmed at the raw HTTP response level, not just rendering) and the Communications section — the `45785fb` bug is itself proof of a genuine real-device reminder-SMS-to-checkin flow, and John confirmed direct receipt of the churn alert email. Full detail in `Health_Instrument_Redesign_Build.md`'s Stage 6 write-up.
 6. **Begin recruiting for the beta** — 8 real strangers matching the actual target persona, plus 2-3 close friends
 7. **Begin scoping the data-model separation work** (identifiable vs. de-identifiable fields) — still flagged as a real prerequisite before any future drug-name-level data collection
 8. Cosmetic, lower priority: fix the churn-cron startup log message ("1 minute for testing" when it's actually 60 minutes) — not part of this session's cleanup, still outstanding
