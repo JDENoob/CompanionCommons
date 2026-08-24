@@ -10,6 +10,7 @@ This is CompanionCommons, a pet health data intelligence platform. Full details,
 @docs/CompanionCommons_Health_Instrument_Design.md — locked spec for the redesigned health check-in instrument (STEP P10), literature grounding, legal position
 @docs/Health_Instrument_Redesign_Build.md — the STEP P10 build project (complete) — schema, shared helpers, stage-by-stage rollout, and the real end-to-end verification pass
 @docs/Breed_Guide_Expansion_Build.md — the STEP P11 project (Stages 2-4 shipped) — progressive breed-guide unlock at weeks 2/4/8/12 plus the breed-matching coverage fix underneath it
+@docs/CompanionCommons_Business_Architecture_Reference.md — John's business-architecture reference (6-stage pipeline, two-business framing); see Strategy/Legal doc Section 12 for its three-stream evolution and gap-check against the current build
 
 ## Key standing rules, always apply:
 - Never diagnose or interpret health data — show data, never a health judgment or recommendation
