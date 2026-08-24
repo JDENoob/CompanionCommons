@@ -203,7 +203,7 @@ const SCORE_ITEM_WIDGET_STYLES = `
   .score-item { margin-bottom: 24px; }
   .score-buttons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .score-btn {
-    flex: 1 1 auto; min-width: 32px; width: auto; padding: 8px 0; border: 1px solid #ddd;
+    flex: 0 1 auto; min-width: 32px; width: auto; padding: 8px 0; border: 1px solid #ddd;
     border-radius: 6px; background: #fff; color: #333; font-family: inherit; font-size: 14px;
     cursor: pointer; text-align: center;
   }
