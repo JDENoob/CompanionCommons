@@ -111,6 +111,8 @@ Genuinely-current gate items, as resolved: (1) legal review scoped specifically 
 
 **Recommendation, agreed:** get lawyer review specifically scoped to this exact question before building anything, and treat the data-model separation work as a genuine prerequisite architecture task — not a nice-to-have that can happen alongside or after.
 
+**Addendum (this session):** a category-level, structured medication-*change* marker (not drug names — see `SENIOR_DOGS_MVP_CHECKLIST.md`'s new NEXT STEP item 17) was identified as a buildable-now refinement that doesn't require revisiting this section's core decision, since it stays within the existing category taxonomy's sensitivity tier.
+
 ---
 
 ## 8. Free-Text Notes Containing Medical History — Decision
@@ -148,7 +150,7 @@ Genuinely-current gate items, as resolved: (1) legal review scoped specifically 
 7. Given the model sells anonymized/aggregated data to pharma, insurance, and supplement companies, does this classify the company as a "data broker" under any applicable state law, and if so, is registration required?
 8. What legally qualifies as sufficient "anonymization"? Is excluding direct identifiers (name, email, phone) enough, or are there minimum-group-size aggregation thresholds required before publishing any statistic, to avoid realistic re-identification risk?
 9. Free-text notes could contain identifiable medical detail even though structured fields don't (see Section 8). Given notes are now excluded from the B2B export by architectural rule, does the in-context disclaimer provide sufficient legal cover for the consumer-facing storage of that data, or is more required?
-10. If drug-name-level data is added at some future point (not decided — see Section 7), how would that change legal exposure or classification compared to the current category-level system? Worth asking now so the answer can inform whether the data-model separation work needs to happen before or can happen alongside that future decision.
+10. If drug-name-level data is added at some future point (not decided — see Section 7), how would that change legal exposure or classification compared to the current category-level system? Worth asking now so the answer can inform whether the data-model separation work needs to happen before or can happen alongside that future decision. Separately: does a *timestamped change event* (this specific pet started this specific drug in this specific week) carry different or greater re-identification risk than a static "current medications" field, given that precise timing is itself identifying information?
 
 **Multi-state / general exposure**
 11. Since signups can come from any US state, which state's privacy law actually governs, and is a "build to the strictest applicable state standard" approach the right general posture?
