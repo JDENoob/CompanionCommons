@@ -2763,6 +2763,80 @@ function compareWeightToBreedRange(weightLbs, guide) {
   return `within the typical range for ${guide.displayName}s (${guide.typicalWeight})`;
 }
 
+// ============================================
+// STEP P11 Stage 3 — breed guide progressive unlock structure + shared
+// trend helpers. See docs/Breed_Guide_Expansion_Build.md, Decisions 2/3.
+// Nothing here is stored — the same live currentWeek calculation already
+// used everywhere else drives every gate, no new columns/migrations.
+// ============================================
+
+// The breed guide's real chapter-unlock weeks. Also drives the dashboard's
+// "Breed guide unlocked" card retrigger (see /dashboard/:dog_id below) —
+// shared here so the two can't silently drift apart.
+const BREED_GUIDE_CHAPTER_WEEKS = [2, 4, 8, 12];
+
+// A not-yet-unlocked chapter stays visible on the page as a locked teaser
+// rather than being hidden entirely (Decision 2).
+function buildLockedChapterTeaser(chapterTitle, unlockWeek) {
+  return `<h2>${chapterTitle}</h2>
+          <div style="background: #FAFAFA; border: 1px dashed #DDD; border-radius: 8px; padding: 20px; text-align: center;">
+            <p style="margin: 0; font-size: 14px; color: #999;"><i data-lucide="lock"></i> Unlocks at Week ${unlockWeek}</p>
+          </div>`;
+}
+
+// Stage 3 scope is structure only — this placeholder marks a chapter that
+// IS unlocked but whose real content STEP P11 Stage 4 hasn't been built
+// yet. Deliberately styled differently from the locked teaser above so the
+// two states are never visually ambiguous during testing.
+function buildChapterPlaceholder(chapterTitle) {
+  return `<h2>${chapterTitle}</h2>
+          <div style="background: #FFF8E7; border: 1px dashed #A89968; border-radius: 8px; padding: 20px;">
+            <p style="margin: 0; font-size: 14px; color: #8A7A4F; font-style: italic;">This chapter is unlocked — real content coming in STEP P11 Stage 4.</p>
+          </div>`;
+}
+
+// Extracted from a private closure inside /dashboard/:dog_id (STEP P11
+// Stage 3) so /breed-guide/:dog_id can call the same real implementation
+// once Stage 4 needs it, instead of a second hand-copied version that
+// could silently drift out of sync. Takes hasAnyCheckins explicitly
+// instead of reaching into a route's own `checkins` array via closure —
+// the dashboard route below passes checkins.length > 0 for this, exactly
+// preserving its original behavior.
+function describeJourneyTrend(label, baseline, latest, hasAnyCheckins) {
+  if (baseline == null && latest == null) {
+    return `${label}: not enough data yet`;
+  }
+  if (baseline == null || latest == null || !hasAnyCheckins) {
+    return `${label}: ${latest ?? baseline}/10 (baseline only — no check-ins yet)`;
+  }
+  // Rounded — baseline/latest can be fractional composite scores
+  // (mobility/cognitive), and subtracting two already-rounded
+  // NUMERIC(3,1) values can leave raw float noise (e.g.
+  // 0.30000000000000004) that used to print verbatim here.
+  const diff = roundToOneDecimal(latest - baseline);
+  // STEP P10: wording NOT changed here — "up"/"down" already describe the
+  // raw number's literal movement, not a good/bad judgment (no
+  // "improved"/"declined" language exists in this function), so it stays
+  // accurate under the new scale exactly as written.
+  if (diff > 0) return `${label}: ${baseline}/10 → ${latest}/10 (up ${diff} since baseline)`;
+  if (diff < 0) return `${label}: ${baseline}/10 → ${latest}/10 (down ${Math.abs(diff)} since baseline)`;
+  return `${label}: ${baseline}/10 → ${latest}/10 (steady since baseline)`;
+}
+
+// Weight-specific variant — "lb" instead of "/10", neutral up/down/steady
+// phrasing (no "improved"/"declined" — weight direction isn't inherently
+// good or bad the way the score metrics are). Already took no closure
+// variables beyond its own params, so this extraction is a clean move
+// with no signature change.
+function describeWeightJourneyTrend(baseline, latest) {
+  if (baseline == null && latest == null) return 'Weight: not enough data yet';
+  if (baseline == null || latest == null) return `Weight: ${latest ?? baseline} lb (baseline only — no check-in weight yet)`;
+  const diff = latest - baseline;
+  if (diff > 0) return `Weight: ${baseline} lb → ${latest} lb (up ${diff} lb since baseline)`;
+  if (diff < 0) return `Weight: ${baseline} lb → ${latest} lb (down ${Math.abs(diff)} lb since baseline)`;
+  return `Weight: ${baseline} lb → ${latest} lb (steady since baseline)`;
+}
+
 app.get('/breed-guide/:dog_id', async (req, res) => {
   try {
     const { dog_id } = req.params;
@@ -2836,6 +2910,22 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
     const seniorSectionHeading = isSenior ? 'Senior Health Patterns' : 'Looking Ahead';
     const seniorSectionCopy = isSenior ? guide.seniorPatterns : getNotYetSeniorCopy(dog.breed);
 
+    // STEP P11 Stage 3 — progressive chapter unlock (Decision 2). Senior
+    // Health Patterns / Looking Ahead moved here from its old unconditional
+    // week-2 position; weeks 8 and 12 are new chapters. Real week 8/12
+    // content is Stage 4's job — this stage only builds the gating
+    // structure, so an unlocked-but-not-yet-built chapter shows a clearly
+    // marked placeholder, never the locked teaser.
+    const seniorSectionBlock = currentWeek >= 4
+      ? `<h2>${seniorSectionHeading}</h2>\n          <p>${seniorSectionCopy}</p>`
+      : buildLockedChapterTeaser(seniorSectionHeading, 4);
+    const journeyChapterBlock = currentWeek >= 8
+      ? buildChapterPlaceholder("Your Dog's Journey")
+      : buildLockedChapterTeaser("Your Dog's Journey", 8);
+    const milestoneChapterBlock = currentWeek >= 12
+      ? buildChapterPlaceholder('12-Week Milestone')
+      : buildLockedChapterTeaser('12-Week Milestone', 12);
+
     // Most recent weight — a check-in weight if one exists yet, else the
     // baseline weight from signup. Compared non-diagnostically against the
     // breed's typical range; null (and hidden entirely) for mixed breed /
@@ -2878,7 +2968,7 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
 
           <p style="font-size: 32px; margin: 0 0 10px 0;"><i data-lucide="book-open"></i></p>
           <h1>${guide.displayName}: A Health Journey Guide</h1>
-          <p class="subtitle">Unlocked for ${escapeHtml(dog.dog_name)} — Week 2 milestone${guide.typicalWeight ? ` &nbsp;•&nbsp; Typical weight: ${guide.typicalWeight}` : ''}</p>
+          <p class="subtitle">Unlocked for ${escapeHtml(dog.dog_name)} — Week ${currentWeek} of 12${guide.typicalWeight ? ` &nbsp;•&nbsp; Typical weight: ${guide.typicalWeight}` : ''}</p>
 
           <h2>History</h2>
           <p>${guide.history}</p>
@@ -2886,8 +2976,11 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
           <h2>Temperament</h2>
           <p>${guide.temperament}</p>
 
-          <h2>${seniorSectionHeading}</h2>
-          <p>${seniorSectionCopy}</p>
+          ${seniorSectionBlock}
+
+          ${journeyChapterBlock}
+
+          ${milestoneChapterBlock}
 
           <div class="dog-snapshot">
             <strong>${escapeHtml(dog.dog_name)}'s current mobility:</strong> ${currentMobility}/10
@@ -3350,47 +3443,21 @@ app.get('/dashboard/:dog_id', async (req, res) => {
     // Purpose (per the button's own copy): help an owner prep for a
     // conversation with a vet, family member, or sitter. Reuses checkins,
     // dogNotes, activeAlert, and dog — no new queries needed.
+    //
+    // STEP P11 Stage 3: describeJourneyTrend/describeWeightJourneyTrend
+    // used to be private closures defined right here — extracted to real
+    // top-level functions (see above getBreedGuide) so /breed-guide/:dog_id
+    // can call the exact same implementation once Stage 4 needs it,
+    // instead of a second hand-copied version. describeJourneyTrend now
+    // takes hasAnyCheckins explicitly instead of reaching into this
+    // route's own `checkins` via closure.
     // ============================================
-    function describeJourneyTrend(label, baseline, latest) {
-      if (baseline == null && latest == null) {
-        return `${label}: not enough data yet`;
-      }
-      if (baseline == null || latest == null || checkins.length === 0) {
-        return `${label}: ${latest ?? baseline}/10 (baseline only — no check-ins yet)`;
-      }
-      // Rounded — baseline/latest can be fractional composite scores
-      // (mobility/cognitive), and subtracting two already-rounded
-      // NUMERIC(3,1) values can leave raw float noise (e.g.
-      // 0.30000000000000004) that used to print verbatim here.
-      const diff = roundToOneDecimal(latest - baseline);
-      // STEP P10: wording NOT changed here — "up"/"down" already describe
-      // the raw number's literal movement, not a good/bad judgment (no
-      // "improved"/"declined" language exists in this function), so it
-      // stays accurate under the new scale exactly as written. Only the
-      // /8 -> /10 scale literals change.
-      if (diff > 0) return `${label}: ${baseline}/10 → ${latest}/10 (up ${diff} since baseline)`;
-      if (diff < 0) return `${label}: ${baseline}/10 → ${latest}/10 (down ${Math.abs(diff)} since baseline)`;
-      return `${label}: ${baseline}/10 → ${latest}/10 (steady since baseline)`;
-    }
-
-    // Weight-specific variant of describeJourneyTrend — "lb" instead of "/8",
-    // otherwise identical neutral up/down/steady phrasing (no "improved" /
-    // "declined" — see describeWeightTrendForGlance above for why).
-    function describeWeightJourneyTrend(baseline, latest) {
-      if (baseline == null && latest == null) return 'Weight: not enough data yet';
-      if (baseline == null || latest == null) return `Weight: ${latest ?? baseline} lb (baseline only — no check-in weight yet)`;
-      const diff = latest - baseline;
-      if (diff > 0) return `Weight: ${baseline} lb → ${latest} lb (up ${diff} lb since baseline)`;
-      if (diff < 0) return `Weight: ${baseline} lb → ${latest} lb (down ${Math.abs(diff)} lb since baseline)`;
-      return `Weight: ${baseline} lb → ${latest} lb (steady since baseline)`;
-    }
-
     const latestCognitiveCheckin = [...checkins].reverse().find(c => c.cognitive_score != null);
     const journeyTrendLines = [
-      describeJourneyTrend('Mobility', dog.baseline_mobility_score, checkins.length > 0 ? currentScore : null),
-      describeJourneyTrend('Energy', dog.baseline_energy_score, checkins.length > 0 ? currentEnergyScore : null),
-      describeJourneyTrend('Appetite', dog.baseline_appetite_score, checkins.length > 0 ? currentAppetiteScore : null),
-      describeJourneyTrend('Cognitive/Behavior', dog.baseline_cognitive_score, latestCognitiveCheckin?.cognitive_score ?? null),
+      describeJourneyTrend('Mobility', dog.baseline_mobility_score, checkins.length > 0 ? currentScore : null, checkins.length > 0),
+      describeJourneyTrend('Energy', dog.baseline_energy_score, checkins.length > 0 ? currentEnergyScore : null, checkins.length > 0),
+      describeJourneyTrend('Appetite', dog.baseline_appetite_score, checkins.length > 0 ? currentAppetiteScore : null, checkins.length > 0),
+      describeJourneyTrend('Cognitive/Behavior', dog.baseline_cognitive_score, latestCognitiveCheckin?.cognitive_score ?? null, checkins.length > 0),
       describeWeightJourneyTrend(dog.weight_lbs, weightCheckins.length > 0 ? currentWeightValue : null)
     ];
 
@@ -3796,7 +3863,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
           </div>
           ` : ''}
 
-          ${nextCheckinWeekNumber >= 2 ? `
+          ${BREED_GUIDE_CHAPTER_WEEKS.includes(nextCheckinWeekNumber) ? `
           <div style="background: #FFF8E7; border-left: 4px solid #A89968; border-radius: 8px; padding: 16px 20px; margin: 20px 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
             <div>
               <p style="margin: 0 0 4px 0; font-weight: 600; color: #8A7A4F; font-size: 14px;"><i data-lucide="book-open"></i> Breed guide unlocked</p>
