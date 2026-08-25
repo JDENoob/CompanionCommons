@@ -246,7 +246,7 @@
               <div class="value-content">
                 <span class="card-kicker">Personal value</span>
                 <h3 data-copy="value.personalTitle">For your companion</h3>
-                <p data-copy="value.personalBody">Notice changes and patterns, understand what they may mean, get practical comparisons to similar dogs and understand more about your pet's health journey</p>
+                <p data-copy="value.personalBody">Notice changes and patterns, understand what they may mean, and learn more about your pet's health journey</p>
                 <ul class="check-list">
                   <li>3-minute Health Journey Baseline</li>
                   <li>30-second Pet Journey Updates once per week</li>
@@ -287,7 +287,7 @@
             <div class="dashboard-intro">
               <p class="eyebrow">What you get</p>
               <h2 id="dashboard-title">
-                A personalized dashboard just for you, a complete healthy journey record, insight and comparisons, download to share
+                A personalized dashboard just for you, a complete healthy journey record, real insight, download to share
               </h2>
               <p>
                 Each weekly update adds to your companion’s private Health
@@ -320,12 +320,12 @@
                 </div>
                 <div class="dashboard-row">
                   <article class="dashboard-panel mobility-panel">
-                    <h4>Mobility observations over time</h4>
+                    <h4>Health observations over time</h4>
                     <div class="chart-legend">
-                      <span class="green">Getting up after rest</span
-                      ><span class="coral">Walking comfort</span
-                      ><span class="gold">Stairs &amp; jumping</span
-                      ><span class="gray">Overall activity</span>
+                      <span class="mobility">Mobility</span
+                      ><span class="energy">Energy</span
+                      ><span class="appetite">Appetite</span
+                      ><span class="cognitive">Cognitive</span>
                     </div>
                     <p class="chart-swipe-cue" aria-hidden="true">
                       Swipe to view chart →
@@ -334,13 +334,13 @@
                       class="chart-scroll"
                       tabindex="0"
                       role="region"
-                      aria-label="Scrollable mobility observations chart"
+                      aria-label="Scrollable health observations chart"
                     >
                       <svg
                         class="line-chart"
                         viewBox="0 0 600 190"
                         role="img"
-                        aria-label="Bailey's owner-reported mobility observations from baseline through week six"
+                        aria-label="Bailey's owner-reported mobility, energy, appetite, and cognitive observations from week two through week six, on a 0-10 scale"
                       >
                         <g class="grid-lines">
                           <path
@@ -348,29 +348,30 @@
                           />
                         </g>
                         <g class="axis-labels">
-                          <text x="4" y="31">Easier</text>
-                          <text x="4" y="110">Same</text>
-                          <text x="4" y="150">Harder</text>
-                          <text x="42" y="178">Baseline</text>
-                          <text x="142" y="178">Week 2</text>
-                          <text x="292" y="178">Week 4</text>
-                          <text x="508" y="178">Week 6</text>
+                          <text x="4" y="29">10</text>
+                          <text x="4" y="89">5</text>
+                          <text x="4" y="149">0</text>
+                          <text x="42" y="178">W2</text>
+                          <text x="172" y="178">W3</text>
+                          <text x="302" y="178">W4</text>
+                          <text x="430" y="178">W5</text>
+                          <text x="558" y="178">W6</text>
                         </g>
                         <polyline
-                          class="chart-green"
-                          points="50,48 130,45 215,64 300,68 390,75 480,80 570,91"
+                          class="chart-mobility"
+                          points="50,109 180,109 310,97 440,109 570,97"
                         />
                         <polyline
-                          class="chart-coral"
-                          points="50,92 130,105 215,112 300,116 390,126 480,137 570,139"
+                          class="chart-energy"
+                          points="50,109 180,97 310,109 440,97 570,109"
                         />
                         <polyline
-                          class="chart-gold"
-                          points="50,70 130,88 215,96 300,102 390,117 480,121 570,130"
+                          class="chart-appetite"
+                          points="50,121 180,121 310,109 440,121 570,109"
                         />
                         <polyline
-                          class="chart-gray"
-                          points="50,110 130,128 215,138 300,139 390,146 480,152 570,154"
+                          class="chart-cognitive"
+                          points="50,133 180,121 310,121 440,109 570,121"
                         />
                       </svg>
                     </div>
@@ -381,67 +382,70 @@
                   <article class="dashboard-panel glance-panel">
                     <h4>This week at a glance</h4>
                     <ul>
-                      <li><b>Walking comfort</b> has remained consistent.</li>
-                      <li>
-                        <b>Getting up after rest</b> has been more difficult for
-                        two weeks.
-                      </li>
-                      <li>You reported <b>fewer active days</b> this week.</li>
+                      <li><b>Mobility</b> declined slightly this week (+1).</li>
+                      <li><b>Energy</b> improved slightly this week (-1).</li>
+                      <li><b>Appetite</b> declined slightly this week (+1).</li>
                     </ul>
                   </article>
                 </div>
-                <article class="dashboard-panel comparison-panel">
-                  <h4>How Bailey compares with similar Golden Retrievers</h4>
-                  <div class="chart-legend">
-                    <span class="green">Bailey</span
-                    ><span class="comparison">Similar Golden Retrievers</span>
-                  </div>
+                <article class="dashboard-panel values-panel">
+                  <h4>Exact values by week</h4>
                   <p class="chart-swipe-cue" aria-hidden="true">
-                    Swipe to view chart →
+                    Swipe to view table →
                   </p>
                   <div
                     class="chart-scroll"
                     tabindex="0"
                     role="region"
-                    aria-label="Scrollable Golden Retriever comparison chart"
+                    aria-label="Scrollable exact values by week table"
                   >
-                    <svg
-                      class="comparison-chart"
-                      viewBox="0 0 780 145"
-                      role="img"
-                      aria-label="Bailey compared with anonymized owner-reported observations from participating similar-age Golden Retrievers"
-                    >
-                      <g class="grid-lines">
-                        <path d="M55 25H755M55 65H755M55 105H755" />
-                      </g>
-                      <g class="axis-labels">
-                        <text x="3" y="30">Easier</text>
-                        <text x="3" y="70">Same</text>
-                        <text x="3" y="110">Harder</text>
-                        <text x="54" y="137">Week 1</text>
-                        <text x="190" y="137">Week 2</text>
-                        <text x="325" y="137">Week 3</text>
-                        <text x="465" y="137">Week 4</text>
-                        <text x="600" y="137">Week 5</text>
-                        <text x="712" y="137">Week 6</text>
-                      </g>
-                      <polyline
-                        class="chart-green"
-                        points="60,59 195,65 330,68 470,68 605,74 745,80"
-                      />
-                      <polyline
-                        class="chart-comparison"
-                        points="60,82 195,85 330,87 470,86 605,89 745,92"
-                      />
-                    </svg>
+                    <table class="values-table" style="min-width: 300px;">
+                      <thead>
+                        <tr>
+                          <th></th>
+                          <th>W2</th>
+                          <th>W3</th>
+                          <th>W4</th>
+                          <th>W5</th>
+                          <th>W6</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td style="color: #667eea;">Mobility</td>
+                          <td>3</td>
+                          <td>3</td>
+                          <td>4</td>
+                          <td>3</td>
+                          <td>4</td>
+                        </tr>
+                        <tr>
+                          <td style="color: #F5A623;">Energy</td>
+                          <td>3</td>
+                          <td>4</td>
+                          <td>3</td>
+                          <td>4</td>
+                          <td>3</td>
+                        </tr>
+                        <tr>
+                          <td style="color: #4CAF50;">Appetite</td>
+                          <td>2</td>
+                          <td>2</td>
+                          <td>3</td>
+                          <td>2</td>
+                          <td>3</td>
+                        </tr>
+                        <tr>
+                          <td style="color: #9B59B6;">Cognitive</td>
+                          <td>1</td>
+                          <td>2</td>
+                          <td>2</td>
+                          <td>3</td>
+                          <td>2</td>
+                        </tr>
+                      </tbody>
+                    </table>
                   </div>
-                  <p class="comparison-source">
-                    Based on anonymized, owner-reported observations from
-                    participating Golden Retrievers of a similar age.
-                  </p>
-                  <p class="chart-note">
-                    For context only—not a diagnosis or veterinary assessment.
-                  </p>
                 </article>
                 <article class="vet-prep">
                   <div aria-hidden="true"><i data-lucide="stethoscope"></i></div>

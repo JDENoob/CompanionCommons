@@ -1244,6 +1244,18 @@ body.copy-editing [data-copy]:focus {
 .chart-legend .comparison {
   color: #9fa58f;
 }
+.chart-legend .mobility {
+  color: #667eea;
+}
+.chart-legend .energy {
+  color: #F5A623;
+}
+.chart-legend .appetite {
+  color: #4CAF50;
+}
+.chart-legend .cognitive {
+  color: #9B59B6;
+}
 .line-chart,
 .comparison-chart {
   width: 100%;
@@ -1283,11 +1295,58 @@ body.copy-editing [data-copy]:focus {
   stroke: #a5aa97;
   stroke-dasharray: 8 7;
 }
+/* Real production dashboard colors + borderDash patterns (server.js's
+   Chart.js config for #mobilityChart) — Mobility solid, Energy dashed,
+   Appetite dotted, Cognitive dash-dot, so the marketing mockup actually
+   matches what a real dashboard renders instead of an invented palette. */
+.chart-mobility {
+  stroke: #667eea;
+}
+.chart-energy {
+  stroke: #F5A623;
+  stroke-dasharray: 6 3;
+}
+.chart-appetite {
+  stroke: #4CAF50;
+  stroke-dasharray: 2 2;
+}
+.chart-cognitive {
+  stroke: #9B59B6;
+  stroke-dasharray: 8 3 2 3;
+}
 .chart-note,
 .comparison-source {
   margin: 5px 0 0;
   color: var(--muted);
   font-size: 10px;
+}
+.values-panel {
+  margin-top: 12px;
+}
+.values-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+}
+.values-table th {
+  text-align: center;
+  padding: 6px 10px;
+  border-bottom: 2px solid #EEE;
+  color: #999;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.values-table th:first-child {
+  text-align: left;
+}
+.values-table td {
+  text-align: center;
+  padding: 6px 10px;
+}
+.values-table td:first-child {
+  text-align: left;
+  font-weight: 600;
+  white-space: nowrap;
 }
 .glance-panel ul {
   list-style: none;
