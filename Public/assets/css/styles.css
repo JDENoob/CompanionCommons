@@ -177,14 +177,26 @@ body.copy-editing [data-copy]:focus {
   line-height: 0.88;
 }
 .brand-mark {
-  width: 43px;
-  height: 43px;
-  border: 2px solid var(--coral);
-  color: var(--coral);
-  border-radius: 52% 48% 45% 55%;
-  display: grid;
-  place-items: center;
-  font-size: 25px;
+  display: inline-flex;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+}
+.brand-mark svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.brand-name {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.05;
+}
+.brand-name-sub {
+  /* Real getBoundingClientRect measurement of "Co" (Newsreader, 600, 20px)
+     against the live "Companion" text node — not eyeballed. Shifts
+     "Commons" to start roughly where the word's second letter begins. */
+  padding-left: 24.4px;
 }
 .site-nav {
   display: flex;
