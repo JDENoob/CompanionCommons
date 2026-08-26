@@ -263,7 +263,7 @@ body.copy-editing [data-copy]:focus {
 }
 .hero {
   overflow: hidden;
-  background: linear-gradient(112deg, var(--white) 0 46%, #f4deca 46% 100%);
+  background: var(--white);
 }
 .hero-grid {
   display: grid;
@@ -306,6 +306,7 @@ body.copy-editing [data-copy]:focus {
 }
 .trust-list {
   display: flex;
+  justify-content: space-between;
   gap: 24px;
   list-style: none;
   padding: 0;
@@ -444,7 +445,32 @@ body.copy-editing [data-copy]:focus {
   width: 100%;
   overflow: visible;
   display: block !important;
-  background: none !important;
+  /* Solid fill on the actual grid cell, not a hand-tuned gradient on .hero --
+     this keeps the vertical split exactly on the real column boundary at
+     every viewport width, including once .container hits its max-width.
+     Flat color is also the correct look below 981px: .hero-community
+     stacks full-width there (see the 980px/680px blocks), so there's no
+     adjacent white column left to blend from -- see the min-width block
+     below for the desktop-only soft blend at the column boundary. */
+  background: #f4deca !important;
+}
+@media (min-width: 981px) {
+  .hero-community {
+    /* Soft wash from the white hero-copy column into the flat tan fill,
+       instead of the hard edge at the grid boundary. Fixed px stops (not
+       %) keep the blend width constant regardless of the column's actual
+       pixel width -- a wide screen just holds solid tan longer, it
+       doesn't stretch the fade itself. */
+    background: linear-gradient(to right, var(--white) 0px, #f4deca 140px, #f4deca 100%) !important;
+  }
+}
+.hero-community:before,
+.hero-community:after {
+  /* The base .hero-visual's decorative blur circles are sized/positioned
+     for its default ~650px-tall box. This variant stacks the hexagon and
+     the message text much taller, so those circles land mid-content
+     (behind the "Pet families" heading) instead of staying decorative. */
+  display: none;
 }
 
 .community-visual {
@@ -453,26 +479,6 @@ body.copy-editing [data-copy]:focus {
   aspect-ratio: 1 / 1;
   max-width: 600px;
   height: auto;
-}
-
-/* Background shapes with warm gradient */
-.community-background {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(
-    135deg,
-    #f7f0e6 0%,
-    #f3d8c8 25%,
-    #f9e8d7 50%,
-    #f2d9c4 75%,
-    #ede6dc 100%
-  );
-  border-radius: 50% 50% 45% 50% / 50% 50% 50% 45%;
-  opacity: 1;
-  z-index: 0;
 }
 
 /* Dog network container */
