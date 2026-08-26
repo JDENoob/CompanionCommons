@@ -125,94 +125,104 @@
               <!-- Background shapes (decorative) -->
               <div class="community-background"></div>
 
-              <!-- Community network -->
-              <div class="community-network">
-                <!-- Network path (dotted circle, decorative) -->
-                <svg class="community-network-path" viewBox="0 0 400 400" aria-hidden="true">
-                  <circle cx="200" cy="200" r="130" fill="none" stroke="#88977d" stroke-width="2" stroke-dasharray="6,4" opacity="0.4"/>
+              <!-- Dog network: six real dogs, evenly arranged around a
+                   central hub -- same radiating-network idea as the
+                   collective-card icon, built at hero scale with real
+                   photography and no size hierarchy among the dogs. -->
+              <div class="dog-network">
+                <svg class="dog-network-lines" viewBox="0 0 100 100" aria-hidden="true">
+                  <!-- Spokes: hub center (50,50) to each of the 6 photo centers -->
+                  <line x1="50" y1="50" x2="50" y2="14" stroke="#88977d" stroke-width="0.3"/>
+                  <line x1="50" y1="50" x2="81.2" y2="32" stroke="#88977d" stroke-width="0.3"/>
+                  <line x1="50" y1="50" x2="81.2" y2="68" stroke="#88977d" stroke-width="0.3"/>
+                  <line x1="50" y1="50" x2="50" y2="86" stroke="#88977d" stroke-width="0.3"/>
+                  <line x1="50" y1="50" x2="18.8" y2="68" stroke="#88977d" stroke-width="0.3"/>
+                  <line x1="50" y1="50" x2="18.8" y2="32" stroke="#88977d" stroke-width="0.3"/>
+
+                  <!-- Web connections: the full hexagonal ring between each
+                       photo and its two neighbors -- still far short of a
+                       complete 15-line mesh, reads as one loose web/loop -->
+                  <line x1="50" y1="14" x2="81.2" y2="32" stroke="#88977d" stroke-width="0.16" stroke-dasharray="1.4 1.2" opacity="0.55"/>
+                  <line x1="81.2" y1="32" x2="81.2" y2="68" stroke="#88977d" stroke-width="0.16" stroke-dasharray="1.4 1.2" opacity="0.55"/>
+                  <line x1="81.2" y1="68" x2="50" y2="86" stroke="#88977d" stroke-width="0.16" stroke-dasharray="1.4 1.2" opacity="0.55"/>
+                  <line x1="50" y1="86" x2="18.8" y2="68" stroke="#88977d" stroke-width="0.16" stroke-dasharray="1.4 1.2" opacity="0.55"/>
+                  <line x1="18.8" y1="68" x2="18.8" y2="32" stroke="#88977d" stroke-width="0.16" stroke-dasharray="1.4 1.2" opacity="0.55"/>
+                  <line x1="18.8" y1="32" x2="50" y2="14" stroke="#88977d" stroke-width="0.16" stroke-dasharray="1.4 1.2" opacity="0.55"/>
                 </svg>
 
-                <!-- Center Labrador -->
-                <div class="community-center">
+                <!-- Center hub: the logo mark's paw + trend-line trace only
+                     (no outer dashed ring, no 4 community dots -- the 6 real
+                     photos around it do that job now) -->
+                <div class="dog-hub">
+                  <svg viewBox="0 0 100 100" aria-hidden="true">
+                    <ellipse cx="50" cy="55" rx="17" ry="13" fill="none" stroke="#332e2a" stroke-width="4"/>
+                    <ellipse cx="30" cy="30" rx="7.5" ry="9.5" fill="none" stroke="#332e2a" stroke-width="4"/>
+                    <ellipse cx="42" cy="17" rx="7.5" ry="9.5" fill="none" stroke="#332e2a" stroke-width="4"/>
+                    <ellipse cx="58" cy="17" rx="7.5" ry="9.5" fill="none" stroke="#332e2a" stroke-width="4"/>
+                    <ellipse cx="70" cy="30" rx="7.5" ry="9.5" fill="none" stroke="#332e2a" stroke-width="4"/>
+                    <path d="M41,58 Q44,53 46,50 Q49,54 52,60 Q55,54 59,48" fill="none" stroke="#d96f56" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+                    <circle cx="59" cy="48" r="1.8" fill="#d96f56"/>
+                  </svg>
+                </div>
+
+                <div class="dog-photo dog-photo-1">
                   <img
-                    src="assets/images/center-labrador.jpg"
-                    alt="A yellow Labrador, a member of the Companion Commons community"
+                    src="assets/images/hero-dogs/hero-husky.jpg"
+                    alt="A senior gray-muzzled husky-malamute mix, a Companion Commons dog"
+                    loading="lazy"
+                    width="400"
+                    height="300"
+                  />
+                </div>
+
+                <div class="dog-photo dog-photo-2">
+                  <img
+                    src="assets/images/hero-dogs/hero-dog-bluebonnets.jpg"
+                    alt="A chocolate Labrador sitting in a field of bluebonnets"
                     loading="lazy"
                     width="300"
                     height="300"
                   />
                 </div>
 
-                <!-- BUBBLE 1 (1 o'clock) - PHOTO: replace assets/images/community-bubble-1.jpg -->
-                <div class="community-bubble community-bubble-1">
+                <div class="dog-photo dog-photo-3">
                   <img
-                    src="assets/images/community-bubble-1.jpg"
-                    alt="A Companion Commons member's dog"
+                    src="assets/images/hero-dogs/hero-dog-blacklab.jpg"
+                    alt="A black Labrador-type dog in close profile"
                     loading="lazy"
-                    width="100"
-                    height="100"
+                    width="300"
+                    height="322"
                   />
                 </div>
 
-                <!-- BUBBLE 2 (3 o'clock) - SVG: Two people with dog between -->
-                <div class="community-bubble community-bubble-2">
+                <div class="dog-photo dog-photo-4">
                   <img
-                    src="assets/images/community-bubble-2.png"
-                    alt="Two people with their dog"
+                    src="assets/images/hero-dogs/hero-dog-pumpkin.jpg"
+                    alt="A yellow Labrador sitting among pumpkins"
                     loading="lazy"
-                    width="100"
-                    height="100"
+                    width="450"
+                    height="300"
                   />
                 </div>
 
-                <!-- BUBBLE 3 (5 o'clock) - PHOTO: replace assets/images/community-bubble-3.jpg -->
-                <div class="community-bubble community-bubble-3">
+                <div class="dog-photo dog-photo-5">
                   <img
-                    src="assets/images/community-bubble-3.jpg"
-                    alt="A Companion Commons member's dog"
+                    src="assets/images/hero-dogs/hero-dog-terrier.jpg"
+                    alt="A black-and-white terrier mix named Hermosa, sitting on a beach"
                     loading="lazy"
-                    width="100"
-                    height="100"
+                    width="400"
+                    height="300"
                   />
                 </div>
 
-                <!-- BUBBLE 4 (7 o'clock) - SVG: Person sitting on couch with dog curled beside them -->
-                <div class="community-bubble community-bubble-4">
+                <div class="dog-photo dog-photo-6">
                   <img
-                    src="assets/images/community-bubble-4.png"
-                    alt="A person and their dog together"
+                    src="assets/images/hero-dogs/hero-dog-boxer.jpg"
+                    alt="A fawn Boxer with a white chest and muzzle blaze"
                     loading="lazy"
-                    width="100"
-                    height="100"
+                    width="300"
+                    height="400"
                   />
-                </div>
-
-                <!-- BUBBLE 5 (9 o'clock) - PHOTO: replace assets/images/community-bubble-5.jpg -->
-                <div class="community-bubble community-bubble-5">
-                  <img
-                    src="assets/images/community-bubble-5.jpg"
-                    alt="A Companion Commons member's dog"
-                    loading="lazy"
-                    width="100"
-                    height="100"
-                  />
-                </div>
-
-                <!-- BUBBLE 6 (11 o'clock) - SVG: Person kneeling beside dog at a food bowl -->
-                <div class="community-bubble community-bubble-6">
-                  <img
-                    src="assets/images/community-bubble-6.png"
-                    alt="A person walking their dog"
-                    loading="lazy"
-                    width="100"
-                    height="100"
-                  />
-                </div>
-
-                <!-- Invitation bubble (5 o'clock area, separate) -->
-                <div class="community-invitation">
-                  <span aria-hidden="true">+</span>
-                  <span data-copy="community.invitation">Your companion<br>belongs here.</span>
                 </div>
               </div>
             </div>

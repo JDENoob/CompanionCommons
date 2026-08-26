@@ -475,8 +475,8 @@ body.copy-editing [data-copy]:focus {
   z-index: 0;
 }
 
-/* Community network container */
-.community-network {
+/* Dog network container */
+.dog-network {
   position: relative;
   width: 100%;
   height: 100%;
@@ -486,8 +486,8 @@ body.copy-editing [data-copy]:focus {
   z-index: 1;
 }
 
-/* Dotted network path */
-.community-network-path {
+/* Connecting lines + coral convergence dot */
+.dog-network-lines {
   position: absolute;
   width: 100%;
   height: 100%;
@@ -496,52 +496,48 @@ body.copy-editing [data-copy]:focus {
   z-index: 1;
 }
 
-/* ===== CENTER LABRADOR ===== */
+/* ===== CENTER HUB ===== */
 
-.community-center {
+.dog-hub {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 280px;
-  height: 280px;
+  width: 190px;
+  height: 190px;
   border-radius: 50%;
-  background: #fff;
-  padding: 8px;
+  background: #fffdfc;
+  padding: 30px;
   box-shadow:
     0 0 0 2px #e6d9ca,
     inset 0 0 0 1px rgba(0, 0, 0, 0.05);
   z-index: 10;
-  overflow: hidden;
 }
 
-.community-center img {
+.dog-hub svg {
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  object-position: center 25%;
-  border-radius: 50%;
   display: block;
 }
 
-/* ===== SURROUNDING BUBBLES (6 items in circle) ===== */
+/* ===== SIX DOGS, EVENLY SPACED AROUND THE HUB ===== */
 
-.community-bubble {
+.dog-photo {
   position: absolute;
-  width: 100px;
-  height: 100px;
+  top: 50%;
+  left: 50%;
+  width: 150px;
+  height: 150px;
   border-radius: 50%;
   background: #fff;
   border: 3px solid #e6d9ca;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  display: flex;
-  align-items: center;
-  justify-content: center;
   overflow: hidden;
   z-index: 5;
+  transition: box-shadow 0.3s ease, transform 0.3s ease;
 }
 
-.community-bubble img {
+.dog-photo img {
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -550,126 +546,66 @@ body.copy-editing [data-copy]:focus {
   display: block;
 }
 
-.community-bubble svg {
-  width: 100%;
-  height: 100%;
-}
-
-/* Bubble positioning: 6 items equally spaced (60° apart) at equal distance from center */
-/* Each bubble positioned at 60° intervals: 30°, 90°, 150°, 210°, 270°, 330° */
-/* Distance from center: 35% (accounting for 20px gap + bubble radius) */
-
-.community-bubble-1 {
-  /* 1 o'clock (30°) */
-  top: 19.69%;
-  left: 67.5%;
-  transform: translate(-50%, -50%);
-}
-
-.community-bubble-2 {
-  /* 3 o'clock (90°) */
-  top: 50%;
-  left: 85%;
-  transform: translate(-50%, -50%);
-}
-
-.community-bubble-3 {
-  /* 5 o'clock (150°) */
-  top: 80.31%;
-  left: 67.5%;
-  transform: translate(-50%, -50%);
-}
-
-.community-bubble-4 {
-  /* 7 o'clock (210°) */
-  top: 80.31%;
-  left: 32.5%;
-  transform: translate(-50%, -50%);
-}
-
-.community-bubble-5 {
-  /* 9 o'clock (270°) */
-  top: 50%;
-  left: 15%;
-  transform: translate(-50%, -50%);
-}
-
-.community-bubble-6 {
-  /* 11 o'clock (330°) */
-  top: 19.69%;
-  left: 32.5%;
-  transform: translate(-50%, -50%);
-}
-
-/* Hover effect - lift slightly upward */
-.community-bubble {
-  transition: all 0.3s ease;
-}
-
-.community-bubble:hover {
+.dog-photo:hover {
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
-}
-
-.community-bubble-1:hover {
   transform: translate(-50%, calc(-50% - 4px));
 }
 
-.community-bubble-2:hover {
-  transform: translate(-50%, calc(-50% - 4px));
+.dog-photo-1 {
+  /* husky, top */
+  top: 14%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+.dog-photo-1 img {
+  object-position: 45% 42%;
 }
 
-.community-bubble-3:hover {
-  transform: translate(-50%, calc(-50% - 4px));
+.dog-photo-2 {
+  /* bluebonnets, upper-right */
+  top: 32%;
+  left: 81.2%;
+  transform: translate(-50%, -50%);
 }
 
-.community-bubble-4:hover {
-  transform: translate(-50%, calc(-50% - 4px));
+.dog-photo-3 {
+  /* black lab, lower-right */
+  top: 68%;
+  left: 81.2%;
+  transform: translate(-50%, -50%);
+}
+.dog-photo-3 img {
+  object-position: 55% 42%;
 }
 
-.community-bubble-5:hover {
-  transform: translate(-50%, calc(-50% - 4px));
+.dog-photo-4 {
+  /* pumpkin, bottom */
+  top: 86%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+.dog-photo-4 img {
+  object-position: 48% center;
 }
 
-.community-bubble-6:hover {
-  transform: translate(-50%, calc(-50% - 4px));
+.dog-photo-5 {
+  /* terrier, lower-left */
+  top: 68%;
+  left: 18.8%;
+  transform: translate(-50%, -50%);
+}
+.dog-photo-5 img {
+  object-position: 58% 35%;
 }
 
-/* ===== INVITATION BUBBLE ===== */
-
-.community-invitation {
-  position: absolute;
-  bottom: 20%;
-  right: 5%;
-  width: 90px;
-  height: 90px;
-  border-radius: 50%;
-  background: #f2d9c4;
-  border: 3px solid #d4af88;
-  color: #8b6f47;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-weight: 600;
-  font-size: 0.62rem;
-  text-align: center;
-  line-height: 1.25;
-  z-index: 6;
-  padding: 6px 10px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+.dog-photo-6 {
+  /* boxer, upper-left */
+  top: 32%;
+  left: 18.8%;
+  transform: translate(-50%, -50%);
 }
-
-.community-invitation span:first-child {
-  font-size: 1.1rem;
-  line-height: 1;
-  margin-bottom: 2px;
-  color: #a89968;
-}
-
-.community-invitation:hover {
-  transform: translate(0, -54px);
-  background: #ede6dc;
-  transition: all 0.3s ease;
+.dog-photo-6 img {
+  object-position: 50% 30%;
 }
 
 /* ===== TEXT COLUMN (right side) ===== */
@@ -723,56 +659,15 @@ body.copy-editing [data-copy]:focus {
     margin: 0 auto;
   }
 
-  .community-center {
-    width: 220px;
-    height: 220px;
+  .dog-hub {
+    width: 158px;
+    height: 158px;
+    padding: 25px;
   }
 
-  .community-bubble {
-    width: 80px;
-    height: 80px;
-    border: 2.5px solid #e6d9ca;
-  }
-
-  /* Adjust bubble positioning for tablet (80px bubbles) - 34% distance */
-  .community-bubble-1 {
-    top: 20.56%;
-    left: 67%;
-  }
-
-  .community-bubble-2 {
-    top: 50%;
-    left: 84%;
-  }
-
-  .community-bubble-3 {
-    top: 79.44%;
-    left: 67%;
-  }
-
-  .community-bubble-4 {
-    top: 79.44%;
-    left: 33%;
-  }
-
-  .community-bubble-5 {
-    top: 50%;
-    left: 16%;
-  }
-
-  .community-bubble-6 {
-    top: 20.56%;
-    left: 33%;
-  }
-
-  .community-invitation {
-    width: 75px;
-    height: 75px;
-    font-size: 0.55rem;
-  }
-
-  .community-invitation span:first-child {
-    font-size: 1rem;
+  .dog-photo {
+    width: 125px;
+    height: 125px;
   }
 
   .community-message {
@@ -813,77 +708,26 @@ body.copy-editing [data-copy]:focus {
     font-size: 0.95rem;
   }
 
-  .community-center {
-    width: 180px;
-    height: 180px;
-    padding: 6px;
+  .dog-hub {
+    width: 108px;
+    height: 108px;
+    padding: 17px;
   }
 
-  .community-bubble {
-    width: 65px;
-    height: 65px;
-    border: 2px solid #e6d9ca;
-  }
-
-  /* Adjust bubble positioning for mobile (65px bubbles) - 33.5% distance */
-  .community-bubble-1 {
-    top: 21.3%;
-    left: 66.75%;
-  }
-
-  .community-bubble-2 {
-    top: 50%;
-    left: 83.5%;
-  }
-
-  .community-bubble-3 {
-    top: 78.7%;
-    left: 66.75%;
-  }
-
-  .community-bubble-4 {
-    top: 78.7%;
-    left: 33.25%;
-  }
-
-  .community-bubble-5 {
-    top: 50%;
-    left: 16.5%;
-  }
-
-  .community-bubble-6 {
-    top: 21.3%;
-    left: 33.25%;
-  }
-
-  .community-invitation {
-    width: 65px;
-    height: 65px;
-    font-size: 0.52rem;
-  }
-
-  .community-invitation span:first-child {
-    font-size: 0.9rem;
-    margin-bottom: 0;
-  }
-
-  /* Show only 4 bubbles on mobile */
-  .community-bubble-4,
-  .community-bubble-6 {
-    display: none;
+  .dog-photo {
+    width: 86px;
+    height: 86px;
   }
 }
 
 /* ===== ACCESSIBILITY ===== */
 
 @media (prefers-reduced-motion: reduce) {
-  .community-bubble,
-  .community-invitation {
+  .dog-photo {
     transition: none;
   }
 
-  .community-bubble:hover,
-  .community-invitation:hover {
+  .dog-photo:hover {
     transform: none;
   }
 }
