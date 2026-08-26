@@ -313,6 +313,7 @@ function buildSingleItemWidgetHtml(domainKey, currentValue, { baseline = false }
 const requiredEnvVars = [
   'SUPABASE_URL',
   'SUPABASE_ANON_KEY',
+  'SUPABASE_SERVICE_ROLE_KEY',
   'TWILIO_ACCOUNT_SID',
   'TWILIO_AUTH_TOKEN',
   'TWILIO_PHONE_NUMBER'
@@ -581,12 +582,6 @@ app.use('/api/page', (req, res, next) => {
 // ============================================
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-// ============================================
-// SUPABASE ADMIN CLIENT (for bucket creation)
-// ============================================
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 if (SUPABASE_SERVICE_ROLE_KEY) {
   console.log('✅ Service role key loaded');
@@ -594,6 +589,19 @@ if (SUPABASE_SERVICE_ROLE_KEY) {
   console.warn('⚠️ SUPABASE_SERVICE_ROLE_KEY not in .env');
 }
 
+// Uses the service role key, not the anon key — this client is used for
+// nearly every read/write in the app, and there is no browser-side/anon
+// access path anywhere in this codebase (confirmed: zero client-side
+// Supabase usage in Public/*.html). Service role bypasses RLS by design,
+// which is required now that RLS is enabled on every table — see
+// migration_enable_rls_all_tables.sql. SUPABASE_ANON_KEY is kept defined
+// above since it's still a required env var, but is no longer used by
+// this client.
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+// ============================================
+// SUPABASE ADMIN CLIENT (for bucket creation)
+// ============================================
 const supabaseAdmin = SUPABASE_SERVICE_ROLE_KEY
   ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
   : null;
