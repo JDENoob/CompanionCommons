@@ -165,6 +165,15 @@ body.copy-editing [data-copy]:focus {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  /* Without a floor, justify-content's single distributable gap (between
+     the brand and the .site-nav block) absorbs 100% of any horizontal
+     squeeze -- measured collapsing to 0px at 1100px viewport width while
+     .site-nav's own internal 18px link-to-link gaps stayed protected,
+     which is what actually produced the "logo crammed against How It
+     Works" look. Matching that same 18px here as a minimum keeps every
+     gap in the row visually consistent instead of concentrating all the
+     narrowing pressure on just the one next to the logo. */
+  gap: 18px;
 }
 .brand {
   display: inline-flex;
@@ -275,7 +284,7 @@ body.copy-editing [data-copy]:focus {
   min-height: 650px;
 }
 .hero-copy {
-  padding: 92px 56px 82px 0;
+  padding: 92px 56px 21px 0;
   align-self: center;
 }
 .eyebrow {
@@ -286,6 +295,19 @@ body.copy-editing [data-copy]:focus {
   font-weight: 700;
   letter-spacing: 0.105em;
   text-transform: uppercase;
+}
+.hero-copy .eyebrow {
+  /* Pull the eyebrow up inside .hero-copy's padding-top (92px desktop /
+     72px mobile) without moving the heading below it: margin-top and
+     margin-bottom shift by the same 36px in opposite directions, so the
+     eyebrow's own box height (and therefore .hero-copy's total height and
+     the vertically-centered heading's absolute position) is unchanged.
+     padding-bottom above is separately trimmed 82px -> 21px to offset the
+     ~61px height the heading gains from its own manual <br> line-break
+     (see .hero h1's markup) -- without that, the taller heading would
+     shift the whole vertically-centered block, moving H1 itself. */
+  margin-top: -36px;
+  margin-bottom: 55px;
 }
 .hero h1 {
   max-width: 690px;
@@ -1472,6 +1494,15 @@ body.copy-editing [data-copy]:focus {
   }
   .hero-copy {
     padding: 72px 0 58px;
+  }
+  .hero-copy .eyebrow {
+    /* The desktop-only -36px/+55px pull (declared above, outside this
+       media query) was landing the nav-to-eyebrow gap at 19px here --
+       never reviewed for mobile, and a much bigger proportional cut than
+       what was actually asked for (desktop hero spacing only). Reset back
+       to the shared .eyebrow base so mobile keeps its original spacing. */
+    margin-top: 0;
+    margin-bottom: 19px;
   }
   .hero-visual {
     min-height: 510px;
