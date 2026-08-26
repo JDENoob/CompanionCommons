@@ -1334,7 +1334,7 @@ app.get('/check-in/:dog_id', async (req, res) => {
     if (error || !dog) {
       return res.status(404).send(`
         <!DOCTYPE html>
-        <html>
+        <html lang="en">
         <head>
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>Dog Not Found</title>
@@ -1361,7 +1361,7 @@ app.get('/check-in/:dog_id', async (req, res) => {
     if (Math.floor(daysSinceSignupForCheckin / 7) === 0) {
       return res.send(`
         <!DOCTYPE html>
-        <html>
+        <html lang="en">
         <head>
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>Not ready yet</title>
@@ -1440,7 +1440,7 @@ app.get('/check-in/:dog_id', async (req, res) => {
     if (alreadySubmittedThisWeek) {
       return res.send(`
         <!DOCTYPE html>
-        <html>
+        <html lang="en">
         <head>
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>Already checked in</title>
@@ -1470,7 +1470,7 @@ app.get('/check-in/:dog_id', async (req, res) => {
     // Send HTML form
     res.send(`
       <!DOCTYPE html>
-      <html>
+      <html lang="en">
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>${escapeHtml(dog.dog_name)}'s Check-In</title>
@@ -1530,21 +1530,21 @@ app.get('/check-in/:dog_id', async (req, res) => {
       </head>
       <body>
         <div class="card">
-          <h2><i data-lucide="clipboard-check"></i> ${escapeHtml(dog.dog_name)}'s Check-In</h2>
+          <h1><i data-lucide="clipboard-check"></i> ${escapeHtml(dog.dog_name)}'s Check-In</h1>
           <p class="subtitle">Week ${weekNumber} Health Tracker</p>
 
           <form id="checkinForm">
-            <h3 style="font-size: 15px; font-weight: 600; color: #333; margin: 0 0 4px 0;">Mobility</h3>
+            <h2 style="font-size: 15px; font-weight: 600; color: #333; margin: 0 0 4px 0;">Mobility</h2>
             ${buildDomainItemWidgetsHtml('mobility', mobilityPrefill)}
 
-            <h3 style="font-size: 15px; font-weight: 600; color: #333; margin: 24px 0 4px 0;">Energy</h3>
+            <h2 style="font-size: 15px; font-weight: 600; color: #333; margin: 24px 0 4px 0;">Energy</h2>
             ${buildSingleItemWidgetHtml('energy', latestEnergy)}
 
-            <h3 style="font-size: 15px; font-weight: 600; color: #333; margin: 24px 0 4px 0;">Appetite</h3>
+            <h2 style="font-size: 15px; font-weight: 600; color: #333; margin: 24px 0 4px 0;">Appetite</h2>
             ${buildSingleItemWidgetHtml('appetite', latestAppetite)}
 
             ${showCognitive ? `
-            <h3 style="font-size: 15px; font-weight: 600; color: #333; margin: 24px 0 4px 0;">Cognitive &amp; Behavior</h3>
+            <h2 style="font-size: 15px; font-weight: 600; color: #333; margin: 24px 0 4px 0;">Cognitive &amp; Behavior</h2>
             <p class="hint" style="margin: 0 0 16px 0;">Asked every 4th week.</p>
             ${buildDomainItemWidgetsHtml('cognitive', cognitivePrefill)}
             ` : ''}
@@ -3506,7 +3506,7 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
     if (dogError || !dog) {
       return res.status(404).send(`
         <!DOCTYPE html>
-        <html>
+        <html lang="en">
         <head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Not Found</title></head>
         <body style="font-family: -apple-system, sans-serif; max-width: 600px; margin: 60px auto; padding: 20px; text-align: center;">
           <h2>❌ Dog Not Found</h2>
@@ -3525,7 +3525,7 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
     if (currentWeek < 2) {
       return res.send(`
         <!DOCTYPE html>
-        <html>
+        <html lang="en">
         <head>
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>${escapeHtml(dog.dog_name)}'s Breed Guide</title>
@@ -3650,7 +3650,7 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
 
     res.send(`
       <!DOCTYPE html>
-      <html>
+      <html lang="en">
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3799,7 +3799,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
       console.error('Dog not found:', dogError);
       return res.status(404).send(`
         <!DOCTYPE html>
-        <html>
+        <html lang="en">
         <head>
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>Dog Not Found</title>
@@ -4227,7 +4227,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
     // Send dashboard HTML with Chart.js visualization
     res.send(`
       <!DOCTYPE html>
-      <html>
+      <html lang="en">
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>${escapeHtml(dog.dog_name)}'s Dashboard</title>
