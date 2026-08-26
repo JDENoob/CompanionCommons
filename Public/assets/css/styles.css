@@ -1430,6 +1430,53 @@ body.copy-editing [data-copy]:focus {
   color: var(--muted);
   font-size: 14px;
 }
+/* The inline desktop nav (.site-nav, plus its .menu-toggle trigger) gets
+   its own, wider breakpoint than the rest of the page's 980px tablet
+   cutoff. Originally measured at ~1275px with the old "Trust, Privacy &
+   Independence" label (the widest item, whose shrunk-but-wrapped box was
+   also what caused a large uneven-looking gap before "FAQs" -- the gap
+   value itself was always a uniform 18px). Shortening that label to
+   "Trust & Privacy" (207px -> 102px) dropped the wrap threshold
+   substantially, but not as far as an earlier override-based test
+   estimated: that method had an unaccounted ~7-10px generosity bias
+   (caught by cross-checking it against the already-known original
+   ~1275px number), and an initial 1160px breakpoint chosen from it was
+   verified live to still wrap (1160-1165px wrap, 1170px+ is clean).
+   1180px is the real, directly-verified-on-the-actual-page safe value.
+   Deliberately NOT folded into the shared @media (max-width: 980px)
+   block below -- that block also governs
+   hero-grid/impact-grid/value-card/dashboard-* layout, none of which
+   have this fit problem, and raising their breakpoint too would be a
+   much bigger, unrelated layout change. */
+@media (max-width: 1180px) {
+  .site-nav {
+    position: absolute;
+    left: 20px;
+    right: 20px;
+    top: 72px;
+    display: none;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    background: var(--white);
+    padding: 18px;
+    border: 1px solid var(--tan);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+  }
+  .site-nav.is-open {
+    display: flex;
+  }
+  .site-nav a {
+    padding: 13px;
+  }
+  .nav-signin {
+    margin: 0;
+  }
+  .menu-toggle {
+    display: block;
+  }
+}
 @media (max-width: 980px) {
   .dashboard-layout {
     grid-template-columns: 1fr;
@@ -1457,33 +1504,6 @@ body.copy-editing [data-copy]:focus {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 0 20px;
-  }
-  .site-nav {
-    position: absolute;
-    left: 20px;
-    right: 20px;
-    top: 72px;
-    display: none;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0;
-    background: var(--white);
-    padding: 18px;
-    border: 1px solid var(--tan);
-    border-radius: 12px;
-    box-shadow: var(--shadow);
-  }
-  .site-nav.is-open {
-    display: flex;
-  }
-  .site-nav a {
-    padding: 13px;
-  }
-  .nav-signin {
-    margin: 0;
-  }
-  .menu-toggle {
-    display: block;
   }
   .hero-grid {
     grid-template-columns: 1fr;

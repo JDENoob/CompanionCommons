@@ -217,17 +217,24 @@ document.addEventListener('DOMContentLoaded', () => {
   const header = document.querySelector('[data-header]');
 
   if (menuToggle && menu) {
+    // The CSS's open state is driven by the .is-open class
+    // (.site-nav.is-open { display: flex }), and .site-nav itself is
+    // display:none unconditionally otherwise -- not gated on the
+    // native `hidden` attribute. The nav also never carries `hidden`
+    // in the markup to begin with, so the previous `menu.hidden = ...`
+    // toggling never matched what the CSS actually responds to and the
+    // menu could never visibly open. Toggle the class the CSS expects.
     menuToggle.addEventListener('click', () => {
       const isExpanded = menuToggle.getAttribute('aria-expanded') === 'true';
       menuToggle.setAttribute('aria-expanded', !isExpanded);
-      menu.hidden = isExpanded;
+      menu.classList.toggle('is-open', !isExpanded);
     });
 
     // Close menu on link click
     menu.querySelectorAll('a').forEach(link => {
       link.addEventListener('click', () => {
         menuToggle.setAttribute('aria-expanded', 'false');
-        menu.hidden = true;
+        menu.classList.remove('is-open');
       });
     });
   }
