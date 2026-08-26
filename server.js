@@ -755,7 +755,15 @@ const sanitizeArray = (arr) => {
 
 // In-memory stores for rate limiting (production should use Redis)
 const requestCounts = new Map(); // Track requests per IP
-const smsCounts = new Map(); // Track SMS sends per user per day
+const smsCounts = new Map(); // Track sends per contact (phone or email) per day
+// Track lookups per IP specifically for /api/resend-dashboard-link -- separate
+// from requestCounts (the generic 10-req/10-sec-per-IP limiter applied to all
+// POST routes) since that's far too loose for a sensitive "does this phone
+// number/email exist in our system" lookup. Applied directly inside that one
+// route handler, not registered as app-wide middleware, so it only ever
+// covers POST /api/resend-dashboard-link -- never GET page loads of
+// find-my-dashboard.html itself.
+const resendLookupIpCounts = new Map();
 
 // Clean up old entries every hour
 setInterval(() => {
@@ -765,6 +773,12 @@ setInterval(() => {
   for (const [key, data] of requestCounts.entries()) {
     if (data.timestamp < oneHourAgo) {
       requestCounts.delete(key);
+    }
+  }
+
+  for (const [key, data] of resendLookupIpCounts.entries()) {
+    if (data.timestamp < oneHourAgo) {
+      resendLookupIpCounts.delete(key);
     }
   }
 
@@ -810,21 +824,24 @@ const apiRateLimit = (req, res, next) => {
   next();
 };
 
-// Middleware: Rate limit SMS (max 10 SMS per user per day)
-const smsRateLimit = (userId) => {
+// Rate limit sends per contact (max 10 per phone number or email per day).
+// Named generically (not smsRateLimit) since it's keyed by whatever
+// identifier a caller passes -- phone or email both use this same function
+// for /api/resend-dashboard-link. Still just one real call site.
+const perContactRateLimit = (identifier) => {
   const now = Date.now();
   const oneDayAgo = now - (24 * 60 * 60 * 1000);
 
-  if (!smsCounts.has(userId)) {
-    smsCounts.set(userId, { count: 1, timestamp: now });
+  if (!smsCounts.has(identifier)) {
+    smsCounts.set(identifier, { count: 1, timestamp: now });
     return { allowed: true };
   }
 
-  const data = smsCounts.get(userId);
+  const data = smsCounts.get(identifier);
 
   // Reset if day expired
   if (now - data.timestamp > 24 * 60 * 60 * 1000) {
-    smsCounts.set(userId, { count: 1, timestamp: now });
+    smsCounts.set(identifier, { count: 1, timestamp: now });
     return { allowed: true };
   }
 
@@ -832,12 +849,46 @@ const smsRateLimit = (userId) => {
   if (data.count >= 10) {
     return {
       allowed: false,
-      message: 'SMS limit reached. Max 10 per day.',
+      message: 'Send limit reached. Max 10 per day.',
       retryAfter: Math.ceil((24 * 60 * 60 * 1000 - (now - data.timestamp)) / 1000)
     };
   }
 
   // Increment count
+  data.count += 1;
+  return { allowed: true };
+};
+
+// Anti-enumeration limiter for /api/resend-dashboard-link specifically: max 5
+// lookups per IP per 15 minutes. Deliberately much stricter than the generic
+// apiRateLimit (10 req/10sec/IP, ~3,600/hour) -- that's far too loose for a
+// "does this phone number/email exist in our system" lookup, where legitimate
+// use is rare (lost your link once in a while) but breadth-probing many
+// different candidates from one IP is exactly the pattern worth slowing down.
+// Numbers are a provisional starting guess, not validated against real usage
+// -- same as this project's other initial threshold choices -- revisit if
+// real legitimate users ever hit this.
+const resendLookupIpRateLimit = (ip) => {
+  const now = Date.now();
+  const windowMs = 15 * 60 * 1000;
+  const maxRequests = 5;
+
+  if (!resendLookupIpCounts.has(ip)) {
+    resendLookupIpCounts.set(ip, { count: 1, timestamp: now });
+    return { allowed: true };
+  }
+
+  const data = resendLookupIpCounts.get(ip);
+
+  if (now - data.timestamp > windowMs) {
+    resendLookupIpCounts.set(ip, { count: 1, timestamp: now });
+    return { allowed: true };
+  }
+
+  if (data.count >= maxRequests) {
+    return { allowed: false };
+  }
+
   data.count += 1;
   return { allowed: true };
 };
@@ -6931,54 +6982,92 @@ async function sendDashboardLinkEmail(ownerEmail, checkinsLink) {
 // short of waiting for a reminder text to fire incidentally.
 //
 // Security posture, deliberate throughout: this endpoint must never reveal
-// whether a given phone number has an account. Every code path — owner
-// found and message sent, owner not found, or rate-limited — returns the
-// exact same generic response text. The real outcome is only ever visible
-// server-side via console.log.
+// whether a given phone number or email has an account. Every code path —
+// owner found and message sent, owner not found, invalid input, or
+// rate-limited — returns the exact same generic response text. The real
+// outcome is only ever visible server-side via console.log.
+//
+// Timing side-channel fix (found via a real full-site security audit,
+// confirmed empirically: registered numbers averaged 378ms, unregistered
+// averaged 146ms, zero overlap): the actual Twilio/SendGrid send used to be
+// awaited before responding, so a found owner's request always took
+// measurably longer than a not-found one, regardless of the identical
+// response body. Fixed by responding immediately after the (fast) owner
+// lookup and running the actual send fire-and-forget afterward — every path
+// now responds at the same speed. This doesn't lose any user-facing error
+// signal that didn't already not exist: a send failure was already
+// swallowed into the same generic response even when awaited (see the
+// catch blocks below), so the client was never told about a send failure
+// either way. The `responded` guard below makes this safe even if something
+// unexpected throws after the response is sent (logged via the outer catch,
+// never a second res.json() call).
 // ============================================
 app.post('/api/resend-dashboard-link', async (req, res) => {
   const GENERIC_RESPONSE = { success: true, message: "If that number has an account, we've sent a link." };
+  let responded = false;
+  const respond = () => {
+    if (!responded) {
+      responded = true;
+      res.json(GENERIC_RESPONSE);
+    }
+  };
 
   try {
-    const { phone } = req.body;
+    // Anti-enumeration limiter, checked first, before even validating input
+    // shape — separate from the generic apiRateLimit (10 req/10sec/IP,
+    // applied to all POST routes, far too loose for this specific lookup)
+    // and separate from perContactRateLimit below (which only limits
+    // repeats to the same already-known phone/email, not breadth across
+    // many different candidates from one source).
+    const ip = req.ip || req.connection.remoteAddress;
+    const ipLimitResult = resendLookupIpRateLimit(ip);
+    if (!ipLimitResult.allowed) {
+      console.log(`⏭️ resend-dashboard-link: IP rate limited for ${ip}`);
+      return respond();
+    }
+
+    const { phone, email } = req.body;
     // Same normalization used at signup (/api/send-magic-link) — reused
-    // as-is rather than re-implemented, so "what counts as a valid phone"
-    // can't quietly drift between the two routes.
-    const cleanPhone = sanitizePhone(phone);
+    // as-is rather than re-implemented, so "what counts as a valid
+    // phone/email" can't quietly drift between the two routes. Phone wins
+    // if both are somehow present, matching its role elsewhere in the app
+    // as the primary identifier.
+    const cleanPhone = phone ? sanitizePhone(phone) : null;
+    const cleanEmail = (!cleanPhone && email) ? sanitizeEmail(email) : null;
+    const identifier = cleanPhone || cleanEmail;
 
-    if (!cleanPhone) {
-      console.log('ℹ️ resend-dashboard-link: invalid/unparseable phone submitted');
-      return res.json(GENERIC_RESPONSE);
+    if (!identifier) {
+      console.log('ℹ️ resend-dashboard-link: invalid/unparseable phone or email submitted');
+      return respond();
     }
 
-    // Rate limit keyed by the phone number itself, not any userId — this
-    // is the same smsRateLimit() already defined for SMS sending generally,
-    // just never actually wired up anywhere until now. Keying by phone
-    // (not IP) matters here specifically because the real risk with a
-    // public "resend my link" form is someone spamming a stranger's real
-    // number, not one IP hammering the endpoint (already covered by the
-    // global apiRateLimit on all POST routes).
-    const rateLimitResult = smsRateLimit(cleanPhone);
+    // Rate limit keyed by the identifier itself, not IP — this is the same
+    // perContactRateLimit() used for both phone and email, protecting one
+    // real contact from repeated sends regardless of which channel it is.
+    const rateLimitResult = perContactRateLimit(identifier);
     if (!rateLimitResult.allowed) {
-      console.log(`⏭️ resend-dashboard-link: rate limited for ${cleanPhone}`);
-      return res.json(GENERIC_RESPONSE);
+      console.log(`⏭️ resend-dashboard-link: rate limited for ${identifier}`);
+      return respond();
     }
 
-    const { data: owner, error: ownerError } = await supabase
-      .from('owners')
-      .select('id, email, phone, preferred_contact_method')
-      .eq('phone', cleanPhone)
-      .maybeSingle();
+    const ownerLookup = cleanPhone
+      ? supabase.from('owners').select('id, email, phone, preferred_contact_method').eq('phone', cleanPhone).maybeSingle()
+      : supabase.from('owners').select('id, email, phone, preferred_contact_method').eq('email', cleanEmail).maybeSingle();
+    const { data: owner, error: ownerError } = await ownerLookup;
 
     if (ownerError) {
       console.error('Error looking up owner for resend-dashboard-link:', ownerError);
-      return res.json(GENERIC_RESPONSE);
+      return respond();
     }
 
     if (!owner) {
-      console.log(`ℹ️ resend-dashboard-link: no owner found for ${cleanPhone}`);
-      return res.json(GENERIC_RESPONSE);
+      console.log(`ℹ️ resend-dashboard-link: no owner found for ${identifier}`);
+      return respond();
     }
+
+    // Respond now — everything below runs fire-and-forget and must never
+    // touch `res` again (see the security-posture comment above).
+    respond();
 
     // Reuses the existing /checkins/:owner_id page as-is — it already
     // lists every one of the owner's dogs with status and a dashboard link
@@ -7006,14 +7095,12 @@ app.post('/api/resend-dashboard-link', async (req, res) => {
         console.error(`❌ resend-dashboard-link email failed for ${owner.email}`);
       }
     }
-
-    return res.json(GENERIC_RESPONSE);
   } catch (error) {
     // Still the same generic response even on an unexpected server error —
     // no path through this endpoint should ever look different from any
-    // other to the client.
+    // other to the client. Safe no-op if already responded (see `respond`).
     console.error('Error in resend-dashboard-link endpoint:', error);
-    return res.json(GENERIC_RESPONSE);
+    respond();
   }
 });
 

@@ -32,7 +32,7 @@
           <p class="eyebrow">Already Signed Up?</p>
           <h1>Find Your Dashboard</h1>
           <p>
-            Lost your original text or link? Enter the phone number you signed up with and we'll send you a link back to your dog's (or dogs') dashboard.
+            Lost your original text or link? Enter the phone number or email you signed up with and we'll send you a link back to your dog's (or dogs') dashboard.
           </p>
         </div>
       </section>
@@ -41,8 +41,11 @@
         <div class="container" style="max-width: 480px;">
           <form id="findForm">
             <div class="form-group">
-              <label for="phone">Phone number</label>
-              <input type="tel" id="phone" name="phone" required placeholder="(555) 123-4567" autocomplete="tel" />
+              <label for="lookupValue" id="lookupLabel">Phone number</label>
+              <input type="tel" id="lookupValue" name="lookupValue" required placeholder="(555) 123-4567" autocomplete="tel" />
+              <p style="margin: 8px 0 0 0; font-size: 13px;">
+                <a href="#" id="toggleLookupMode" style="color: #d96f56;">Use email instead</a>
+              </p>
             </div>
 
             <button type="submit" class="button" style="width: 100%; margin-top: 10px;" id="submitBtn">
@@ -80,12 +83,44 @@
     </footer>
 
     <script>
+      let lookupMode = 'phone'; // 'phone' or 'email'
+
+      const modeConfig = {
+        phone: {
+          label: 'Phone number', type: 'tel', placeholder: '(555) 123-4567', autocomplete: 'tel',
+          toggleText: 'Use email instead', submitText: 'Text Me My Link'
+        },
+        email: {
+          label: 'Email address', type: 'email', placeholder: 'you@example.com', autocomplete: 'email',
+          toggleText: 'Use phone instead', submitText: 'Email Me My Link'
+        }
+      };
+
+      function applyLookupMode() {
+        const cfg = modeConfig[lookupMode];
+        document.getElementById('lookupLabel').textContent = cfg.label;
+        const input = document.getElementById('lookupValue');
+        input.type = cfg.type;
+        input.placeholder = cfg.placeholder;
+        input.autocomplete = cfg.autocomplete;
+        input.value = '';
+        document.getElementById('toggleLookupMode').textContent = cfg.toggleText;
+        document.getElementById('submitBtn').textContent = cfg.submitText;
+      }
+
+      document.getElementById('toggleLookupMode').addEventListener('click', (e) => {
+        e.preventDefault();
+        lookupMode = lookupMode === 'phone' ? 'email' : 'phone';
+        applyLookupMode();
+      });
+
       document.getElementById('findForm').addEventListener('submit', async (e) => {
         e.preventDefault();
 
         const btn = document.getElementById('submitBtn');
         const resultBox = document.getElementById('resultMessage');
-        const phone = document.getElementById('phone').value;
+        const value = document.getElementById('lookupValue').value;
+        const payload = lookupMode === 'phone' ? { phone: value } : { email: value };
 
         btn.disabled = true;
         btn.textContent = 'Sending...';
@@ -94,7 +129,7 @@
           const response = await fetch('/api/resend-dashboard-link', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ phone })
+            body: JSON.stringify(payload)
           });
 
           const result = await response.json();
@@ -106,7 +141,7 @@
           resultBox.style.display = 'block';
         } finally {
           btn.disabled = false;
-          btn.textContent = 'Text Me My Link';
+          btn.textContent = modeConfig[lookupMode].submitText;
         }
       });
     </script>
@@ -114,7 +149,7 @@
     <style>
       .form-group { margin-bottom: 20px; }
       label { display: block; font-weight: 500; color: #333; margin-bottom: 6px; font-size: 14px; }
-      input[type="tel"] {
+      #lookupValue {
         width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-family: inherit; font-size: 14px; box-sizing: border-box;
       }
     </style>
