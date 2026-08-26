@@ -178,7 +178,7 @@ function roundToOneDecimal(n) {
 // isn't real) rather than just absent, so it's left off deliberately.
 // Real client-side enforcement is formHasAllScoreItemsAnswered() below,
 // which Stage 2/3's form submit handlers must call explicitly.
-function buildScoreItemWidget(fieldName, label, anchorLow, anchorHigh, currentValue) {
+function buildScoreItemWidget(fieldName, label, anchorLow, anchorHigh, currentValue, { hideLabel = false } = {}) {
   const buttons = [];
   for (let v = INSTRUMENT_SCALE_MIN; v <= INSTRUMENT_SCALE_MAX; v++) {
     buttons.push(`<button type="button" class="score-btn" data-value="${v}">${v}</button>`);
@@ -186,7 +186,7 @@ function buildScoreItemWidget(fieldName, label, anchorLow, anchorHigh, currentVa
   const safeValue = isValidInstrumentValue(currentValue) ? Number(currentValue) : '';
   return `
     <div class="form-group score-item" data-score-item>
-      <label>${escapeHtml(label)}</label>
+      ${hideLabel ? '' : `<label>${escapeHtml(label)}</label>`}
       <div class="score-buttons" role="group" aria-label="${escapeHtml(label)}">
         ${buttons.join('')}
       </div>
@@ -301,10 +301,15 @@ function buildDomainItemWidgetsHtml(domainKey, currentValuesByItemKey, { baselin
 
 // Same idea for a single-item domain (energy, appetite) — one widget, field
 // name is the domain's own composite column (no averaging to do).
+// hideLabel: true — every call site renders this immediately under its own
+// domain heading (e.g. an <h2>/<h3> reading "Energy"), and domain.label is
+// that exact same string, so the widget's own <label> would just repeat it.
+// The score-buttons group still carries the text via aria-label, so this
+// only removes the redundant visible duplicate, not the accessible name.
 function buildSingleItemWidgetHtml(domainKey, currentValue, { baseline = false } = {}) {
   const domain = HEALTH_INSTRUMENT[domainKey];
   const fieldName = baseline ? domain.baselineCompositeColumn : domain.compositeColumn;
-  return buildScoreItemWidget(fieldName, domain.label, domain.singleItem.anchorLow, domain.singleItem.anchorHigh, currentValue);
+  return buildScoreItemWidget(fieldName, domain.label, domain.singleItem.anchorLow, domain.singleItem.anchorHigh, currentValue, { hideLabel: true });
 }
 
 // ============================================
@@ -1571,7 +1576,7 @@ app.get('/check-in/:dog_id', async (req, res) => {
               style="height: 80px;"
             ></textarea>
 
-            <button type="submit">Submit Check-In ✓</button>
+            <button type="submit" style="background: #A89968; color: white; border: none; padding: 15px; border-radius: 8px; font-size: 16px; cursor: pointer; width: 100%; margin-top: 20px; font-weight: 500;">Submit Check-In ✓</button>
           </form>
         </div>
 
@@ -4635,10 +4640,10 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                         : '';
                     })()}
                     <div class="photo-and-checkin-row" style="display: flex; gap: 8px; margin-bottom: 12px;">
-                      <form id="quickPhotoUpload" style="display: flex; gap: 4px; align-items: center;">
-                        <input type="file" id="quickPhotoInput" accept="image/*" style="padding: 8px 10px; border: 1.5px solid #D4CDB8; border-radius: 8px; font-size: 12px; width: 130px;">
-                        <button type="submit" class="btn-secondary"><i data-lucide="camera"></i> Update ${escapeHtml(dog.dog_name)}'s Photo</button>
-                      </form>
+                      <div style="display: flex; gap: 4px; align-items: center;">
+                        <input type="file" id="quickPhotoInput" accept="image/*" style="position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;">
+                        <button type="button" id="quickPhotoTriggerBtn" class="btn-secondary"><i data-lucide="camera"></i> Update ${escapeHtml(dog.dog_name)}'s Photo</button>
+                      </div>
                       ${isInBaselinePeriod ? `
                       <button class="btn-primary" disabled style="white-space: nowrap; padding: 8px 16px; opacity: 0.5; cursor: not-allowed;">
                         Available in ${daysUntilFirstUpdate} day${daysUntilFirstUpdate === 1 ? '' : 's'}
@@ -5123,12 +5128,14 @@ app.get('/dashboard/:dog_id', async (req, res) => {
           });
 
           // Quick photo upload
-          document.getElementById('quickPhotoUpload').addEventListener('submit', async (e) => {
-            e.preventDefault();
+          document.getElementById('quickPhotoTriggerBtn').addEventListener('click', () => {
+            document.getElementById('quickPhotoInput').click();
+          });
+
+          document.getElementById('quickPhotoInput').addEventListener('change', async () => {
             const photoInput = document.getElementById('quickPhotoInput');
 
             if (!photoInput.files.length) {
-              alert('Please select a photo');
               return;
             }
 

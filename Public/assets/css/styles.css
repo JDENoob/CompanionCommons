@@ -236,6 +236,10 @@ body.copy-editing [data-copy]:focus {
   border-color: var(--coral-dark);
   transform: translateY(-1px);
 }
+.button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
 .button-small {
   min-height: 43px;
   padding: 9px 18px;
