@@ -2042,6 +2042,76 @@ body.copy-editing [data-copy]:focus {
     height: 44px;
   }
 }
+/* "How the Journey Unfolds" timeline -- deliberately a single vertical
+   layout at every width, not a horizontal-desktop/vertical-mobile switch
+   like .ripple-connector above. A 4-stage sequence with real paragraph
+   text per stage is exactly the shape that breaks awkwardly if squeezed
+   horizontally on narrow screens; a vertical timeline can't overflow that
+   way at any width, and reads naturally as "a sequence over time" rather
+   than "steps to perform" -- the intentional contrast with the numbered
+   paw-icon flow above (no numbered circles, no paw icons here). */
+.timeline-heading {
+  text-align: center;
+  max-width: 640px;
+  margin: 0 auto 48px;
+}
+.timeline {
+  max-width: 640px;
+  margin: 0 auto;
+}
+.timeline-stage {
+  display: flex;
+  gap: 22px;
+}
+.timeline-marker-col {
+  flex: none;
+  width: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.timeline-dot {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--coral);
+}
+.timeline-line {
+  flex: 1;
+  width: 2px;
+  min-height: 32px;
+  margin: 6px 0;
+  background: var(--tan);
+}
+.timeline-content {
+  padding-bottom: 36px;
+}
+.timeline-stage-last .timeline-content {
+  padding-bottom: 0;
+}
+.timeline-time {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--coral);
+}
+.timeline-content h3 {
+  margin: 0 0 8px;
+  font-family: var(--serif);
+  font-size: 21px;
+  font-weight: 500;
+  line-height: 1.15;
+}
+.timeline-content p:not(.timeline-time) {
+  margin: 0;
+  font-size: 14.5px;
+  color: var(--muted);
+  line-height: 1.6;
+}
 @media (max-width: 900px) {
   .flow-dog {
     display: none;
