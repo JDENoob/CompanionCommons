@@ -1973,15 +1973,26 @@ async function detectHealthAlerts(dog_id, dogName, current, previous, currentIte
     // what a change "means" medically.
     //
     // STEP P10: higher = more concerning now, so the vet-mention/concerning
-    // template fires on direction === 'up' (score rose) and the improved
-    // template fires on 'down' (score fell) — flipped from the old scale.
-    // `direction` itself is UNCHANGED: it's still a literal description of
-    // which way the raw number moved, used only as a stable dedup bucket
-    // key, not a "good/bad" label.
+    // template fires on direction === 'up' (score rose) and the down-
+    // direction template fires on 'down' (score fell) — flipped from the
+    // old scale. `direction` itself is UNCHANGED: it's still a literal
+    // description of which way the raw number moved, used only as a stable
+    // dedup bucket key, not a "good/bad" label.
+    //
+    // Neutral-language fix: the down-direction template used to say
+    // "improved" here -- evaluative language that conflicted with this
+    // project's own standing rule (never interpret/diagnose) and with the
+    // neutral-descriptor convention buildHealthSummary() established.
+    // "decreased" is factual and directional (same status as "increased"
+    // on the other branch) without judging the change as good or bad.
+    // The asymmetric call-to-action (vet-mention on 'up', a dashboard note
+    // on 'down') is INTENTIONALLY kept -- confirmed with John this reflects
+    // which direction is more plausibly vet-relevant, not a value judgment,
+    // and doesn't depend on "improved" to be justified.
     const pointWord = magnitude === 1 ? 'point' : 'points';
     const message = direction === 'up'
-      ? `${dogName}'s ${subject} increased ${magnitude} ${pointWord} compared to a recent check-in. This isn't a diagnosis — just a pattern that might be worth mentioning at ${dogName}'s next vet visit.`
-      : `${dogName}'s ${subject} improved ${magnitude} ${pointWord} compared to a recent check-in. If anything's changed recently, consider adding a note in the dashboard.`;
+      ? `${dogName}'s ${subject} increased ${magnitude} ${pointWord} compared to a recent check-in. This is not a diagnosis. It reflects a reported change — consult your veterinarian with any concerns.`
+      : `${dogName}'s ${subject} decreased ${magnitude} ${pointWord} compared to a recent check-in. If anything's changed recently, consider adding a note in the dashboard.`;
 
     const { error: alertError } = await supabase
       .from('health_alerts')
@@ -3517,6 +3528,120 @@ function describeWeightJourneyTrend(baseline, latest) {
   return `Weight: ${baseline} lb → ${latest} lb (steady since baseline)`;
 }
 
+// Templated (NOT AI/LLM-generated) neutral written health summary, shared
+// by the main dashboard and the Journey Summary report. Deterministic
+// server-side logic plugging real calculated numbers into pre-written
+// sentence templates -- same non-diagnostic register as the peer-comparison
+// card's "About the same as the community average" line. Never uses
+// evaluative/interpretive language ("improved", "declined", "concerning")
+// -- only neutral descriptors ("changed from X to Y", "stayed at X").
+//
+// Returns an ARRAY of paragraph strings (1 paragraph for the baseline-only
+// and single-check-in cases, up to 3 for the full week-over-week +
+// since-baseline + encouragement case) -- callers wrap each in their own
+// <p> so dashboard vs. report can style them independently, matching how
+// this file's other describe*() helpers stay presentation-agnostic.
+//
+// variant: 'dashboard' (full -- week-over-week + since-baseline + an
+// encouragement line) or 'report' (Journey Summary -- since-baseline only,
+// no encouragement line, since this gets printed/shared with a vet rather
+// than shown as an in-app retention nudge).
+function buildHealthSummary(dog, checkins, variant) {
+  const dogName = escapeHtml(dog.dog_name);
+
+  // Oxford-comma joiner -- 1 item as-is, 2 items "A and B", 3+ items
+  // "A, B, ..., and Z". Kept generic (not hardcoded to 4 items) so the
+  // sentence reads naturally regardless of which domains changed vs.
+  // stayed the same on any given call.
+  function joinClauses(clauses) {
+    if (clauses.length === 1) return clauses[0];
+    if (clauses.length === 2) return `${clauses[0]} and ${clauses[1]}`;
+    return `${clauses.slice(0, -1).join(', ')}, and ${clauses[clauses.length - 1]}`;
+  }
+
+  // Diff-based (not `===`) for the same reason describeTrendForGlance and
+  // describeJourneyTrend already are -- Supabase can return NUMERIC
+  // columns as strings, and composite scores can carry float noise (e.g.
+  // 0.30000000000000004), either of which would make a direct `===`
+  // between prev/current falsely report "changed" for two numerically
+  // identical values.
+  function describeDomainClause(label, prev, current) {
+    const diff = roundToOneDecimal(Number(current) - Number(prev));
+    if (diff === 0) return `${label} has stayed at ${current}/10`;
+    return `${label} changed from ${prev}/10 to ${current}/10`;
+  }
+
+  if (checkins.length === 0) {
+    const baselineClauses = [
+      `mobility ${dog.baseline_mobility_score}/10`,
+      `energy ${dog.baseline_energy_score}/10`,
+      `appetite ${dog.baseline_appetite_score}/10`,
+      `cognitive ${dog.baseline_cognitive_score}/10`
+    ];
+    return [`${dogName}'s baseline: ${baselineClauses.join(', ')}. Complete your first check-in to start seeing trends.`];
+  }
+
+  const latest = checkins[checkins.length - 1];
+  const previous = checkins.length > 1 ? checkins[checkins.length - 2] : null;
+
+  // "Most recently reported" cognitive value, not strictly "this week's" --
+  // cognitive is only asked every 4th week, so this can legitimately be a
+  // few weeks old. Reuses the exact lookup pattern already used elsewhere
+  // in this file (dashboard/breed-guide chapters) rather than a new one;
+  // falls back to the baseline cognitive score when no post-baseline
+  // cognitive check-in has ever been recorded yet.
+  const latestCognitiveCheckin = [...checkins].reverse().find(c => c.cognitive_score != null);
+  const mostRecentCognitive = latestCognitiveCheckin?.cognitive_score ?? dog.baseline_cognitive_score;
+
+  const sinceBaselineClauses = [
+    describeDomainClause('mobility', dog.baseline_mobility_score, latest.mobility_score),
+    describeDomainClause('energy', dog.baseline_energy_score, latest.energy_score),
+    describeDomainClause('appetite', dog.baseline_appetite_score, latest.appetite_score),
+    describeDomainClause('cognitive', dog.baseline_cognitive_score, mostRecentCognitive)
+  ];
+  const sinceBaselineSentence = `Since ${dogName}'s baseline check-in: ${joinClauses(sinceBaselineClauses)}.`;
+
+  if (variant === 'report') {
+    return [sinceBaselineSentence];
+  }
+
+  const encouragement = 'Keep checking in to build a fuller picture of trends over time.';
+
+  // Exactly one check-in -- no real week-over-week comparison exists yet,
+  // so only the since-baseline sentence renders (as one paragraph with the
+  // encouragement line, not a separate one -- matches the single-paragraph
+  // shape of this case vs. the 3-paragraph shape below).
+  if (!previous) {
+    return [`${sinceBaselineSentence} ${encouragement}`];
+  }
+
+  // Mobility/energy/appetite are required every week, so `previous`/`latest`
+  // always have real values for them. Cognitive is the one domain that can
+  // genuinely have no data this week (4-week cadence) -- three-way branch:
+  // not asked this week, asked this week but no real prior week to diff
+  // against (the common case, since the immediately-prior single week is
+  // almost never also a cadence week), or a real week-over-week diff in
+  // the rare case both weeks happen to have cognitive data.
+  let cognitiveWeekClause;
+  if (latest.cognitive_score == null) {
+    cognitiveWeekClause = 'cognitive had no data reported this week';
+  } else if (previous.cognitive_score == null) {
+    cognitiveWeekClause = `cognitive was reported at ${latest.cognitive_score}/10 this week`;
+  } else {
+    cognitiveWeekClause = describeDomainClause('cognitive', previous.cognitive_score, latest.cognitive_score);
+  }
+
+  const weekOverWeekClauses = [
+    describeDomainClause('mobility', previous.mobility_score, latest.mobility_score),
+    describeDomainClause('energy', previous.energy_score, latest.energy_score),
+    describeDomainClause('appetite', previous.appetite_score, latest.appetite_score),
+    cognitiveWeekClause
+  ];
+  const weekOverWeekSentence = `Compared to last week: ${joinClauses(weekOverWeekClauses)}.`;
+
+  return [weekOverWeekSentence, sinceBaselineSentence, encouragement];
+}
+
 // ============================================
 // Post-week-12 display + framing (retention discussion, Aug 24). Nothing
 // in the app ever gated or ended at week 12 — it was always just the
@@ -3924,6 +4049,13 @@ app.get('/dashboard/:dog_id', async (req, res) => {
       throw checkinsError;
     }
 
+    // Templated neutral health summary (see buildHealthSummary above) --
+    // computed once here from the same `checkins` array both the dashboard
+    // and the Journey Summary modal (rendered later in this same route
+    // response) already read from, rather than querying twice.
+    const dashboardHealthSummary = buildHealthSummary(dog, checkins, 'dashboard');
+    const reportHealthSummary = buildHealthSummary(dog, checkins, 'report');
+
     // STEP 27D: Fetch any active health alerts (last 14 days) for the banner.
     // Most recent first — if multiple metrics triggered alerts, show the newest.
     const fourteenDaysAgoForDisplay = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
@@ -4270,11 +4402,19 @@ app.get('/dashboard/:dog_id', async (req, res) => {
         }).join('')
       : `<p style="font-size: 14px; color: #888;">No notes logged yet.</p>`;
 
-    // Active alert, if any (reuses the same activeAlert already fetched for the dashboard banner)
+    // Active alert, if any (reuses the same activeAlert already fetched for the dashboard banner).
+    // Shows activeAlert.message alone -- same as the dashboard card. A second,
+    // hardcoded "worth mentioning to your vet" line used to be appended here
+    // unconditionally, regardless of direction -- redundant for an up-direction
+    // alert (whose own message already ends with the vet-mention framing) and
+    // an active bug for a down-direction alert (whose message ends with
+    // "consider adding a note," never a vet-visit framing), producing a
+    // mismatched two-sentence disclaimer. Removed rather than made conditional
+    // -- activeAlert.message already carries the correct, direction-specific
+    // ending on its own.
     const journeyAlertHtml = activeAlert
       ? `<div style="background: #FFF8E1; border-left: 4px solid #F5A623; border-radius: 8px; padding: 14px 16px; margin-bottom: 20px;">
           <p style="margin: 0; font-size: 14px; color: #2C2C2C; font-weight: 500;">⚠️ ${escapeHtml(activeAlert.message) || 'A recent change was flagged for this dog.'}</p>
-          <p style="margin: 6px 0 0 0; font-size: 12px; color: #888;">This is not a diagnosis — worth mentioning to your vet.</p>
         </div>`
       : '';
 
@@ -4663,6 +4803,11 @@ app.get('/dashboard/:dog_id', async (req, res) => {
           </div>
           ` : ''}
 
+          <div class="peer-card" style="margin: 20px 0;">
+            <h2>Health Summary</h2>
+            ${dashboardHealthSummary.map(p => `<p style="margin: 0 0 10px 0; font-size: 14px; color: #2C2C2C; line-height: 1.6;">${p}</p>`).join('')}
+          </div>
+
           <div class="dashboard-layout">
             <!-- LEFT COLUMN: DOG INFO + CHARTS -->
             <div>
@@ -4970,6 +5115,11 @@ app.get('/dashboard/:dog_id', async (req, res) => {
             <hr style="border: none; border-top: 1.5px solid #D4CDB8; margin: 0 0 8px 0;">
 
             ${journeyAlertHtml}
+
+            <h3 style="font-size: 15px; margin-bottom: 8px; color: #2C2C2C;">Summary</h3>
+            <div style="margin-bottom: 10px; break-inside: avoid; page-break-inside: avoid;">
+              ${reportHealthSummary.map(p => `<p style="margin: 0 0 6px 0; font-size: 14px; color: #2C2C2C;">${p}</p>`).join('')}
+            </div>
 
             <h3 style="font-size: 15px; margin-bottom: 8px; color: #2C2C2C;">Trends since baseline</h3>
             <div style="background: #FAFAF8; border-radius: 8px; padding: 6px 16px; margin-bottom: 10px; break-inside: avoid; page-break-inside: avoid;">
