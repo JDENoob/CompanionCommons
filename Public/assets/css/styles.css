@@ -1839,15 +1839,19 @@ body.copy-editing [data-copy]:focus {
   opacity: 0.85;
 }
 .flow-dog svg {
+  /* The dog+thought-bubble icon (reused from the vet-questions spot,
+     commit c55429f) is a traced, filled silhouette -- fill="currentColor"
+     on its own paths, no stroke. Forcing stroke:currentColor here (as the
+     previous plain-silhouette icon needed) would draw a hairline outline
+     on top of an already-filled shape. */
   width: 100%;
   height: 100%;
-  stroke: currentColor;
-  fill: none;
-  stroke-width: 1.6;
-  stroke-linecap: round;
-  stroke-linejoin: round;
 }
-.flow-dog-right {
+.flow-dog-left {
+  /* The dog+bubble icon's natural/traced orientation faces left. Flipping
+     the LEFT copy (not the right, as the previous plain-silhouette icon
+     needed) makes both dogs face inward toward "How it works" -- verified
+     visually; the unflipped arrangement had both facing outward/away. */
   transform: scaleX(-1);
 }
 .flow-row {
@@ -1945,6 +1949,98 @@ body.copy-editing [data-copy]:focus {
   color: var(--muted);
   line-height: 1.5;
   margin: 0;
+}
+.flow-subhead {
+  margin: 0 0 10px;
+  color: var(--coral);
+  font-size: 13px;
+  font-weight: 700;
+}
+.flow-node .check-list {
+  text-align: left;
+  margin: 0;
+}
+/* "The Ripple Effect" -- deliberately not styled like .flow-node (no
+   number badge, no paw icon) or like .content-card just below it on this
+   same page (would read as a third, redundant card grid). Soft gradient
+   fill + a branching connector is meant to read as "impact/outcome"
+   rather than "process step N". */
+.content-section.flow-section {
+  padding-bottom: 32px;
+}
+.ripple-section {
+  padding: 24px 0 88px;
+}
+.ripple-heading {
+  text-align: center;
+  max-width: 640px;
+  margin: 0 auto 8px;
+}
+.ripple-row {
+  position: relative;
+  display: flex;
+  gap: 28px;
+  margin-top: 64px;
+}
+.ripple-connector {
+  position: absolute;
+  top: -56px;
+  left: 0;
+  right: 0;
+  height: 56px;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.ripple-connector svg {
+  width: 100%;
+  max-width: 420px;
+  height: 100%;
+  overflow: visible;
+}
+.ripple-connector-mobile {
+  display: none;
+}
+.ripple-card {
+  flex: 1;
+  padding: 32px 28px;
+  border-radius: var(--radius);
+  background: linear-gradient(160deg, var(--apricot) 0%, var(--oatmeal) 100%);
+  border: 1px solid var(--tan);
+  text-align: center;
+}
+.ripple-card:nth-of-type(2) {
+  background: linear-gradient(160deg, #e4ecdf 0%, var(--oatmeal) 100%);
+}
+.ripple-card h3 {
+  font-family: var(--serif);
+  font-size: 23px;
+  font-weight: 500;
+  margin: 0 0 10px;
+}
+.ripple-card p {
+  font-size: 14.5px;
+  color: var(--muted);
+  line-height: 1.55;
+  margin: 0;
+}
+@media (max-width: 700px) {
+  .ripple-row {
+    flex-direction: column;
+    margin-top: 44px;
+  }
+  .ripple-connector {
+    display: none;
+  }
+  .ripple-connector-mobile {
+    display: flex;
+    justify-content: center;
+    margin: -20px 0 8px;
+  }
+  .ripple-connector-mobile svg {
+    width: 40px;
+    height: 44px;
+  }
 }
 @media (max-width: 900px) {
   .flow-dog {
