@@ -3486,6 +3486,255 @@ function buildMilestoneChapter(dogName, trendLines, streak) {
           <p style="font-size: 13px; color: #888; margin-top: 8px;">${PROGRAM_CONTINUATION_NOTE}</p>`;
 }
 
+// ============================================
+// DOCUMENT LIBRARY -- 4 personalized, printable documents reusing the
+// exact same pattern as the Journey Summary above: pre-rendered on-screen
+// content already in the DOM at page load, a "Print / Save as PDF" button
+// that calls window.print(), and a @media print block that hides
+// everything else. No server-side PDF generation, no new library.
+//
+// Each document is a pure content-building function taking the dog record
+// and returning its body HTML. buildDocumentPane() wraps that body in one
+// shared Companion Commons header/disclaimer/print-button shell, so
+// "consistent branding across all 4" is a single real implementation
+// rather than 4 hand-copied ones that could quietly drift apart.
+// ============================================
+
+const DOCUMENT_LIBRARY_DISCLAIMER = "Companion Commons is not a veterinary service and does not diagnose, treat, prescribe, or provide veterinary advice. Always consult a licensed veterinarian about your companion's health and care. Think this may be an emergency? Contact your veterinarian or the nearest emergency veterinary hospital immediately.";
+
+// docId matches the data-doc attribute the dashboard's document-library
+// menu rows use to show/hide the right pane -- see the JS handlers below.
+function buildDocumentPane(docId, title, bodyHtml) {
+  return `
+    <div id="doc-${docId}" class="document-pane" style="display: none;">
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 14px; padding-bottom: 14px; border-bottom: 2px solid #D4CDB8;">
+        <span style="font-size: 11px; font-weight: 700; letter-spacing: 0.5px; color: #A89968; text-transform: uppercase;">Companion Commons</span>
+      </div>
+      <h2 style="margin: 0 0 16px 0; color: #2C2C2C; font-size: 20px;">${title}</h2>
+      ${bodyHtml}
+      <p style="margin: 24px 0 0 0; padding-top: 12px; border-top: 1px solid #eee; font-size: 12px; color: #999; line-height: 1.5;">${DOCUMENT_LIBRARY_DISCLAIMER}</p>
+      <button type="button" class="print-doc-btn no-print" style="margin-top: 16px; background: #A89968; color: white; border: none; padding: 12px 20px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer;"><i data-lucide="printer"></i> Print / Save as PDF</button>
+    </div>`;
+}
+
+// ---- Document 1: Vet Visit Guide ----
+const VET_VISIT_GUIDE_SECTIONS = [
+  { heading: 'Mobility', questions: [
+    "Have you noticed any changes in how {dog} gets up, moves, or handles stairs?",
+    "Is there anything about {dog}'s activity level that seems different lately?",
+    "Are there joint or mobility supports — ramps, rugs, supplements — you'd recommend for {dog}'s age and breed?",
+    "Is there an exercise or activity level you'd recommend adjusting?"
+  ]},
+  { heading: 'Energy & Activity', questions: [
+    "Have you noticed {dog} seeming more tired or less interested in things lately?",
+    "Is there a typical range of energy levels I should expect for {dog}'s age?",
+    "Could any current medications be affecting {dog}'s energy?"
+  ]},
+  { heading: 'Appetite & Weight', questions: [
+    "Have you noticed any changes in {dog}'s appetite or eating habits?",
+    "Is {dog}'s current weight where it should be for their age and breed?",
+    "Should I be tracking {dog}'s weight more closely going forward?"
+  ]},
+  { heading: 'Cognitive & Behavior', questions: [
+    "Have you noticed any changes in {dog}'s alertness, memory, or sleep patterns?",
+    "Is there a point where cognitive changes in senior dogs are worth mentioning again at a future visit?",
+    "Are there enrichment activities you'd recommend for {dog}'s cognitive health?"
+  ]},
+  { heading: 'Medications & Supplements', questions: [
+    "Does {dog} need any medication or supplement refills?",
+    "Are there any interactions I should know about between {dog}'s current medications and supplements?",
+    "Is there anything new — a medication, supplement, or therapy — worth discussing for {dog} at this stage?"
+  ]},
+  { heading: 'Preventive Care', questions: [
+    "Is {dog} up to date on vaccines and parasite prevention?",
+    "Would you recommend any changes to {dog}'s preventive care schedule given their age?",
+    "Should I be thinking about dental care or cleanings for {dog}?"
+  ]},
+  { heading: 'Diet & Nutrition', questions: [
+    "Is {dog}'s current diet still the right fit for their age and health?",
+    "Are there specific nutrients or dietary adjustments you'd recommend for a senior dog like {dog}?"
+  ]},
+  { heading: 'Labs & Screening', questions: [
+    "Would routine bloodwork or other screening make sense for {dog} at this stage?",
+    "Is there anything specific to {dog}'s breed or age that's worth screening for?"
+  ]},
+  { heading: 'Comfort & Quality of Life', questions: [
+    "Are there comfort measures — bedding, temperature, pain management — you'd suggest for {dog} at home?",
+    "How can I tell if {dog} is experiencing discomfort I might be missing day to day?"
+  ]},
+  { heading: 'Before You Leave', questions: [
+    "Is there anything else about {dog}'s health or care I should be watching for?",
+    "When would you recommend {dog}'s next visit?"
+  ]}
+];
+
+function buildVetVisitGuideHtml(dog) {
+  const dogName = escapeHtml(dog.dog_name);
+  const sub = (s) => s.replace(/\{dog\}/g, dogName);
+  const sectionsHtml = VET_VISIT_GUIDE_SECTIONS.map(section => `
+    <h3 style="font-size: 15px; margin: 18px 0 6px 0; color: #2C2C2C;">${section.heading}</h3>
+    <ul style="margin: 0; padding-left: 20px; font-size: 14px; color: #2C2C2C; line-height: 1.7;">
+      ${section.questions.map(q => `<li>${sub(q)}</li>`).join('')}
+    </ul>`).join('');
+  return `
+    <p style="font-size: 14px; color: #2C2C2C; line-height: 1.6; margin: 0 0 12px 0;">${sub("Questions to help you make the most of {dog}'s next vet visit. This isn't medical advice — just a starting point to help you organize what's on your mind.")}</p>
+    ${sectionsHtml}
+    <div style="margin-top: 20px; padding: 16px; background: #FAFAF8; border-radius: 8px;">
+      <p style="margin: 0 0 10px 0; font-size: 13px; font-weight: 600; color: #666;">Notes</p>
+      <div style="border-bottom: 1px solid #ddd; height: 26px;"></div>
+      <div style="border-bottom: 1px solid #ddd; height: 26px;"></div>
+      <div style="border-bottom: 1px solid #ddd; height: 26px;"></div>
+      <div style="border-bottom: 1px solid #ddd; height: 26px;"></div>
+    </div>
+    <p style="margin: 16px 0 0 0; font-size: 13px; color: #666;">${sub("Remember: you can add notes about this visit anytime in {dog}'s dashboard on Companion Commons.")}</p>`;
+}
+
+// ---- Document 2: What to Track and Why ----
+const WHAT_TO_TRACK_SECTIONS = [
+  { heading: 'How the scoring works', body: "Each area is scored on a scale from 0 to 10, where 0 means doing great and 10 means struggling. There's no \"passing\" or \"failing\" score — what matters most is how {dog}'s numbers move over time, not any single week on its own. A single check-in is a snapshot; the real picture builds as you keep going." },
+  { heading: 'Mobility', body: "We ask about things like getting up, handling stairs, stiffness after resting, and how far {dog} typically walks. Mobility often changes gradually in senior dogs, in ways that are easy to miss day-to-day but become clearer when you're checking in regularly. Small shifts here are common as dogs age — tracking them over weeks gives you (and eventually your vet) a clearer picture than trying to remember \"was this different a month ago?\"" },
+  { heading: 'Energy', body: "This tracks {dog}'s general activity and alertness level. Energy can be affected by a lot of things — age, weather, routine changes, sleep — so we're not looking for any single explanation, just a record of how things have been trending." },
+  { heading: 'Appetite', body: "We ask about {dog}'s eating habits and interest in food. Appetite is one of the more sensitive early indicators owners notice, and it's also one that's easy to second-guess in the moment (\"is he just being picky today, or is this a pattern?\"). Regular check-ins turn that guesswork into an actual record." },
+  { heading: 'Cognitive & Behavior', body: "Every fourth week, we also ask about orientation, memory, interest/engagement, and sleep-wake patterns. Cognitive changes in senior dogs tend to be gradual and easy to attribute to \"just getting older\" — tracking them consistently, even just once a month, can reveal patterns that are hard to see otherwise." },
+  { heading: 'Why consistency matters more than any single answer', body: "None of these numbers are meant to diagnose anything, and a single high or low score on its own doesn't mean much. What's genuinely useful is the trend — how {dog}'s scores move (or don't) over weeks and months. That's what your dashboard is built to show you, and it's exactly the kind of information that's most useful to bring up at {dog}'s next vet visit: not \"something's wrong,\" just \"here's what I've actually noticed, with real numbers behind it.\"" }
+];
+
+function buildWhatToTrackHtml(dog) {
+  const dogName = escapeHtml(dog.dog_name);
+  const sub = (s) => s.replace(/\{dog\}/g, dogName);
+  const sectionsHtml = WHAT_TO_TRACK_SECTIONS.map(section => `
+    <h3 style="font-size: 15px; margin: 18px 0 6px 0; color: #2C2C2C;">${section.heading}</h3>
+    <p style="margin: 0; font-size: 14px; color: #2C2C2C; line-height: 1.6;">${sub(section.body)}</p>`).join('');
+  return `
+    <p style="font-size: 14px; color: #2C2C2C; line-height: 1.6; margin: 0 0 12px 0;">${sub("Every week, we ask a few quick questions about {dog}. Here's what those questions actually track, and why they matter for senior dogs specifically.")}</p>
+    ${sectionsHtml}`;
+}
+
+// ---- Document 3: Signs Worth Tracking ----
+const SIGNS_WORTH_TRACKING_SECTIONS = [
+  { heading: 'Mobility & Movement', items: [
+    "Taking longer to get up from lying down",
+    "Hesitating or slowing down on stairs",
+    "A shorter or slower pace on walks than usual",
+    "Stiffness after resting",
+    "Any change in how they sit, jump, or lie down"
+  ]},
+  { heading: 'Energy', items: [
+    "Seeming more tired, or less interested in play",
+    "Sleeping more during the day",
+    "Slower to greet you or respond to familiar cues"
+  ]},
+  { heading: 'Appetite', items: [
+    "Eating less, or taking longer to finish meals",
+    "Less interest in treats or favorite foods",
+    "Any change in drinking habits"
+  ]},
+  { heading: 'Cognitive & Behavior', items: [
+    "Confusion in familiar spaces",
+    "Changes in sleep-wake patterns — restless at night, sleeping more during the day",
+    "New anxiety, clinginess, or withdrawal",
+    "Trouble recognizing familiar people, places, or routines"
+  ]}
+];
+
+function buildSignsWorthTrackingDocHtml(dog) {
+  const dogName = escapeHtml(dog.dog_name);
+  const sub = (s) => s.replace(/\{dog\}/g, dogName);
+  const sectionsHtml = SIGNS_WORTH_TRACKING_SECTIONS.map(section => `
+    <h3 style="font-size: 15px; margin: 18px 0 6px 0; color: #2C2C2C;">${section.heading}</h3>
+    <ul style="margin: 0; padding-left: 20px; font-size: 14px; color: #2C2C2C; line-height: 1.7;">
+      ${section.items.map(item => `<li>${item}</li>`).join('')}
+    </ul>`).join('');
+  return `
+    <p style="font-size: 14px; color: #2C2C2C; line-height: 1.6; margin: 0 0 12px 0;">${sub("Small changes can say a lot. Here are specific things worth noticing in {dog}'s day-to-day — not warning signs, just the kinds of details that are easy to miss in the moment and useful to have a record of over time.")}</p>
+    ${sectionsHtml}
+    <h3 style="font-size: 15px; margin: 18px 0 6px 0; color: #2C2C2C;">A note on how to use this</h3>
+    <p style="margin: 0; font-size: 14px; color: #2C2C2C; line-height: 1.6;">A single instance of any of these isn't necessarily a pattern on its own. What's useful is noticing if something repeats or continues over time. That's exactly what your weekly check-ins are for: turning "I think this has been happening for a while" into an actual record you can look back on, and share with your vet if it's ever useful.</p>`;
+}
+
+// ---- Document 4: Pet-Proofing Your Home ----
+const PET_PROOFING_SECTIONS = [
+  { heading: 'Around the House', items: [
+    "Trip hazards",
+    "Secure cords and small objects",
+    "Blocking unsafe areas (stairs, pools)",
+    "Pet-safe plants",
+    "Secure trash and cabinets"
+  ]},
+  { heading: 'Mealtime & Water', items: [
+    "Accessible bowls",
+    "Fresh water in multiple spots"
+  ]},
+  { heading: 'Comfort & Rest', items: [
+    "A dedicated safe/quiet space",
+    "Appropriate bedding"
+  ]},
+  { heading: 'Getting Around', items: [
+    "Non-slip surfaces where floors get slippery",
+    "Secure fencing/gates"
+  ]},
+  { heading: 'General Safety', items: [
+    "Secure hazardous substances (cleaning products, medications, certain foods)",
+    "Keep small objects out of reach"
+  ]}
+];
+
+const SENIOR_PET_PROOFING_ITEMS = [
+  "Rugs or mats on slippery floors — senior dogs are more prone to slipping",
+  "Ramps or steps for beds, couches, and cars",
+  "Nightlights for nighttime bathroom trips",
+  "Orthopedic or supportive bedding",
+  "Being mindful of temperature — senior dogs can be more sensitive to cold or heat",
+  "Keeping frequently-used items (water, bed, favorite spot) on one level if stairs are a struggle"
+];
+
+// Same computed-live, nothing-stored senior flag the dashboard badge and
+// breed guide already use (isSeniorForBreed, defined above) -- never
+// stale, no second lookup invented here.
+function buildPetProofingHtml(dog) {
+  const dogName = escapeHtml(dog.dog_name);
+  const sectionsHtml = PET_PROOFING_SECTIONS.map(section => `
+    <h3 style="font-size: 15px; margin: 18px 0 6px 0; color: #2C2C2C;">${section.heading}</h3>
+    <ul style="margin: 0; padding-left: 20px; font-size: 14px; color: #2C2C2C; line-height: 1.7;">
+      ${section.items.map(item => `<li>${item}</li>`).join('')}
+    </ul>`).join('');
+
+  const isSenior = isSeniorForBreed(dog.age, dog.breed);
+  const seniorIntro = isSenior
+    ? `${dogName} is currently considered a senior for their breed, based on age and breed size. Here are some extra things many senior dog owners consider:`
+    : `As dogs age, many owners find a few extra home adjustments helpful. Worth keeping in mind as ${dogName} gets older:`;
+
+  return `
+    ${sectionsHtml}
+    <h3 style="font-size: 15px; margin: 18px 0 6px 0; color: #2C2C2C;">Extra Considerations for Senior Dogs</h3>
+    <p style="margin: 0 0 8px 0; font-size: 14px; color: #2C2C2C; line-height: 1.6;">${seniorIntro}</p>
+    <ul style="margin: 0; padding-left: 20px; font-size: 14px; color: #2C2C2C; line-height: 1.7;">
+      ${SENIOR_PET_PROOFING_ITEMS.map(item => `<li>${item}</li>`).join('')}
+    </ul>`;
+}
+
+// One-line descriptions shared verbatim between the public
+// pet-health-library.html cards and the dashboard's document-library menu
+// rows below, so the two surfaces can't drift on wording.
+const DOCUMENT_LIBRARY_ITEMS = [
+  { docId: 'vet-visit-guide', title: 'Vet Visit Guide', description: "Questions to help you prepare for your dog's next vet visit, organized by topic." },
+  { docId: 'what-to-track', title: 'What to Track and Why', description: 'What each weekly check-in question actually tracks, and why it matters.' },
+  { docId: 'signs-worth-tracking', title: 'Signs Worth Tracking', description: 'Specific day-to-day details worth noticing in your dog, organized by category.' },
+  { docId: 'pet-proofing', title: 'Pet-Proofing Your Home', description: 'General home-safety basics for any dog, plus extra considerations if yours is a senior.' }
+];
+
+// Assembles all 4 hidden document panes for one dog, in the order they
+// appear in the dashboard's document-library menu.
+function buildDocumentLibraryPanesHtml(dog) {
+  const dogName = escapeHtml(dog.dog_name);
+  return [
+    buildDocumentPane('vet-visit-guide', `Companion Commons — ${dogName}'s Vet Visit Guide`, buildVetVisitGuideHtml(dog)),
+    buildDocumentPane('what-to-track', `${dogName}'s Guide: What to Track and Why`, buildWhatToTrackHtml(dog)),
+    buildDocumentPane('signs-worth-tracking', `${dogName}'s Guide: Signs Worth Tracking`, buildSignsWorthTrackingDocHtml(dog)),
+    buildDocumentPane('pet-proofing', `${dogName}'s Guide: Pet-Proofing Your Home`, buildPetProofingHtml(dog))
+  ].join('');
+}
+
 // Extracted from a private closure inside /dashboard/:dog_id (STEP P11
 // Stage 3) so /breed-guide/:dog_id can call the same real implementation
 // once Stage 4 needs it, instead of a second hand-copied version that
@@ -4055,6 +4304,12 @@ app.get('/dashboard/:dog_id', async (req, res) => {
     // response) already read from, rather than querying twice.
     const dashboardHealthSummary = buildHealthSummary(dog, checkins, 'dashboard');
     const reportHealthSummary = buildHealthSummary(dog, checkins, 'report');
+
+    // Document Library -- 4 personalized printable documents (see
+    // buildDocumentLibraryPanesHtml above), pre-rendered here the same way
+    // the Journey Summary content above is: real dog data substituted
+    // server-side, hidden in the DOM until a menu row reveals one.
+    const documentLibraryPanesHtml = buildDocumentLibraryPanesHtml(dog);
 
     // STEP 27D: Fetch any active health alerts (last 14 days) for the banner.
     // Most recent first — if multiple metrics triggered alerts, show the newest.
@@ -5029,9 +5284,12 @@ app.get('/dashboard/:dog_id', async (req, res) => {
             </div>
           </div>
 
-          <div style="display: flex; gap: 15px; margin-bottom: 30px;">
-            <button id="viewSummaryBtn" style="flex: 1; background: #A89968; color: white; border: none; padding: 16px 20px; border-radius: 8px; font-size: 15px; font-weight: 500; cursor: pointer;">
+          <div style="display: flex; gap: 15px; margin-bottom: 30px; flex-wrap: wrap;">
+            <button id="viewSummaryBtn" style="flex: 1; min-width: 220px; background: #A89968; color: white; border: none; padding: 16px 20px; border-radius: 8px; font-size: 15px; font-weight: 500; cursor: pointer;">
               Click to View ${escapeHtml(dog.dog_name)}'s Journey Summary
+            </button>
+            <button id="openDocLibraryBtn" style="flex: 1; min-width: 220px; background: #A89968; color: white; border: none; padding: 16px 20px; border-radius: 8px; font-size: 15px; font-weight: 500; cursor: pointer;">
+              <i data-lucide="book-open"></i> Document Library
             </button>
           </div>
 
@@ -5184,6 +5442,42 @@ app.get('/dashboard/:dog_id', async (req, res) => {
           </div>
         </div>
 
+        <!-- DOCUMENT LIBRARY MODAL -- same modal-open / on-screen-render /
+             window.print() pattern as the Journey Summary modal above.
+             Two states inside one modal: a menu of 4 rows, and a document
+             view showing whichever pane the JS below reveals. All 4
+             documents' real content is already in the DOM at page load
+             (documentLibraryPanesHtml, computed server-side above) -- the
+             JS only ever toggles display, never fetches or builds content. -->
+        <div id="documentLibraryModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; overflow-y: auto;">
+          <div id="documentLibraryBox" style="background: white; margin: 20px auto; border-radius: 12px; padding: 24px; max-width: 650px; position: relative; top: 30px; border: 2px solid #D4CDB8;">
+
+            <div id="docLibraryMenu">
+              <div class="no-print" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <h2 style="margin: 0; color: #333;"><i data-lucide="book-open"></i> Document Library</h2>
+                <button id="closeDocLibraryBtn" style="background: none; border: none; font-size: 24px; cursor: pointer;">✕</button>
+              </div>
+              <p style="font-size: 13px; color: #666; margin: 0 0 16px 0;">Personalized documents for ${escapeHtml(dog.dog_name)}, ready to view, print, or save as PDF.</p>
+              <div>
+                ${DOCUMENT_LIBRARY_ITEMS.map(item => `
+                <button type="button" class="doc-library-row" data-doc="${item.docId}" style="display: block; width: 100%; text-align: left; background: #FAFAF8; border: 1px solid #E8E4DA; border-radius: 8px; padding: 14px 16px; margin-bottom: 10px; cursor: pointer; font-family: inherit;">
+                  <strong style="display: block; font-size: 14px; color: #2C2C2C; margin-bottom: 3px;">${escapeHtml(item.title)}</strong>
+                  <span style="display: block; font-size: 13px; color: #888;">${escapeHtml(item.description)}</span>
+                </button>`).join('')}
+              </div>
+            </div>
+
+            <div id="docLibraryDocumentView" style="display: none;">
+              <div class="no-print" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                <button type="button" id="backToDocListBtn" style="background: none; border: none; color: #A89968; font-size: 14px; font-weight: 500; cursor: pointer; padding: 0;">&larr; Back to Document Library</button>
+                <button id="closeDocLibraryBtn2" style="background: none; border: none; font-size: 24px; cursor: pointer;">✕</button>
+              </div>
+              ${documentLibraryPanesHtml}
+            </div>
+
+          </div>
+        </div>
+
         <style>
           @media print {
             /* display:none (not visibility:hidden) actually removes hidden
@@ -5191,12 +5485,12 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                .container's full multi-page height even while invisible, so
                the browser generated that many pages and repeated the
                absolutely-positioned print area on each one. Hiding every
-               direct body child except the modal (the real ancestor of
-               #journeySummaryPrintArea) collapses the printed page down to
-               the print area's actual height. */
-            body > *:not(#journeySummaryModal) { display: none !important; }
-            #journeySummaryModal { position: static !important; background: none !important; overflow: visible !important; z-index: auto !important; }
-            #journeySummaryPrintArea { position: absolute; top: 0; left: 0; width: 100%; margin: 0; box-shadow: none; }
+               direct body child except the open modal (the real ancestor
+               of the print area) collapses the printed page down to the
+               print area's actual height. */
+            body > *:not(#journeySummaryModal):not(#documentLibraryModal) { display: none !important; }
+            #journeySummaryModal, #documentLibraryModal { position: static !important; background: none !important; overflow: visible !important; z-index: auto !important; }
+            #journeySummaryPrintArea, #documentLibraryBox { position: absolute; top: 0; left: 0; width: 100%; margin: 0; box-shadow: none; }
             .no-print { display: none !important; }
           }
         </style>
@@ -5279,6 +5573,44 @@ app.get('/dashboard/:dog_id', async (req, res) => {
           });
           document.getElementById('printJourneyBtn').addEventListener('click', () => {
             window.print();
+          });
+
+          // Document Library — same modal-open pattern as Journey Summary
+          // above, plus a menu/document-view toggle within one modal. All 4
+          // documents' content is already in the DOM (documentLibraryPanesHtml,
+          // rendered server-side) -- these handlers only ever show/hide,
+          // never fetch or build content.
+          const docLibraryModal = document.getElementById('documentLibraryModal');
+          const docLibraryMenu = document.getElementById('docLibraryMenu');
+          const docLibraryDocumentView = document.getElementById('docLibraryDocumentView');
+
+          function openDocLibraryMenu() {
+            docLibraryModal.style.display = 'block';
+            docLibraryMenu.style.display = 'block';
+            docLibraryDocumentView.style.display = 'none';
+          }
+          function closeDocLibrary() {
+            docLibraryModal.style.display = 'none';
+          }
+
+          document.getElementById('openDocLibraryBtn').addEventListener('click', openDocLibraryMenu);
+          document.getElementById('closeDocLibraryBtn').addEventListener('click', closeDocLibrary);
+          document.getElementById('closeDocLibraryBtn2').addEventListener('click', closeDocLibrary);
+          document.getElementById('backToDocListBtn').addEventListener('click', () => {
+            docLibraryDocumentView.style.display = 'none';
+            docLibraryMenu.style.display = 'block';
+          });
+          document.querySelectorAll('.doc-library-row').forEach((row) => {
+            row.addEventListener('click', () => {
+              docLibraryMenu.style.display = 'none';
+              docLibraryDocumentView.style.display = 'block';
+              document.querySelectorAll('.document-pane').forEach((pane) => { pane.style.display = 'none'; });
+              const pane = document.getElementById('doc-' + row.dataset.doc);
+              if (pane) pane.style.display = 'block';
+            });
+          });
+          document.querySelectorAll('.print-doc-btn').forEach((btn) => {
+            btn.addEventListener('click', () => { window.print(); });
           });
 
           // Form submission

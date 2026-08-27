@@ -1742,6 +1742,172 @@ body.copy-editing [data-copy]:focus {
   color: var(--muted);
   font-size: 19px;
 }
+/* pet-health-library.html's 3-quadrant hero -- deliberately its OWN
+   classes (not .page-hero), since .page-hero's single-column layout is
+   shared across 11 other pages and this hero's grid shape is specific to
+   this one page. Quadrant 1 (heading) top-left, quadrant 2 (body)
+   bottom-left, quadrant 3 (the shelf) spans the full right-hand height. */
+.library-hero {
+  padding: 70px 0 60px;
+  background: linear-gradient(135deg, var(--white), #f2ddc9);
+}
+.library-hero-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto 1fr;
+  gap: 32px 48px;
+}
+.library-hero-heading {
+  grid-column: 1;
+  grid-row: 1;
+}
+.library-hero-heading h1 {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: clamp(34px, 4.5vw, 56px);
+  font-weight: 500;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+.library-hero-body {
+  grid-column: 1;
+  grid-row: 2;
+  align-self: start;
+}
+.library-hero-body p {
+  margin: 0;
+  max-width: 440px;
+  color: var(--muted);
+  font-size: 19px;
+  line-height: 1.5;
+}
+/* The shelf panel -- a soft gradient rather than a literal wood texture,
+   kept light so it doesn't clash with the site's cream/tan/coral palette.
+   Deliberately no per-item hardcoding: the shelf-ledge effect comes from
+   a border-bottom on every row but the last (see .shelf-list li below),
+   which scales to any number of documents without redesign. */
+.library-shelf {
+  position: relative;
+  grid-column: 2;
+  grid-row: 1 / 3;
+  background: linear-gradient(160deg, var(--oatmeal) 0%, var(--tan) 100%);
+  border: 1px solid var(--tan);
+  border-radius: var(--radius);
+  padding: 26px 22px;
+  overflow: hidden;
+}
+/* Faint continuous-line bookshelf illustration, layered on top of the
+   gradient above -- one unbroken <path> (no separate shapes, no pen
+   lifts), 14 narrow book-spine bumps per row so it reads as books, not
+   a skyline. 5% opacity, warm brown -- meant to recede, not compete with
+   the real shelf-list content in front of it. Absolutely positioned and
+   pointer-events:none so it never intercepts clicks on the real entries;
+   .library-shelf-label/.shelf-list get position:relative below so they
+   paint above this layer (positioned siblings stack by DOM order, and
+   this SVG is the first child in the markup). */
+.shelf-watermark {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.library-shelf-label {
+  position: relative;
+  margin: 0 0 14px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--coral);
+}
+.shelf-list {
+  position: relative;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.shelf-list li {
+  border-bottom: 1px solid rgba(51, 46, 42, 0.12);
+}
+.shelf-list li:last-child {
+  border-bottom: none;
+}
+/* Expand/collapse is native <details>/<summary> -- no JS. Each entry
+   expands independently (the simpler of the two options), and adding a
+   5th, 6th, etc. document later is just another <li> in this same shape. */
+.shelf-entry summary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 2px;
+  cursor: pointer;
+  list-style: none;
+}
+.shelf-entry summary::-webkit-details-marker {
+  display: none;
+}
+.shelf-book-icon {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  color: var(--espresso);
+}
+.shelf-book-icon svg {
+  width: 100%;
+  height: 100%;
+}
+.shelf-title {
+  font-family: var(--serif);
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--espresso);
+  flex: 1;
+}
+/* The rotating chevron is a <span> wrapping the <svg>, not the <svg>
+   itself -- confirmed via direct testing that this rendering context
+   doesn't apply CSS transform to a root <svg> element at all (a plain
+   <div> rotates fine, an <svg> with the identical rule doesn't), so the
+   transform lives on a guaranteed-to-work wrapper instead. */
+.shelf-chevron {
+  display: flex;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+  transition: transform 0.2s ease;
+}
+.shelf-chevron svg {
+  width: 100%;
+  height: 100%;
+}
+.shelf-entry[open] .shelf-chevron {
+  transform: rotate(90deg);
+}
+.shelf-description {
+  margin: 0 0 16px 44px;
+  font-size: 13.5px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.library-cta {
+  padding: 50px 0;
+}
+@media (max-width: 700px) {
+  .library-hero-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+  }
+  .library-hero-heading,
+  .library-hero-body,
+  .library-shelf {
+    grid-column: 1;
+    grid-row: auto;
+  }
+  .library-hero-body {
+    margin-bottom: 8px;
+  }
+}
 .content-section {
   padding: 88px 0;
 }
