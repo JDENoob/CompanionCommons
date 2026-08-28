@@ -39,6 +39,18 @@ function escapeHtml(text) {
     .replace(/'/g, '&#39;');
 }
 
+// Icon+wordmark brand lockup (double-C paw icon + "Companion Commons"),
+// shared across every server-rendered surface that needs it (Document
+// Library, breed guide, Journey Summary, dashboard) so there's one real
+// source instead of a fifth hand-copied instance -- the exact trap this
+// project's own header-icon history has already fallen into once.
+// Absolute /assets path since these routes live under their own segment
+// (/dashboard/:id, /breed-guide/:id), where a relative path would resolve
+// against the wrong base.
+function buildBrandLockup({ iconPx = 24, fontPx = 14, color = '#2C2C2C', gap = 8 } = {}) {
+  return `<span style="display:inline-flex;align-items:center;gap:${gap}px;"><img src="/assets/images/brand/companion-commons-double-c-paw.svg" alt="Companion Commons" width="${iconPx}" height="${iconPx}" style="display:block;flex-shrink:0;" /><span style="font-weight:700;font-size:${fontPx}px;color:${color};">Companion Commons</span></span>`;
+}
+
 // Human-readable labels for the coded baseline-survey values (dashboard
 // display only — the underlying stored values stay exactly as the signup
 // form's allowed lists define them).
@@ -3508,7 +3520,7 @@ function buildDocumentPane(docId, title, bodyHtml) {
   return `
     <div id="doc-${docId}" class="document-pane" style="display: none;">
       <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 14px; padding-bottom: 14px; border-bottom: 2px solid #D4CDB8;">
-        <span style="font-size: 11px; font-weight: 700; letter-spacing: 0.5px; color: #A89968; text-transform: uppercase;">Companion Commons</span>
+        ${buildBrandLockup({ iconPx: 26, fontPx: 15 })}
       </div>
       <h2 style="margin: 0 0 16px 0; color: #2C2C2C; font-size: 20px;">${title}</h2>
       ${bodyHtml}
@@ -4088,7 +4100,6 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
         <style>
           body { font-family: -apple-system, sans-serif; max-width: 650px; margin: 40px auto; padding: 20px; background: #f5f5f5; color: #333; line-height: 1.6; }
           .card { background: white; border-radius: 12px; padding: 40px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-          .site-brand { font-size: 13px; font-weight: 700; letter-spacing: 0.5px; color: #A89968; text-transform: uppercase; margin: 0 0 20px 0; }
           .dog-photo { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; margin: 0 0 16px 0; display: block; }
           .dog-photo-placeholder { width: 80px; height: 80px; border-radius: 50%; background: #FFF8E7; display: flex; align-items: center; justify-content: center; font-size: 36px; margin: 0 0 16px 0; }
           h1 { font-size: 24px; margin: 0 0 4px 0; }
@@ -4110,7 +4121,7 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
       </head>
       <body>
         <div class="card">
-          <p class="site-brand">Companion Commons</p>
+          <div style="margin: 0 0 20px 0;">${buildBrandLockup({ iconPx: 26, fontPx: 15 })}</div>
 
           ${dog.photo_url
             ? `<img src="${dog.photo_url}" alt="${escapeHtml(dog.dog_name)}" class="dog-photo" />`
@@ -5002,6 +5013,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
           ${dogSwitcherHtml}
 
           <div class="header">
+            <div style="margin: 0 0 14px 0;">${buildBrandLockup({ iconPx: 30, fontPx: 18 })}</div>
             <h1><i data-lucide="bar-chart-3"></i> ${escapeHtml(dog.dog_name)}'s Mobility Dashboard</h1>
             <p>${escapeHtml(dog.breed) || ''} • ${dog.age || 'Age unknown'} years old • ${dog.gender || 'Gender unknown'}</p>
             <div class="week-progress">
@@ -5350,7 +5362,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                 : `<div style="width: 64px; height: 64px; border-radius: 50%; background: #FFF8E7; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><i data-lucide="paw-print" style="width: 28px; height: 28px;"></i></div>`
               }
               <div>
-                <p style="margin: 0 0 2px 0; font-size: 12px; font-weight: 700; letter-spacing: 0.5px; color: #A89968; text-transform: uppercase;">Companion Commons</p>
+                <div style="margin: 0 0 4px 0;">${buildBrandLockup({ iconPx: 22, fontPx: 13 })}</div>
                 <h3 style="margin: 0; font-size: 18px; color: #2C2C2C;">${escapeHtml(dog.dog_name)}'s Journey Summary</h3>
               </div>
             </div>

@@ -2362,6 +2362,24 @@ body.copy-editing [data-copy]:focus {
 .site-footer a {
   color: #fff;
 }
+.footer-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+}
+.footer-brand img {
+  display: block;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+}
+.footer-brand span {
+  font-family: var(--sans);
+  font-weight: 700;
+  font-size: 15px;
+  color: #fff;
+}
 @media (max-width: 800px) {
   .content-grid,
   .journey-strip {
