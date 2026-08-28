@@ -191,7 +191,8 @@ body.copy-editing [data-copy]:focus {
   height: 44px;
   flex-shrink: 0;
 }
-.brand-mark svg {
+.brand-mark svg,
+.brand-mark img {
   display: block;
   width: 100%;
   height: 100%;
