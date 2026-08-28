@@ -860,3 +860,151 @@ Triggered by Supabase's own Security Advisor flagging RLS-disabled tables while 
 **A sequencing gap, deliberately logged rather than glossed over:** the correct deploy order for this fix was code change live on Railway *first*, then the table-RLS migration — running the migration first would have broken every live signup/check-in/dashboard request (the old anon-key client would start hitting real RLS-violation errors) until the new deploy landed. The code change was committed and pushed to `origin/main`, and John reported "step 5 is confirmed working" before the migration SQL was handed over and run. **This was never independently verified** — no Railway deploy-timestamp check, no live-site test request from this session, just John's word taken at face value. When asked afterward to reconstruct the exact timeline, neither side could produce hard evidence of the real Railway deploy-completion time relative to the migration run time. **Consciously accepted as closed, not chased further**, given the actual risk profile: the site was still pre-beta, behind `SITE_PASSWORD`, with zero real founding members in the database, and John was the only person who could possibly have hit a broken window. If he'd tried a real signup/check-in during any gap, that failure would have been the evidence; nothing in this session's testing or his own report surfaced one. **The standing lesson, not just this one incident:** before running any migration whose safety depends on a prior code deploy being live, verify the deploy actually completed via a real request to the live site — don't accept "confirmed working" without asking how it was confirmed. Added as a formal rule to `CLAUDE.md`.
 
 **Supporting services/tools:** `server.js`, Supabase (RLS + Storage policies), `migration_enable_rls_all_tables.sql`, `migration_fix_storage_bucket_listing_policy.sql`, Railway
+
+---
+
+## August 26, 2026 (continued) — Nav Breakpoint Fix Uncovers a Fully Broken Hamburger Menu, Homepage Copy Polish, Internal Doc Cleanup
+
+Picking up the same day as the RLS remediation above, once real live-site testing resumed.
+
+### Sprint-planning doc moved out of public reach
+
+**What was found:** `sprint_checklist_visual.html`, a real 462-line internal planning document, was sitting directly in `Public/` — reachable by anyone who unlocked the site's `SITE_PASSWORD` gate, protected only incidentally (nothing exempted it, nothing linked to it, but Express serves the whole `Public/` tree statically — the same "reachable by URL even with no internal link" pattern this project already got burned by once before, in the Aug 25 dead-dashboard-page finding).
+
+**Fix:** moved to `docs/`, which has no static mount or file-serving route — confirmed structurally unreachable now, not just unlinked. A second, different-point-in-time duplicate of the same doc at the repo root ("31 of 37 steps" vs. the moved copy's "23 of 37 steps") was deleted outright rather than kept — both were leftovers from the same original bulk-import commit with no real chronological record connecting them, and neither reflected current project state.
+
+### Homepage copy and spacing polish
+
+Six small fixes from a live screenshot review of the homepage:
+- **Nav crowding root-caused, not just patched:** `.nav-shell`'s `justify-content` was letting its single distributable gap (between the brand mark and the nav links) absorb all horizontal squeeze on its own — measured collapsing to 0px at 1100px viewport width while the nav's own internal 18px link gaps stayed protected. This is what produced the "logo crammed against How It Works" look. Fixed with an 18px gap floor on `.nav-shell`.
+- Hero eyebrow moved up 36px on desktop only (106px gap below nav instead of 143px) without moving the H1 — an unscoped first attempt was caught crushing mobile's nav-to-eyebrow gap from 55px to 19px, never asked for, and rolled back to desktop-only.
+- Hero heading given a manual line break after "Together," with `.hero-copy`'s bottom padding trimmed 82px → 21px to offset the ~61px the heading gains from wrapping — verified the H1 lands at its exact original pixel position despite the internal reshuffle.
+- "You'd be one of the first." → "Be one of the first."
+- "3 minute(s)" → "3.5 minute(s)," 4 instances sitewide, confirmed via full-codebase grep that all 4 genuinely referred to the baseline survey and no unrelated instance was touched.
+- "download to share" → "download and share" (index.html).
+
+All six verified live at both 375px mobile and desktop.
+
+### The hamburger menu had never worked, at any width, the entire time
+
+**What was found, while testing the nav breakpoint above:** raising the mobile-nav breakpoint surfaced a separate, much more serious, entirely pre-existing bug — the mobile hamburger menu's JS toggle set a `hidden` DOM property that the CSS never actually checked. The CSS only responded to an `is-open` class that no JS anywhere ever applied. The hamburger menu had never functioned at any screen width, on any page, independent of and predating everything else fixed this session.
+
+**Fix:** switched the toggle to `classList.toggle('is-open', ...)`, matching what the CSS actually expects — same JS file, same pattern later reused for the FAQ accordion fix (see Aug 28 below), which turned out to hide the same class of bug a second time.
+
+**The breakpoint fix itself:** "Trust, Privacy & Independence" (the widest nav item) was causing near-universal nav wrapping across the 980-1279px viewport range, creating misleading dead-space gaps inside wrapped-text boxes. Raised the breakpoint to 1279px first — but real-world testing on an actual 27" display at 100% zoom found that width still left maximized-window users seeing only the (now-working) hamburger menu with no inline nav at all, a genuine common case, not an edge case. Shortened "Trust, Privacy & Independence" to "Trust & Privacy" (confirmed this doesn't misrepresent the page — it's a single page with no internal Privacy/Independence sub-sections, and confirmed "Terms" would have been actively misleading since a separate, real Terms of Service page already exists) and lowered the breakpoint to 1180px, with the true wrap threshold (1166-1170px) found empirically rather than guessed. Label change applied across all 11 pages sharing the header nav component; the fuller phrase was deliberately left unchanged in the footer and body copy, where there's no crowding issue.
+
+All changes verified live and empirically at every step, including a final real-world confirmation on the actual display/zoom configuration that surfaced the bug in the first place.
+
+**Supporting services/tools:** `Public/*.html`, `styles.css`, `main.js`.
+
+---
+
+## August 27, 2026 — How It Works Rebuilt, Health Summary Shipped, Evaluative Health-Alert Language Fixed
+
+### `how-it-works.html` overhaul
+
+Rewrote the page's heading to "Your Pet's Health Journey," replaced the flanking dog symbols with the site's existing dog+thought-bubble icon (mirrored via CSS transform for a natural left/right-facing pair), and replaced non-working step icons with three new custom paw-variant icons themed to each step (camera+paw for photo upload, chat-bubble+paw for the quick check-in, framed-chart+paw for dashboard trends) matching the site's existing custom icon family. Steps 1-3 copy rewritten per finalized wording. Split items 4-5 ("Contribute to something bigger" / "Help two lives at once") out of the numbered process sequence entirely into a new, visually distinct "The Ripple Effect" section below the 3-step flow — these were mission/impact statements, not sequential process steps, and a branching-line visual now shows one action leading to two outcomes instead of forcing them into the step count. Verified live at mobile and desktop, including a real rendered icon-review pass before commit.
+
+A same-day typo fix landed separately: "healthy journey" → "health journey" on `index.html`'s "What You Get" section.
+
+### "What participation creates" replaced with a real 12-week journey timeline
+
+The old 3-card "For your companion / For your community / For better understanding" section was removed — it duplicated Our Impact page content thematically and was mission/value framing, not real "how it works" mechanics. Replaced with a new vertical dot-and-line timeline ("Week by week" / "How the Journey Unfolds") built against the actual real cadence, verified against the codebase before writing any copy: baseline on day 1, weekly check-ins starting week 2 (mobility/energy/appetite every week, cognitive/weight every 4th), breed guide chapters unlocking progressively from week 2, week 12 as the program's designed reference length, and continued indefinite logging beyond that — reusing the app's own existing "most owners keep logging" voice rather than inventing new phrasing. Chosen as a vertical timeline (not numbered paw-icon steps, to avoid visual confusion with the 3-step flow above it) since a 4-stage sequence with real paragraph text breaks awkwardly when squeezed into columns on narrow screens. Verified live at mobile and desktop: content, dot/line alignment, line stretch matching variable stage-content height, zero overflow, zero console errors.
+
+### Health Summary added; a real evaluative-language bug fixed in health alerts
+
+**New feature:** `buildHealthSummary(dog, checkins, variant)` — templated (non-AI, deterministic) written summaries of check-in trends, added to both the main dashboard (full version, week-over-week plus since-baseline) and the Journey Summary (report-style, since-baseline only, no encouragement line, since this is the vet-shareable printout). Strictly neutral wording throughout ("changed from X to Y" / "stayed at X"), matching the project's standing rule against interpreting or judging findings. Correctly handles cognitive's 4-week cadence gaps, including falling back to the most recently reported value.
+
+**Real bug found and fixed, in the same pass:** the dashboard's "Worth a look" health-alert card was using evaluative language that didn't hold up under scrutiny. A score *decrease* was being labeled "improved" — confirmed correct in direction, but the *increase* direction's message went further and was itself making a recommendation ("worth mentioning at next vet visit"), not stating a neutral fact, with an ambiguous em-dash construction that could be misread as "not a diagnosis worth mentioning." Fixed both: the down-direction label changed to the neutral "decreased" (confirmed via three independent sources that all 4 domains use a consistent scale with no inversions, so only wording needed to change, not the underlying up/down comparison logic), and the up-direction disclaimer rewritten to "This is not a diagnosis. It reflects a reported change — consult your veterinarian with any concerns."
+
+**A real structural bug found in the same code, not part of the original plan:** the Journey Summary modal was unconditionally appending a second, hardcoded, direction-blind disclaimer sentence to every alert regardless of its actual direction — meaning a down-direction (improving) alert was incorrectly followed by up-direction vet-mention language on every single alert shown, on every dog. Removed the redundant line; both the dashboard card and Journey Summary now render the same single, correct, direction-appropriate message from `activeAlert.message`.
+
+Two stale stored alert rows for this session's test dog were corrected (message column only) so review reflected current wording, not pre-fix artifacts. Verified live end-to-end, both alert directions, both display surfaces, real signup/check-in flows on disposable test dogs, zero console errors.
+
+**Known follow-up, explicitly flagged in this session and not yet fixed:** the dashboard's "This Week at a Glance" card (`describeTrendForGlance`) has the identical evaluative-language issue ("improved"/"declined") that was just fixed in the health-alert card above — a different function, not touched in this pass. Logged as checklist item 27.
+
+**Supporting services/tools:** `server.js` for the Health Summary/alert-language work; `Public/how-it-works.html`, `styles.css`, `index.html` for the copy/structure work.
+
+---
+
+## August 27, 2026 (continued) — Pet Health Library Rebuilt with a New Document Library Feature; Our Impact Page Redesigned
+
+### Document Library feature + Pet Health Library hero redesign
+
+**New dashboard feature:** "Document Library" — 4 real, personalized documents (Vet Visit Guide, What to Track and Why, Signs Worth Tracking, Pet-Proofing Your Home), each rendered on-screen using the same established pattern as the existing Journey Summary (an in-DOM modal, `window.print()` for save/print, no server-side PDF generation). Reachable from its own new dashboard button, distinct from and non-interfering with the existing Journey Summary button. Document 4 branches on the existing senior-for-breed computed flag to show different intro copy for senior vs. non-senior dogs.
+
+**`pet-health-library.html`'s hero redesigned** into a 3-quadrant layout (heading top-left, body bottom-left, a "library shelf" of book-icon entries spanning the right side). Each shelf entry independently expands via native `<details>/<summary>` to reveal a one-line description — no JS required, the same zero-JS accordion pattern later contrasted against the FAQ page's broken JS-driven one (see Aug 28 below). Includes an original custom SVG background illustration — a single continuous-line book-spine pattern at 5% opacity, layered behind the shelf list as a subtle watermark. Replaces an earlier, discarded 4-card "Document Library" section that duplicated the same content less effectively. The public page label was updated to "Document Library (Available in your dashboard)" to set expectations before a visitor tries to interact with it, since the real documents require a logged-in dashboard to personalize.
+
+Verified end-to-end via a real signup/check-in flow on a disposable test dog: all 4 documents render with correct personalized content matching locked copy exactly, senior-flag branching confirmed correct, both dashboard buttons confirmed distinct and non-interfering, shelf entries confirmed independently expandable (not an accordion — each opens on its own), mobile layout confirmed correctly stacked with no overflow, zero console or server errors.
+
+### Our Impact page (`public-insights.html`) redesigned
+
+Rewrote the page from 3 thin sections into a fuller structure: sharpened hero copy, a new "Why This Matters" section naming the actual gap in pet health data (versus human medicine's real-world-evidence platforms), a new "One Check-In, Many Outcomes" section built around an original circular-themed ecosystem loop diagram (4 stages in a row with a curved return arc, custom icons, the site's real palette) — built after ruling out a literal circular arrangement, which had irreconcilable text-collision problems with the arc sweep at every radius/spacing combination tested. Also a reframed "Rigor Over Hype" section (no invented numbers, ever, consistent with the project's standing data-accuracy rule) and a new "Where You Come In" section tying an individual check-in back to the bigger picture and the owner's own dashboard.
+
+Added scoped spacing overrides (`tight-top`/`tight-bottom` modifier classes) bringing this page's hero-to-section and section-to-section gaps down from ~175px to 80px — deliberately scoped to this one page, not applied to the shared `.content-section`/`.page-hero` classes sitewide (see checklist item 25, added the same commit, for the sitewide version of this idea and the homepage-hero risk that needs checking first).
+
+Verified live at mobile and desktop: diagram geometry (tangency, spacing, containment), text-collision checks, tightened section spacing confirmed via real computed DOM values, zero console errors.
+
+**Supporting services/tools:** `server.js`, `Public/pet-health-library.html`, `Public/public-insights.html`, `styles.css`.
+
+---
+
+## August 28, 2026 — New Brand Identity: Paw-in-C Favicon, Double-C Monogram, Brand Lockup Rolled Out Sitewide
+
+### Favicon replaced, apple-touch-icon added
+
+Replaced `favicon.svg`, `favicon.ico` (real multi-resolution 16/32/48px), and `favicon-32.png` with a new paw-in-C icon design rendered from a genuine vector source, confirmed legible at true 16×16 pixels before implementation. Added `apple-touch-icon.png` (180×180) and wired its `<link>` tag into all 13 static pages — this tag didn't exist before, a standard companion to any real favicon setup.
+
+**A design candidate was tested and deliberately rejected, not just skipped:** a new full-color globe/map logo was tested at its real rendered header size (44×44) against the current header icon in a live browser check. The current bold paw+dashed-circle mark reads clearly at that size; the new globe mark's 5 colored nodes and thin connectors lose legibility and read as fuzzy dots. Left the header icon unchanged rather than force a design that fails its own real-size legibility test. Both new source vector files (the full-color logo, the paw-in-C icon) were stored at `Public/assets/images/brand/` for future use in larger contexts — not wired into anything yet at this point.
+
+**Known gap, flagged not fixed:** server-rendered pages (dashboard, check-in, breed guide, Journey Summary, `/checkins/:owner_id`, etc.) have zero favicon links of any kind — pre-existing since these routes were first built, unrelated to and not caused by this favicon swap. Logged as checklist item 26.
+
+Verified live: all favicon URLs return 200 with correct content-type/size, header renders identically at desktop and 375px mobile, zero console errors.
+
+### Header icon replaced for real: the double-C paw monogram
+
+Superseded the header icon (left unchanged in the previous entry) with a new design: a large "C" plus a smaller overlapping "c," a coral paw print centered over both, on a dark espresso circle — matching a reference design John provided and the site's real color palette.
+
+**A real page-weight problem found and avoided:** the source SVG is auto-traced from a raster image (thousands of small line segments, not hand-drawn curves), making it ~55KB versus ~1.4KB for a typical hand-drawn icon. Inlining that into all 13 page headers as originally structured would have added ~715KB of duplicated page weight sitewide. Instead, the icon is a single shared asset referenced via `<img>` and cached by the browser, with a new `.brand-mark img` CSS rule added alongside the existing `.brand-mark svg` rule — one line changed per page, no page-weight cost.
+
+Confirmed via direct rasterization at 16/32/44/88/180px that the new icon renders clearly at every real size it's used (header, favicon, apple-touch-icon). Verified live: zero console errors across all 13 pages, image loads correctly at desktop and 375px mobile with no overflow, all favicon URLs return 200 with matching byte sizes, server-rendered pages confirmed to have no separate icon markup needing updates (same known gap as above, untouched by this change).
+
+### Brand lockup rolled out to footer, documents, breed guide, Journey Summary, and dashboard
+
+New shared `buildBrandLockup()` helper in `server.js`, reused across all 4 server-rendered locations rather than hand-duplicating markup: the Document Library (all 4 documents) had its plain gold-text label replaced with the icon+wordmark lockup; the breed guide's site-brand gold text was replaced with the lockup and the now-dead `.site-brand` CSS rule removed (confirmed no other remaining uses); the Journey Summary's matching gold-text treatment was replaced with the lockup, sized down to fit its tighter row next to the dog's photo; and the dashboard gained the lockup above its `h1` — the page's first branding element of any kind. All 13 static page footers gained a small icon+wordmark brand mark as the first line inside each existing footer div, above whatever heading/tagline/link that page already had — every other line of existing footer copy confirmed unchanged, exactly one line added per page.
+
+**A real bug caught during implementation, not shipped:** the breed guide's inherited `.site-brand` class would have forced the new lockup text into unwanted all-caps styling — caught and fixed before verification.
+
+Verified live end-to-end via a real signup → verify → dashboard → backdated breed-guide unlock → Journey Summary → Document Library (all 4 panes) pass: icon loads correctly at every location, zero console errors, clean at desktop and 375px mobile.
+
+A same-day follow-up removed the redundant `<h2>Companion Commons</h2>` footer heading on `index.html` and `how-it-works.html` specifically, where it now sat directly beneath the new lockup and duplicated it exactly. The same duplicate heading on `add-dog.html`, `find-my-dashboard.html`, and `baseline-health-journey.html` was left as-is — a deliberate scoping decision for this pass, not an oversight.
+
+**Supporting services/tools:** `server.js`, all `Public/*.html`, `styles.css`, new SVG/PNG assets under `Public/assets/images/brand/`.
+
+---
+
+## August 28, 2026 (continued) — Contact Us Feature Shipped
+
+**New public page and endpoint:** `Public/contact.html` (a 2-field form — email, message — following `faqs.html`'s structural conventions) and a new `POST /api/contact` route. Two distinct anti-abuse layers, both required to return the exact same generic success response as a real submission: a honeypot field (hidden off-screen in the markup, not `display:none`, since some bots specifically skip `display:none` fields) and a new `contactFormIpRateLimit` mirroring the existing `resendLookupIpRateLimit` pattern exactly (5 requests/15 minutes/IP). Real validation errors (a malformed email, an empty message) are not disguised the same way — that's normal form feedback for a genuine user, not a security boundary, so those get a real 400 with a real message like every other form on the site.
+
+On a valid submission: the message is stored in a new `contact_submissions` table, a notification email goes to `hello@companioncommons.com` (confirmed real, Porkbun-forwarded to `companioncommons@gmail.com`) with `replyTo` set to the submitter for a direct reply path, and the submitter receives a confirmation email with a copy of their own message (48-hour response promise matching the existing text on `privacy.html`). `migration_add_contact_submissions.sql` enables RLS with zero new policies, matching the Aug 26 security posture — service-role-only access, no public/anon path.
+
+**Verified end-to-end with a real submission through the actual UI, migration run first:** a real row landed in `contact_submissions` with correct email/message/IP/timestamp, both emails independently confirmed received in their real inboxes by John, honeypot and rate-limit paths confirmed to return the identical response as a real submission, zero console errors, test data cleaned up and confirmed at 0 rows afterward.
+
+**A real, honestly-reported gap found during this verification, not fixed:** none of this codebase's email-sending functions — new or pre-existing — capture or log a real SendGrid message ID, only a generic success/failure line. SendGrid's own Activity API was also tried as an independent check and returned 403 (the configured API key lacks that scope). This makes "confirmed sent" mean "the API call didn't throw," not something independently traceable after the fact. Not a functional bug, but flagged as checklist item 28 for anyone who wants stronger delivery verification later.
+
+**Supporting services/tools:** `server.js`, `Public/contact.html`, Supabase (`contact_submissions`), SendGrid.
+
+---
+
+## August 28, 2026 (continued) — FAQ Accordion Fixed: the Same Bug Class as the Hamburger Menu, But Fully Missing This Time
+
+**Real bug report:** clicking any FAQ question on `faqs.html` did nothing — confirmed across multiple questions, not just one.
+
+**Root cause, confirmed by investigation before any fix was attempted:** the accordion is JS-driven (`data-faq-button` + `aria-expanded` + a sibling `hidden` answer `<div>` linked via `aria-controls`/`id`) — not native `<details>/<summary>`, the pattern used successfully elsewhere (`pet-health-library.html`'s shelf entries, see above). A full grep of `main.js` and the entire repo found **no click handler anywhere** for `[data-faq-button]` — a different failure mode than the Aug 26 hamburger-menu bug (that was a real mismatch, JS toggling something the CSS never checked). This was a fully missing implementation: the CSS was already built to support the intended toggle (`.faq-question[aria-expanded="true"]:after` flips the `+`/`−` glyph), but nothing had ever wired a click to set that attribute. Confirmed via full-codebase grep that `faqs.html` is the only page using this component — no other page affected.
+
+**Fix:** one click handler added to `main.js`, same file and pattern already used for the hamburger-menu fix — toggles `aria-expanded` and the answer's `hidden` attribute together.
+
+**Verified live via direct DOM inspection** (`aria-expanded`, `hidden` attribute, computed `display`, real `offsetParent` visibility) across 4 questions in 4 different sections: each opens and closes correctly, multiple can be open independently without interfering with each other, the `+`/`−` glyph swaps correctly, behavior holds at 375px mobile width with no overflow, zero console errors throughout.
+
+**Supporting services/tools:** `Public/assets/js/main.js`.
