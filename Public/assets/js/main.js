@@ -239,6 +239,22 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // FAQ accordion toggle (faqs.html)
+  // Each button carries aria-controls pointing at its answer's id; the
+  // answer starts with the native `hidden` attribute in markup. Toggling
+  // `hidden` and `aria-expanded` together is what the page's CSS actually
+  // keys off of (faqs.css flips the +/- glyph on aria-expanded="true").
+  // No handler existed for this at all before this fix -- clicking a
+  // question did nothing.
+  document.querySelectorAll('[data-faq-button]').forEach(button => {
+    button.addEventListener('click', () => {
+      const isExpanded = button.getAttribute('aria-expanded') === 'true';
+      const target = document.getElementById(button.getAttribute('aria-controls'));
+      button.setAttribute('aria-expanded', String(!isExpanded));
+      if (target) target.hidden = isExpanded;
+    });
+  });
+
   // Sticky header on scroll
   let lastScrollTop = 0;
   window.addEventListener('scroll', () => {
