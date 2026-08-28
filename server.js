@@ -905,6 +905,38 @@ const resendLookupIpRateLimit = (ip) => {
   return { allowed: true };
 };
 
+// Same pattern as resendLookupIpRateLimit above, for the public Contact Us
+// form: max 5 submissions per IP per 15 minutes. A contact form is an open
+// endpoint (no owner lookup, no enumeration risk) but is still a real spam
+// target, so it gets its own IP limiter rather than relying solely on the
+// generic apiRateLimit (10 req/10sec/IP -- far too loose to slow down a
+// scripted spam run on its own).
+const contactFormIpCounts = new Map();
+const contactFormIpRateLimit = (ip) => {
+  const now = Date.now();
+  const windowMs = 15 * 60 * 1000;
+  const maxRequests = 5;
+
+  if (!contactFormIpCounts.has(ip)) {
+    contactFormIpCounts.set(ip, { count: 1, timestamp: now });
+    return { allowed: true };
+  }
+
+  const data = contactFormIpCounts.get(ip);
+
+  if (now - data.timestamp > windowMs) {
+    contactFormIpCounts.set(ip, { count: 1, timestamp: now });
+    return { allowed: true };
+  }
+
+  if (data.count >= maxRequests) {
+    return { allowed: false };
+  }
+
+  data.count += 1;
+  return { allowed: true };
+};
+
 // Apply API rate limiting to all POST endpoints
 app.post('*', apiRateLimit);
 
@@ -7595,6 +7627,184 @@ app.post('/api/resend-dashboard-link', async (req, res) => {
     // other to the client. Safe no-op if already responded (see `respond`).
     console.error('Error in resend-dashboard-link endpoint:', error);
     respond();
+  }
+});
+
+// ============================================
+// CONTACT US
+// POST /api/contact
+//
+// Public-facing form (contact.html) -- no owner lookup, so none of
+// resend-dashboard-link's enumeration/timing concerns apply here. Two
+// distinct anti-abuse layers, both required to silently return the exact
+// same generic success response as a real submission: a honeypot field
+// (bots that auto-fill every input trip it; real users never see it) and
+// contactFormIpRateLimit above. A genuine validation error (missing/
+// malformed email, empty message) is NOT disguised -- that's normal form
+// feedback for a real user, not a security boundary, so it gets a real
+// 400 with a real message, same as every other form on this site.
+// ============================================
+
+const GENERIC_CONTACT_RESPONSE = { success: true, message: "Thanks for reaching out — we'll be in touch within 48 hours." };
+
+// Internal notification, sent to hello@ (a real, Porkbun-forwarded address
+// John already checks -- confirmed before building this, not assumed).
+// replyTo is set to the submitter's own address so replying to this email
+// in any normal mail client goes straight back to them, no copy-paste.
+async function sendContactNotificationEmail(submitterEmail, message, submittedAt) {
+  if (!SENDGRID_API_KEY) {
+    console.warn('⚠️ SendGrid not configured. Email not sent.');
+    return { success: false, error: 'SendGrid not configured' };
+  }
+
+  try {
+    const emailSafe = escapeHtml(submitterEmail);
+    const messageSafe = escapeHtml(message);
+    const dateStr = submittedAt.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+
+    const msg = {
+      to: 'hello@companioncommons.com',
+      from: SENDGRID_FROM_EMAIL,
+      replyTo: submitterEmail,
+      subject: 'New message via Contact Us',
+      html: `
+        <div style="font-family: -apple-system, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px;">
+          <div style="background: #f5f5f5; border-radius: 12px; padding: 30px;">
+            <h2 style="color: #333; margin-bottom: 20px; text-align: center;">New Contact Us message</h2>
+            <p style="color: #666; font-size: 14px; margin: 0 0 4px 0;"><strong>From:</strong> ${emailSafe}</p>
+            <p style="color: #666; font-size: 14px; margin: 0 0 20px 0;"><strong>Submitted:</strong> ${dateStr}</p>
+            <div style="background: #fff; border-radius: 8px; padding: 20px; white-space: pre-wrap; color: #333; font-size: 15px; line-height: 1.6;">${messageSafe}</div>
+            <p style="color: #999; font-size: 12px; margin-top: 24px; text-align: center;">Reply directly to this email to respond to ${emailSafe}.</p>
+          </div>
+        </div>
+      `
+    };
+
+    await sgMail.send(msg);
+    console.log(`✅ Contact notification email sent to hello@companioncommons.com (from ${submitterEmail})`);
+    return { success: true };
+  } catch (error) {
+    console.error(`❌ Error sending contact notification email for ${submitterEmail}:`, error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+// Confirmation copy sent back to the submitter, same warm visual pattern
+// (card, wave emoji, muted footer tagline) as sendDashboardLinkEmail /
+// sendChurnAlertEmail. The 48-hour response-time promise matches the one
+// already stated on privacy.html, not a new number invented here.
+async function sendContactConfirmationEmail(submitterEmail, message) {
+  if (!SENDGRID_API_KEY) {
+    console.warn('⚠️ SendGrid not configured. Email not sent.');
+    return { success: false, error: 'SendGrid not configured' };
+  }
+
+  try {
+    const messageSafe = escapeHtml(message);
+
+    const msg = {
+      to: submitterEmail,
+      from: SENDGRID_FROM_EMAIL,
+      subject: 'We got your message 👋',
+      html: `
+        <div style="font-family: -apple-system, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px;">
+          <div style="background: #f5f5f5; border-radius: 12px; padding: 30px;">
+            <h2 style="color: #333; margin-bottom: 20px; text-align: center;">Thanks for reaching out! 👋</h2>
+            <p style="color: #666; font-size: 16px; margin: 15px 0; line-height: 1.6;">
+              We received your message and will get back to you within 48 hours.
+            </p>
+            <p style="color: #666; font-size: 14px; margin: 20px 0 8px 0;">Here's a copy of what you sent:</p>
+            <div style="background: #fff; border-radius: 8px; padding: 20px; white-space: pre-wrap; color: #333; font-size: 15px; line-height: 1.6;">${messageSafe}</div>
+            <p style="color: #999; font-size: 12px; margin-top: 30px; text-align: center;">
+              Companion Commons — Together we can change the future of pet health understanding
+            </p>
+          </div>
+        </div>
+      `
+    };
+
+    await sgMail.send(msg);
+    console.log(`✅ Contact confirmation email sent to ${submitterEmail}`);
+    return { success: true };
+  } catch (error) {
+    console.error(`❌ Error sending contact confirmation email to ${submitterEmail}:`, error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+app.post('/api/contact', async (req, res) => {
+  try {
+    // IP rate limit, checked first, before any input validation -- same
+    // ordering as resendLookupIpRateLimit's usage above.
+    const ip = req.ip || req.connection.remoteAddress;
+    const ipLimitResult = contactFormIpRateLimit(ip);
+    if (!ipLimitResult.allowed) {
+      console.log(`⏭️ contact form: IP rate limited for ${ip}`);
+      return res.json(GENERIC_CONTACT_RESPONSE);
+    }
+
+    // Honeypot: a real user never sees or fills this field (hidden
+    // off-screen in contact.html, not type="hidden" -- some bots skip
+    // type="hidden" specifically, off-screen positioning is harder to
+    // detect without actually rendering the page). Any non-empty value
+    // here means a bot filled every field it could find. Reject silently
+    // with the exact same response a real submission gets -- a bot (or
+    // whoever's watching its output) learns nothing from the difference.
+    const honeypot = req.body.website;
+    if (honeypot) {
+      console.log(`⏭️ contact form: honeypot tripped for IP ${ip}`);
+      return res.json(GENERIC_CONTACT_RESPONSE);
+    }
+
+    // Real validation below IS user-facing (real 400s) -- this isn't a
+    // security boundary like the honeypot/rate-limit checks above, just
+    // normal form feedback.
+    const cleanEmail = sanitizeEmail(req.body.email);
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      return res.status(400).json({ success: false, error: 'Please enter a valid email address.' });
+    }
+
+    // 2000 chars, not the 500 used for check-in observations elsewhere --
+    // a contact message is a different use case (describing an issue,
+    // giving feedback) and reasonably needs more room.
+    const cleanMessage = sanitizeString(req.body.message, 2000);
+    if (!cleanMessage) {
+      return res.status(400).json({ success: false, error: 'Please enter a message.' });
+    }
+
+    const { error: insertError } = await supabase
+      .from('contact_submissions')
+      .insert({ email: cleanEmail, message: cleanMessage, ip_address: ip });
+
+    if (insertError) {
+      console.error('Error saving contact submission:', insertError);
+      return res.status(500).json({ success: false, error: 'Something went wrong. Please try again.' });
+    }
+
+    // Respond only after both real outcomes (DB write, at least confirming
+    // there's something to notify about) are known -- unlike
+    // resend-dashboard-link, there's no enumeration timing concern here to
+    // avoid, so awaiting before responding is fine and lets a genuine
+    // send failure actually surface in the response instead of being
+    // silently swallowed.
+    const submittedAt = new Date();
+    const [notifyResult, confirmResult] = await Promise.all([
+      sendContactNotificationEmail(cleanEmail, cleanMessage, submittedAt),
+      sendContactConfirmationEmail(cleanEmail, cleanMessage)
+    ]);
+
+    if (!notifyResult.success) {
+      console.error('⚠️ Contact form saved but internal notification email failed:', notifyResult.error);
+    }
+    if (!confirmResult.success) {
+      console.error('⚠️ Contact form saved but confirmation email to submitter failed:', confirmResult.error);
+    }
+
+    return res.json(GENERIC_CONTACT_RESPONSE);
+  } catch (error) {
+    console.error('Error in /api/contact:', error);
+    return res.status(500).json({ success: false, error: 'Something went wrong. Please try again.' });
   }
 });
 

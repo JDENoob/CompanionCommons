@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Contact Us | Companion Commons</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="assets/css/styles.css" />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="favicon.ico" sizes="any" />
+    <link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <script src="assets/js/main.js" defer></script>
+  </head>
+  <body>
+    <aside class="copy-editor">
+      <button class="copy-editor-toggle" data-copy-toggle aria-expanded="false">
+        <i data-lucide="pencil"></i> Edit wording
+      </button>
+      <div class="copy-editor-panel" data-copy-panel hidden>
+        <strong>Copy Editor</strong>
+        <p>Click highlighted wording and type.</p>
+        <div class="copy-editor-actions">
+          <button data-copy-save>Save changes</button
+          ><button data-copy-export>Export wording</button
+          ><button data-copy-reset>Reset</button>
+        </div>
+      </div>
+    </aside>
+    <header class="site-header">
+      <div class="container nav-shell">
+        <a class="brand" href="index.html"
+          ><span class="brand-mark" aria-hidden="true"><img src="assets/images/brand/companion-commons-double-c-paw.svg" width="44" height="44" alt="" /></span
+          ><span class="brand-name">Companion<span class="brand-name-sub">Commons</span></span></a
+        ><button
+          class="menu-toggle"
+          aria-expanded="false"
+          aria-controls="site-nav"
+          data-menu-toggle
+        >
+          <span class="sr-only">Open navigation</span><span></span><span></span
+          ><span></span>
+        </button>
+        <nav class="site-nav" id="site-nav" data-menu>
+          <a href="how-it-works.html">How It Works</a
+          ><a href="pet-health-library.html">Pet Health Library</a
+          ><a href="public-insights.html">Our Impact</a
+          ><a href="about.html">About</a
+          ><a href="trust-and-data.html">Trust &amp; Privacy</a
+          ><a href="faqs.html">FAQs</a
+          ><a class="button button-small" href="baseline-health-journey.html"
+            >Start Your Pet’s Journey</a
+          >
+        </nav>
+      </div>
+    </header>
+    <main>
+      <section class="page-hero">
+        <div class="container inner">
+          <p class="eyebrow">Get in Touch</p>
+          <h1>Contact Us</h1>
+          <p>
+            Questions, feedback, or just want to say hello? Send us a message
+            and we'll get back to you within 48 hours.
+          </p>
+        </div>
+      </section>
+      <section class="content-section">
+        <div class="container" style="max-width: 600px;">
+          <form id="contactForm" method="POST" action="/api/contact">
+            <div class="form-group">
+              <label for="contactEmail">Your email *</label>
+              <input
+                type="email"
+                id="contactEmail"
+                name="email"
+                required
+                placeholder="your@email.com"
+                maxlength="255"
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="contactMessage">Your message *</label>
+              <textarea
+                id="contactMessage"
+                name="message"
+                required
+                maxlength="2000"
+                rows="7"
+                placeholder="What's on your mind?"
+              ></textarea>
+            </div>
+
+            <!-- Honeypot: invisible to real users (off-screen, not
+                 type="hidden" -- some bots specifically skip type="hidden"
+                 fields, off-screen positioning is harder to detect without
+                 rendering). A bot that auto-fills every field it finds will
+                 fill this one too; server.js rejects silently if it's
+                 non-empty. Real users never see or interact with it. -->
+            <div style="position: absolute; left: -9999px; top: -9999px;" aria-hidden="true">
+              <label for="contactWebsite">Website</label>
+              <input
+                type="text"
+                id="contactWebsite"
+                name="website"
+                tabindex="-1"
+                autocomplete="off"
+              />
+            </div>
+
+            <button type="submit" class="button" style="width: 100%; margin-top: 10px;">
+              Send Message
+            </button>
+          </form>
+        </div>
+      </section>
+    </main>
+    <footer class="site-footer">
+      <div class="container footer-grid">
+        <div>
+          <div class="footer-brand"><img src="assets/images/brand/companion-commons-double-c-paw.svg" alt="Companion Commons" width="26" height="26" /><span>Companion Commons</span></div>
+          <p>Pet families. Shared purpose.</p>
+        </div>
+        <a href="index.html">Return to homepage</a>
+      </div>
+      <div class="container" style="text-align: center; font-size: 12px; opacity: 0.75; margin-top: 18px;">
+        <a href="privacy.html" style="color: #fff;">Privacy Policy</a>
+        <span style="margin: 0 8px;">&middot;</span>
+        <a href="terms.html" style="color: #fff;">Terms of Service</a>
+      </div>
+      <div class="container veterinary-disclaimer">
+        <p>
+          Companion Commons is not a veterinary service and does not diagnose,
+          treat, prescribe, or provide veterinary advice. Always consult a
+          licensed veterinarian about your companion’s health and care. Think
+          this may be an emergency? Contact your veterinarian or the nearest
+          emergency veterinary hospital immediately.
+        </p>
+      </div>
+    </footer>
+    <script src="https://unpkg.com/lucide@1.33.0"></script>
+    <script>
+      lucide.createIcons();
+
+      document.getElementById('contactForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const formData = new FormData(e.target);
+        const data = Object.fromEntries(formData);
+
+        try {
+          const response = await fetch('/api/contact', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+          });
+
+          const result = await response.json();
+
+          if (result.success) {
+            document.querySelector('.content-section .container').innerHTML = `
+              <div style="text-align: center; padding: 40px 0;">
+                <h2 style="font-family: var(--serif); font-weight: 500; margin-bottom: 12px;">✓ Message sent!</h2>
+                <p style="color: var(--muted); font-size: 16px; line-height: 1.6;">
+                  ${result.message}<br>
+                  We've also sent a copy to your email.
+                </p>
+                <a href="index.html" style="display: inline-block; margin-top: 24px; background: #d96f56; color: white; padding: 12px 28px; border-radius: 8px; text-decoration: none; font-weight: 600;">Return to Homepage</a>
+              </div>
+            `;
+          } else {
+            alert('Error: ' + (result.error || 'Unknown error'));
+          }
+        } catch (error) {
+          console.error('Error:', error);
+          alert('Error sending message. Please try again.');
+        }
+      });
+    </script>
+
+    <style>
+      .form-group {
+        margin-bottom: 20px;
+      }
+
+      label {
+        display: block;
+        font-weight: 500;
+        color: #333;
+        margin-bottom: 6px;
+        font-size: 14px;
+      }
+
+      input[type="email"],
+      input[type="text"],
+      textarea {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        font-family: inherit;
+        font-size: 14px;
+        box-sizing: border-box;
+      }
+
+      textarea {
+        resize: vertical;
+      }
+    </style>
+  </body>
+</html>
