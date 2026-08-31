@@ -7,6 +7,7 @@ This is CompanionCommons, a pet health data intelligence platform. Full details,
 @docs/CompanionCommons_Strategy_and_Legal_Aug20.md — business positioning, data governance decisions, lawyer prep
 @docs/Multi_Dog_Signup_Build.md — the multi-dog owner architecture project (all 5 stages complete)
 @docs/All_SMS_Communications.md — reference for every real SMS template's final copy, character counts, and trigger conditions
+@docs/All_Email_Communications.md — companion to the SMS doc: every real automatic email's final copy, trigger conditions, and the churn/re-engagement email's corrected once-per-missed-week cadence
 @docs/CompanionCommons_Health_Instrument_Design.md — locked spec for the redesigned health check-in instrument (STEP P10), literature grounding, legal position
 @docs/Health_Instrument_Redesign_Build.md — the STEP P10 build project (complete) — schema, shared helpers, stage-by-stage rollout, and the real end-to-end verification pass
 @docs/Breed_Guide_Expansion_Build.md — the STEP P11 project (Stages 2-4 shipped) — progressive breed-guide unlock at weeks 2/4/8/12 plus the breed-matching coverage fix underneath it

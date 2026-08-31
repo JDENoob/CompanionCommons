@@ -1124,3 +1124,35 @@ Rendered live at desktop (1200px) and mobile (375px): the box matches the other 
 **Supporting services/tools:** `Public/trust-and-data.html`.
 
 **Simplest way to swap in a new photo:** keep the exact same filename and overwrite the file in place. As long as the replacement is also a square crop in the same general style, no CSS or position changes are needed — the percentages above are keyed to the filename, not the image content.
+
+---
+
+## August 31, 2026 (continued) — Full Communications Audit Surfaces an Unbounded Churn-Email Bug, Fixed
+
+### The audit
+
+Asked for a precise min/max communications-volume and cost analysis for a single logger over a full 12-week program, computed directly from the actual live `server.js` logic rather than from docs (which the request itself flagged as possibly stale). Traced every SMS and email trigger in the codebase end to end: verification SMS (once, at signup), the 3-part missed-check-in reminder cascade (each capped at once per missed week, confirmed via its `message_type` existence check), the proactive next-week SMS (once per successful check-in), milestone messages (confirmed dashboard/confirmation-screen only — never SMS or email, a real miscategorization risk avoided by checking the code instead of assuming), and the churn/re-engagement email.
+
+**Real per-logger totals over 11 "missable" weeks (2–12; week 1 is baseline-only):** MIN (logs every week, on time) = 12 SMS, 0 email. MAX (never logs in) = 34 SMS — but **77 churn emails**, not the small number the feature's own design intent implied.
+
+### The bug the audit surfaced
+
+Tracing `evaluateDogForChurn`'s dedup logic (`server.js:8317-8333` at the time) found it only skipped a re-send if the most recent `churn_flags` row for that dog+week was **less than 24 hours old** — a rolling window, not a weekly cap. Since the churn cron runs hourly and every successful send resets that 24h clock, an unresolved week could re-send roughly once a day for as long as it stayed missed — up to ~7 times within a single 7-day missed week, with no overall program-wide cap anywhere in the code. Real cost impact was trivial (SendGrid's free/flat-rate tier makes the marginal cost ~$0 either way), but the volume itself was a real, previously-undocumented product risk: a permanently disengaged owner could receive on the order of 70+ re-engagement emails over 11 weeks — a genuine deliverability/spam-complaint concern, not just a cost line.
+
+### The decision and the fix
+
+Decided the email should match the restraint already built into the SMS reminder cascade — at most once per missed week, not a rolling re-fire. Confirmed first that no schema change was needed: `churn_flags.week_number` already existed and was already the dedup's match key, so this was purely a query-logic fix — dropped the `created_at`/`hoursSinceAlert < 24` check, kept the `dog_id` + `week_number` match, skip if *any* row already exists for that pair regardless of age. Trigger timing (`reminderDay1`'s 2pm gate, unchanged since the Aug 21 fix that stopped the email firing before any SMS reminder went out) was left untouched. Also fixed a now-stale comment in `sendChurnAlertsForOwnerGroup` that still described the old 24h window.
+
+### Verification — and a real methodology bug in the verification harness itself
+
+Verified via a dry-run trace of the actual, post-fix functions — extracted verbatim from `server.js` via string-slice + `eval` (same method already established in this project's Stage 4a unit tests), stubbed only Supabase and the email senders (always report success, no real sends), simulating hourly cron ticks across a full 12-week program.
+
+**The first version of the harness produced obviously-wrong results** (both MIN and MAX showing exactly 1 email, at a nonsensical "week 35") — investigated rather than dismissed, and traced to a real bug in the harness, not the fix: `evaluateDogForChurn`'s `now` is computed via `new Date()` with no arguments — real wall-clock time, not a parameter — so the simulated timeline the harness was stepping through never actually reached the function at all; every call was silently evaluating against the real current date instead. Fixed by shadowing `Date` inside the `eval` sandbox with a class that returns a controllable simulated instant when called with no arguments (matching the real function's own calling convention) but behaves like the real constructor otherwise. **Worth keeping as a standing method note for future dry-run audits of any cron/cadence logic**: any function using bare `new Date()` for "now" cannot be time-traveled by simply looping a `for` loop around it — the sandbox's own `Date` binding has to be shadowed, not just the loop variable changed.
+
+With the fixed harness: **MAX now sends exactly 11 churn emails** across the 12-week program — one per missed week, weeks 2 through 12 — confirmed by running extra headroom past week 12 and finding it correctly kept firing once/week there too, not just coincidentally stopping at 12. **MIN remains 0**, unaffected — confirmed unchanged.
+
+### Documentation
+
+Created `All_Email_Communications.md` as the companion to the existing `All_SMS_Communications.md` (which had flagged this as a possible future addition back on Aug 21) — same format, covers both churn email templates' exact final copy, the trigger gate, the corrected dedup behavior with the prior-bug context preserved for future sessions, real MIN/MAX counts, and which emails are user-initiated-only (resend-dashboard-link, Contact Us) and excluded from the automatic-lifecycle counts. Cross-referenced from the top of `All_SMS_Communications.md`, and its "Message ordering" section's churn-email note updated to reflect the corrected cadence rather than describing it as still-open.
+
+**Supporting services/tools:** `server.js`, `docs/All_Email_Communications.md` (new), `docs/All_SMS_Communications.md`.

@@ -1,5 +1,6 @@
 # CompanionCommons — All SMS Communications
 **Date compiled:** August 21, 2026
+**Companion doc:** [`All_Email_Communications.md`](All_Email_Communications.md) — same format/spirit, covers every real automatic email (the churn/re-engagement email, its corrected once-per-missed-week cadence, and MIN/MAX counts).
 **Purpose:** Reference record of every real SMS template sent to loggers, their exact final copy, trigger conditions, and character/segment counts — confirmed via direct code trace (no real Twilio sends were made to produce this). All character counts use real production values: full `companioncommons.com` URL, real 64-character magic-link tokens, real 36-character dog UUIDs, and both a short (Bailey, 6 chars) and long (Constantinople, 14 chars) test name to confirm margin at the new 40-character dog-name limit.
 
 ---
@@ -91,11 +92,13 @@
 
 - On-time logging path: only the **Verification SMS** (once, at signup) and the **Proactive Next-Week Reminder** (once per successful check-in) fire. No other SMS is sent.
 - Missed-week path: **Reminder #1 → Reminder #2 → Reminder #3**, in that order, across two days, if the check-in remains missing.
-- **A related churn-detection re-engagement email** also exists (separate channel, not SMS) and now fires only after Reminder #1's 2:00 PM trigger has passed, as of today's fix — previously it could fire before any SMS reminder went out at all. Full detail on that email is not repeated here since this document is SMS-specific; ask if a matching "All Email Communications" reference doc would be useful too.
+- **A related churn-detection re-engagement email** also exists (separate channel, not SMS) and fires only after Reminder #1's 2:00 PM trigger has passed (fixed Aug 21 2026 — previously it could fire before any SMS reminder went out at all), at most once per dog per missed week (fixed Aug 31 2026 — previously a 24h rolling dedup let it re-fire up to ~7 times in a single missed week). Full detail lives in the companion doc, `All_Email_Communications.md`, linked at the top of this file.
 
 ---
 
 ## Change history
+
+**August 31, 2026:** Added a cross-reference to the new companion doc, `All_Email_Communications.md`, and updated the churn-email note in "Message ordering" to reflect its corrected once-per-missed-week cadence (was a 24h rolling window that could re-fire up to ~7 times/week). No SMS template content changed.
 
 **August 22, 2026:** Added the combined multi-dog reminder template (see section 6) as part of Stage 4 of the multi-dog owner project — when 2+ of the same owner's dogs are due for the same reminder tier at once, they now receive one combined text instead of separate texts per dog. No existing single-dog template's copy changed.
 
