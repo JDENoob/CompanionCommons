@@ -8313,23 +8313,23 @@ async function evaluateDogForChurn(dog, options = {}) {
     return { skipped: true, reason: 'before_first_reminder_time', currentWeek };
   }
 
-  // Dog is missing this week's check-in. Check if we've already alerted recently.
-  const { data: recentAlert } = await supabase
+  // Dog is missing this week's check-in. Check if we've already alerted for
+  // this dog+week at all — once per missed week, not a rolling 24h re-fire.
+  // (Real bug, found via a full communications-cost trace: this used to
+  // only skip if the last alert was <24h old, so an unresolved week could
+  // re-send roughly daily with no cap — up to ~7 emails in a single missed
+  // week. week_number already scopes this correctly per week; the fix is
+  // just dropping the age check, not a schema change.)
+  const { data: existingAlert } = await supabase
     .from('churn_flags')
-    .select('id, created_at')
+    .select('id')
     .eq('dog_id', dog.id)
     .eq('week_number', currentWeek)
-    .order('created_at', { ascending: false })
     .limit(1);
 
-  // Skip if already alerted this week
-  if (recentAlert && recentAlert.length > 0) {
-    const alertedAt = new Date(recentAlert[0].created_at);
-    const hoursSinceAlert = (now - alertedAt) / (1000 * 60 * 60);
-    if (hoursSinceAlert < 24) {
-      console.log(`⏭️  ${dog.dog_name}: already emailed ${Math.round(hoursSinceAlert)}h ago`);
-      return { skipped: true, reason: 'recently_alerted', currentWeek };
-    }
+  if (existingAlert && existingAlert.length > 0) {
+    console.log(`⏭️  ${dog.dog_name}: already emailed for week ${currentWeek}`);
+    return { skipped: true, reason: 'already_alerted_this_week', currentWeek };
   }
 
   // Get last check-in to show context
@@ -8403,9 +8403,10 @@ async function sendChurnAlertsForOwnerGroup(ownerEmail, alerts, options = {}) {
     return { sent: false, dogCount: alerts.length, reason: 'email_failed' };
   }
 
-  // Log the alert to churn_flags — one row per dog, so each dog's own 24h
-  // dedup window (checked in evaluateDogForChurn) is tracked independently,
-  // exactly as it was before this dog's alerts started being combined.
+  // Log the alert to churn_flags — one row per dog, so each dog's own
+  // once-per-week dedup (checked in evaluateDogForChurn) is tracked
+  // independently, exactly as it was before this dog's alerts started
+  // being combined.
   for (const alert of alerts) {
     const { error: flagError } = await supabase
       .from('churn_flags')
