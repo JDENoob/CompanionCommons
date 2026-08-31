@@ -1008,3 +1008,19 @@ On a valid submission: the message is stored in a new `contact_submissions` tabl
 **Verified live via direct DOM inspection** (`aria-expanded`, `hidden` attribute, computed `display`, real `offsetParent` visibility) across 4 questions in 4 different sections: each opens and closes correctly, multiple can be open independently without interfering with each other, the `+`/`−` glyph swaps correctly, behavior holds at 375px mobile width with no overflow, zero console errors throughout.
 
 **Supporting services/tools:** `Public/assets/js/main.js`.
+
+---
+
+## August 30, 2026 — Hero Graphic Redesign: Built in Isolation, Not Yet Wired In, One Open Issue
+
+A new hero graphic concept was built tonight: a US map inside a circular frame, five photo positions arranged in a ring around a center logo badge, connected to it by dashed lines — using five of John's own dog photos rather than stock imagery. This work is **not part of the live site** — everything described here exists only in an isolated preview page (`preview.html`, sitting in the same `hero graphics` asset folder as the map SVG and photos) built specifically to review the concept before touching anything real. `index.html`'s actual hero section is untouched.
+
+**Two real problems found and fixed during the build:**
+- The map's base fill was a single flat, light color — the grid-line and paw-print texture layered on top were nearly invisible against it. Deepened the background to a richer tan and raised the texture opacity so it actually reads.
+- The center badge originally contained an older logo mark that turned out to no longer be the real site logo. Corrected to the actual current one — the double-C+paw design — confirmed against git history as the mark genuinely shipped in the site's header and favicon in recent commits, not assumed from memory.
+
+**Current state, honestly:** the five real dog photos have been pulled back out of the preview (empty ringed circles for now) — John is recropping the source photos himself before they come back for re-integration. The map background and corrected logo are still in place.
+
+**Unresolved, first thing to check next session:** at the end of this session, `localhost:3000` was still showing an old/stale version of the graphic, despite the background and logo fixes both being confirmed correct via direct screenshot/render checks earlier the same session. Root cause not diagnosed — genuinely unknown, not guessed at further tonight. Worth checking first: whether the dev server needs a real restart, browser cache, a wrong/stale URL, or an actual file-save issue. Verify directly next session rather than assuming any one of these.
+
+**Supporting services/tools:** `Public/assets/images/hero graphics/` (`companion-commons-map.svg`, `preview.html`, 5 dog photos).
