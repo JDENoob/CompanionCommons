@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Hero Graphic Preview</title>
+<style>
+  body {
+    margin: 0;
+    padding: 40px;
+    background: #f5f5f5;
+    font-family: sans-serif;
+    display: flex;
+    justify-content: center;
+  }
+  /* Container MUST stay perfectly square at every viewport width, or
+     border-radius: 50% on the photo circles renders as ovals instead of
+     circles. Use aspect-ratio: 1/1, NOT a fixed height + max-width
+     combo -- that combination breaks the square at narrow widths. This
+     was a real bug, found and fixed Aug 31 2026. Do not revert. */
+  .cc-graphic {
+    position: relative;
+    width: 600px;
+    max-width: 90vw;
+    aspect-ratio: 1 / 1;
+  }
+  .cc-graphic > img.map-base {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  .cc-graphic .photo { position: absolute; border-radius: 50%; object-fit: cover; }
+</style>
+</head>
+<body>
+  <div class="cc-graphic">
+    <img class="map-base" src="companion-commons-map.svg" alt="" />
+    <img class="photo" src="dog-top-600x600.png" alt="Dog photo" style="left:40.4%; top:13.46%; width:18.08%; height:18.08%;">
+    <img class="photo" src="dog-left-600x600.png" alt="Dog photo" style="left:10.2%; top:38.98%; width:17.4%; height:17.4%;">
+    <img class="photo" src="dog-right-600x600.png" alt="Dog photo" style="left:71.29%; top:38.35%; width:18.35%; height:18.35%;">
+    <img class="photo" src="dog-bottom-left-600x600.png" alt="Dog photo" style="left:22.53%; top:68.62%; width:17.94%; height:17.94%;">
+    <img class="photo" src="dog-bottom-right-600x600.png" alt="Dog photo" style="left:58.75%; top:68.8%; width:18.08%; height:18.08%;">
+  </div>
+</body>
+</html>

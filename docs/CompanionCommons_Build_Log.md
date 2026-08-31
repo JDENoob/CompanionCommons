@@ -1024,3 +1024,53 @@ A new hero graphic concept was built tonight: a US map inside a circular frame, 
 **Unresolved, first thing to check next session:** at the end of this session, `localhost:3000` was still showing an old/stale version of the graphic, despite the background and logo fixes both being confirmed correct via direct screenshot/render checks earlier the same session. Root cause not diagnosed — genuinely unknown, not guessed at further tonight. Worth checking first: whether the dev server needs a real restart, browser cache, a wrong/stale URL, or an actual file-save issue. Verify directly next session rather than assuming any one of these.
 
 **Supporting services/tools:** `Public/assets/images/hero graphics/` (`companion-commons-map.svg`, `preview.html`, 5 dog photos).
+
+---
+
+## August 31, 2026 — Hero Graphic: Real Photos Wired In, a Real Aspect-Ratio Bug Fixed, First Commit
+
+Closes out the Aug 30 entry above. The stale-render mystery flagged at the end of that session turned out to have a mundane, fully explained cause once actually investigated rather than guessed at: no node process was running at all by the time it was checked, and separately, no server-side cache, build step, or service worker exists anywhere in this codebase that could serve stale static content — `express.static('Public')` reads each file from disk on every request. The remaining candidates (browser cache on an already-open tab, or a stale/mistyped URL — this exact folder-naming ambiguity, `hero-graphic` vs the real `hero graphics`, has bitten this project before) were left as the likely explanation rather than chased further, since the fixes themselves were independently re-verified correct against the real files on disk.
+
+### Real photos wired in
+
+John recropped and dropped in 5 new photos — `dog-top-600x600.png`, `dog-left-600x600.png`, `dog-right-600x600.png`, `dog-bottom-left-600x600.png`, `dog-bottom-right-600x600.png` — all confirmed genuinely 600×600 via `sharp`, not trusted from the filename. Each was wired into `preview.html` as an `<img class="photo">`, with position/size re-derived directly from `companion-commons-map.svg`'s own "white fill circle" per ring position (the layer photos sit against), converted to percentages of the map's 1200×1200 canvas — see the **Photo Replacement** reference section below for the exact values now in use. Verified live, not just visually: centering cross-checked numerically against the SVG's own ring centers (all 5 within 0.04px of expected), and confirmed circular via computed `getBoundingClientRect()` (rendered width exactly equals rendered height for all 5).
+
+### A real, pre-existing bug found and fixed: `.cc-graphic` wasn't actually square at every width
+
+The container had both a fixed `height: 600px` and `max-width: 90vw`, plus an `aspect-ratio: 1/1` that had been silently doing nothing — per the CSS spec, `aspect-ratio` only fills in a dimension left as `auto`, and both width and height were already explicit here. At narrow viewport widths, `max-width` would shrink the rendered width below 600px while `height` stayed pinned at exactly 600px, producing a non-square box — and `border-radius: 50%` on a non-square element always renders as an ellipse, not a circle. This had been latent since the file was first written (before any real photos existed to visibly expose it) and only became obvious once real photos were in the circles.
+
+**Fix:** removed the fixed `height: 600px`, keeping `width: 600px; max-width: 90vw; aspect-ratio: 1 / 1;` — now `aspect-ratio` actually has a free dimension to act on. Confirmed no other part of the file depends on `.cc-graphic`'s size being a literal 600px (all child sizing is percentage-based). A code comment was added directly above this rule in `preview.html` explaining the fix in plain terms, specifically so a future cleanup pass doesn't "simplify" it back into the broken combination.
+
+**A second, related gap found and fixed while verifying this:** `preview.html` had no `<meta name="viewport">` tag at all, which meant any mobile-width rendering (real device or emulated) defaulted to the browser's standard 980px fallback layout viewport regardless of the actual screen width — making the file behave incorrectly on real narrow devices, not just untestable. Added the standard `<meta name="viewport" content="width=device-width, initial-scale=1">` tag.
+
+**Verified numerically at three real widths**, container and all 5 photos, via `getBoundingClientRect()` (width vs. height diff in every case): ~400px → 320.0×320.0 (diff 0); ~700px → 599.99×599.99 (diff 0); ~1400px → 599.99×599.99 (diff 0). All 5 photo circles matched the container's behavior at every width tested — genuinely square, not just square-looking in one screenshot.
+
+### First commit
+
+`Public/assets/images/hero graphics/` (the map SVG, `preview.html`, and the 5 photos) had been sitting completely untracked since the concept was first built two sessions ago — confirmed via `git log --all` showing zero trace of it ever existing in this repo's history. Committed for the first time this session. Still not wired into the real `index.html` hero section — this remains an isolated preview page, by design, until the concept itself is approved.
+
+**Supporting services/tools:** `Public/assets/images/hero graphics/` (`companion-commons-map.svg`, `preview.html`, 5 photo PNGs).
+
+---
+
+### Reference: Hero Graphic — Photo Replacement
+
+Standing reference for swapping any of the 5 hero-graphic photos in the future, without needing to re-derive anything.
+
+**The 5 slots, filenames, and exact position/size** (percentages of `.cc-graphic`'s own box, matching the CSS already in `preview.html`):
+
+| Slot | Filename | `left` | `top` | `width` / `height` |
+|---|---|---|---|---|
+| Top | `dog-top-600x600.png` | 40.4% | 13.46% | 18.08% |
+| Left | `dog-left-600x600.png` | 10.2% | 38.98% | 17.4% |
+| Right | `dog-right-600x600.png` | 71.29% | 38.35% | 18.35% |
+| Bottom-left | `dog-bottom-left-600x600.png` | 22.53% | 68.62% | 17.94% |
+| Bottom-right | `dog-bottom-right-600x600.png` | 58.75% | 68.8% | 18.08% |
+
+These were derived from `companion-commons-map.svg`'s own "white fill circle" per ring position (cx/cy/r), converted to a percentage of the map's 1200×1200 canvas — not arbitrary, and not meant to be hand-tuned by eye.
+
+**Requirements for any future replacement photo:** must be a square (1:1) crop, minimum 600×600px, with the subject well-centered — the circular crop (`border-radius: 50%` + `object-fit: cover`) clips whatever's near the corners, so an off-center subject will visibly lose part of itself.
+
+**The aspect-ratio fix and why it matters:** `.cc-graphic` must stay perfectly square at every viewport width, or the circular photo crops render as ovals instead of circles. This is done via `aspect-ratio: 1/1` — never a fixed `height` paired with `max-width`, since that combination breaks the square at narrow widths (a real bug, found and fixed Aug 31 2026). The code comment directly above `.cc-graphic` in `preview.html` carries this same warning — do not remove it as part of a future cleanup.
+
+**Simplest way to swap in a new photo:** keep the exact same filename and overwrite the file in place. As long as the replacement is also a square crop in the same general style, no CSS or position changes are needed — the percentages above are keyed to the filename, not the image content.
