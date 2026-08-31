@@ -1223,7 +1223,14 @@ async function ensureGoogleSheetTabsExist() {
       if (tabsToCreate.includes('Signups')) {
         await appendRowToSheet('Signups', [
           'Timestamp', 'Dog ID', 'Email', 'Dog Name', 'Breed', 'Age', 'Gender', 'Baseline Weight',
-          'Baseline Mobility (0-10)', 'Baseline Energy (0-10)', 'Baseline Appetite (0-10)', 'Baseline Cognitive (0-10)'
+          'Baseline Mobility (0-10)', 'Baseline Energy (0-10)', 'Baseline Appetite (0-10)', 'Baseline Cognitive (0-10)',
+          // Added Aug 31 2026 — these were collected at signup since the
+          // Aug 16/20 form expansions but never reached Sheets. Appended
+          // at the end (not inserted mid-row) so existing column
+          // positions don't shift. Free-text baseline_notes is
+          // deliberately still excluded — structured scores only.
+          'Phone', 'Zip Code', 'Spayed/Neutered', 'Diet Type', 'Pet Insurance', 'Treatment Category',
+          'SMS Consent', 'Consent Given At'
         ]);
       }
       if (tabsToCreate.includes('CheckIns')) {
@@ -1265,6 +1272,36 @@ async function appendRowToSheet(tabName, rowValues) {
   } catch (error) {
     console.error(`⚠️ Failed to append to Google Sheets tab "${tabName}":`, error.message);
   }
+}
+
+// Builds the 8 trailing Signups-tab columns (Phone, Zip Code,
+// Spayed/Neutered, Diet Type, Pet Insurance, Treatment Category,
+// SMS Consent, Consent Given At) shared by both real signup call sites
+// (/verify and /api/add-dog) — one implementation instead of two, so the
+// two write sites can't independently drift the way headers and writes
+// have drifted apart before in this project.
+//
+// Zip code AND phone are both wrapped with a leading apostrophe:
+// appendRowToSheet uses valueInputOption 'USER_ENTERED', which
+// auto-parses a numeric-looking string the same way Google Sheets parses
+// manual typing. A zip like "02134" would silently become 2134, losing
+// the leading zero; a phone like "+15005550006" gets its leading "+"
+// stripped and becomes a bare number (confirmed empirically via a real
+// signup + Sheets read-back, not assumed — this is exactly the kind of
+// silent mangling that's easy to miss without checking). The apostrophe
+// prefix is the standard Sheets convention for forcing literal text, same
+// as a person manually typing '02134 or '+15005550006 into a cell.
+function buildSignupSheetsExtraColumns({ phone, zipCode, spayedNeutered, dietType, petInsurance, treatmentCategories, smsConsent, consentGivenAt }) {
+  return [
+    phone ? `'${phone}` : '',
+    zipCode ? `'${zipCode}` : '',
+    spayedNeutered || '',
+    dietType || '',
+    petInsurance || '',
+    (treatmentCategories || []).filter(t => t && t !== 'none').join(', '),
+    smsConsent ? 'yes' : 'no',
+    consentGivenAt || ''
+  ];
 }
 
 // Make sure both tabs exist before anything tries to write to them
@@ -7064,7 +7101,21 @@ app.get('/verify', async (req, res) => {
       tokenData.baseline_mobility_score ?? '',
       tokenData.baseline_energy_score ?? '',
       tokenData.baseline_appetite_score ?? '',
-      tokenData.baseline_cognitive_score ?? ''
+      tokenData.baseline_cognitive_score ?? '',
+      // Resolved owner fields (ownerPhone/ownerZip), not tokenData.phone/
+      // zip_code directly — on the returning-owner path those must come
+      // from the real owner record, never the resubmitted form, same
+      // security reasoning already applied to the senior_dogs insert above.
+      ...buildSignupSheetsExtraColumns({
+        phone: ownerPhone,
+        zipCode: ownerZip,
+        spayedNeutered: tokenData.spayed_neutered,
+        dietType: tokenData.diet_type,
+        petInsurance: tokenData.pet_insurance,
+        treatmentCategories: tokenData.treatment_category,
+        smsConsent: ownerSmsConsent,
+        consentGivenAt: tokenData.consent_given_at
+      })
     ]);
 
     // STAGE 5: grant the additive owner-session cookie here — this is the
@@ -7292,7 +7343,7 @@ app.post('/api/add-dog', async (req, res) => {
         pet_insurance: cleanPetInsurance,
         treatment_category: cleanTreatmentCategories,
         owner_id: owner.id,
-        consent_given_at: new Date().toISOString(),
+        consent_given_at: now,
         created_at: now,
         preferred_reminder_day: 3,
         preferred_reminder_time: '14:00'
@@ -7320,7 +7371,17 @@ app.post('/api/add-dog', async (req, res) => {
       cleanMobilityComposite ?? '',
       cleanEnergy ?? '',
       cleanAppetite ?? '',
-      cleanCognitiveComposite ?? ''
+      cleanCognitiveComposite ?? '',
+      ...buildSignupSheetsExtraColumns({
+        phone: owner.phone,
+        zipCode: owner.zip_code,
+        spayedNeutered: cleanSpayedNeutered,
+        dietType: cleanDietType,
+        petInsurance: cleanPetInsurance,
+        treatmentCategories: cleanTreatmentCategories,
+        smsConsent: ownerSmsConsent,
+        consentGivenAt: now
+      })
     ]);
 
     // STAGE 5: this path is only reachable from a link the owner already

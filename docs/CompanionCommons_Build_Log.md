@@ -1073,6 +1073,8 @@ These were derived from `companion-commons-map.svg`'s own "white fill circle" pe
 
 **The aspect-ratio fix and why it matters:** `.cc-graphic` must stay perfectly square at every viewport width, or the circular photo crops render as ovals instead of circles. This is done via `aspect-ratio: 1/1` — never a fixed `height` paired with `max-width`, since that combination breaks the square at narrow widths (a real bug, found and fixed Aug 31 2026). The code comment directly above `.cc-graphic` in `preview.html` carries this same warning — do not remove it as part of a future cleanup.
 
+**Simplest way to swap in a new photo:** keep the exact same filename and overwrite the file in place. As long as the replacement is also a square crop in the same general style, no CSS or position changes are needed — the percentages above are keyed to the filename, not the image content.
+
 ---
 
 ## August 31, 2026 (continued) — Hero Graphic Wired Into the Real Homepage; Founder Story, Public Insights, and Trust & Data Copy Rewrites
@@ -1123,8 +1125,6 @@ Rendered live at desktop (1200px) and mobile (375px): the box matches the other 
 
 **Supporting services/tools:** `Public/trust-and-data.html`.
 
-**Simplest way to swap in a new photo:** keep the exact same filename and overwrite the file in place. As long as the replacement is also a square crop in the same general style, no CSS or position changes are needed — the percentages above are keyed to the filename, not the image content.
-
 ---
 
 ## August 31, 2026 (continued) — Full Communications Audit Surfaces an Unbounded Churn-Email Bug, Fixed
@@ -1156,3 +1156,43 @@ With the fixed harness: **MAX now sends exactly 11 churn emails** across the 12-
 Created `All_Email_Communications.md` as the companion to the existing `All_SMS_Communications.md` (which had flagged this as a possible future addition back on Aug 21) — same format, covers both churn email templates' exact final copy, the trigger gate, the corrected dedup behavior with the prior-bug context preserved for future sessions, real MIN/MAX counts, and which emails are user-initiated-only (resend-dashboard-link, Contact Us) and excluded from the automatic-lifecycle counts. Cross-referenced from the top of `All_SMS_Communications.md`, and its "Message ordering" section's churn-email note updated to reflect the corrected cadence rather than describing it as still-open.
 
 **Supporting services/tools:** `server.js`, `docs/All_Email_Communications.md` (new), `docs/All_SMS_Communications.md`.
+
+---
+
+## August 31, 2026 (continued) — Full Structured-Field Sheets-Export Audit: 8 Real Gaps Found and Fixed
+
+Prompted by the prior session's synthetic-data work, which had flagged 4 collected-but-not-exported fields (`spayed_neutered`, `diet_type`, `treatment_category`, `pet_insurance`) in passing. This session ran the audit properly rather than assuming those 4 were the whole gap.
+
+### The audit
+
+Pulled the complete, real field list from three places directly, not from docs: the full `senior_dogs` insert object at both real signup call sites (`/verify`, `server.js:6960` and `/api/add-dog`, `server.js:7312` — confirmed identical field sets between the two), and the full `mobility_checkins` insert object at `/api/checkin-senior` (`server.js:2254`). Compared against the real Sheets export — both the header-creation code *and* every live `appendRowToSheet()` call site, same double-check method the prior session used, since the two have drifted apart before.
+
+**Check-in side: no gap.** Every structured field in `mobility_checkins` already reaches the CheckIns tab, except the 8 item-level mobility/cognitive sub-scores (`mobility_getting_up`, `mobility_stairs`, etc.) — deliberately excluded per STEP P10 Stage 1's documented decision to export composites only. That's a real, prior, intentional decision, not an oversight — left untouched rather than silently reversed, and flagged explicitly rather than assumed either way, since this task's broad framing ("every structured field") could otherwise have been read to include it.
+
+**Signup side: 8 real gaps**, only 4 of which were previously known:
+- Already known: `spayed_neutered`, `diet_type`, `treatment_category`, `pet_insurance`
+- New: `zip_code` (specifically asked about this session — confirmed collected, stored, and genuinely never exported, distinct from the 4 already-known fields), `phone`, `sms_consent`, `consent_given_at`
+
+`phone`/`sms_consent`/`consent_given_at` hadn't been flagged before. Included them since `email` — equally sensitive contact PII — is already a real Sheets column, and this Sheets export has always been documented as John's own internal "raw-data backup and working layer," not the B2B/licensing export (which has its own, separate, already-standing rule that free-text fields never flow into it — unrelated to this fix). `baseline_notes`/`observation` (free text) were confirmed still correctly excluded from both tabs — untouched, per the standing rule this task explicitly called out.
+
+### The fix
+
+Added one shared helper, `buildSignupSheetsExtraColumns()` (`server.js`, right after `appendRowToSheet`), building all 8 new trailing columns from a single implementation — used by both real write call sites, so they can't independently drift the way headers and writes have drifted before in this project. New columns appended at the end of the existing 12 (not inserted mid-row), so no existing column position shifts.
+
+**A real bug found only by actually checking the write, not just that it didn't error:** the first version wrapped `zip_code` in a leading apostrophe (the standard Sheets trick to force literal text under `USER_ENTERED`, since a zip like "02134" would otherwise silently become "2134"), but left `phone` unwrapped. A real signup test (`+15005550006`) confirmed the zip fix worked — and separately confirmed `phone` was silently losing its `+` prefix, Sheets parsing `"+15005550006"` as a signed number and dropping the sign. Applied the same apostrophe treatment to `phone`. Re-tested with a second real signup (`+15005550009`, zip `00501` — two leading zeros) and confirmed both fields now land intact.
+
+`treatment_category` (an array field) is joined with `, `, filtering out `'none'` so a dog on no treatment shows an empty cell rather than the literal string "none". `sms_consent` (boolean) exports as `'yes'`/`'no'`, matching the existing yes/no convention already used by the other boolean-ish fields in this same row rather than a raw `true`/`false`.
+
+**Manual step required from John — the live Signups sheet's header row is NOT retroactively updated.** Same limitation already documented for the Aug 23 "(0-10)" label change: the header-creation code only runs when a tab is created fresh; `Signups` already exists, so this code never touches its live row 1. Confirmed empirically (see verification below) — after the fix, real data rows had 20 columns while the live header row still showed only the original 12. **John needs to manually add these 8 header labels to columns M–T of the live Signups sheet:** `Phone`, `Zip Code`, `Spayed/Neutered`, `Diet Type`, `Pet Insurance`, `Treatment Category`, `SMS Consent`, `Consent Given At`.
+
+### Verification — real signups through the actual running server, not a dry run
+
+Killed a stray leftover `node.exe` first (per standing rule), started a clean dev server. Ran three real signups through the actual HTTP routes — two via `/verify` (one before the phone fix, one after, to directly prove the fix), one via `/api/add-dog` (the second real write call site, using the owner created by the second `/verify` signup) — each with deliberately edge-case-y values: a zip with a leading zero (`02134`), then a zip with two leading zeros (`00501`); a `pet_insurance: 'not_sure'` value (confirmed this field is genuinely 3-valued — `yes`/`no`/`not_sure` — not the 2-valued set assumed for `spayed_neutered`); a multi-value `treatment_category` array; and a `treatment_category: ['none']` case, confirmed correctly rendering as an empty cell rather than the literal word "none".
+
+Read back from the live Sheet directly (not trusted from the write call's success response) after each write. All 8 new fields landed correctly typed and correctly named on both call sites, including the two edge cases the fix was specifically for: phone numbers kept their `+` prefix, zip codes kept every leading zero. One genuine, harmless cosmetic inconsistency noticed and left alone: `consent_given_at` displayed as Sheets' auto-formatted date/time on the `/verify` row but as a raw ISO string on the `/api/add-dog` row — traced to a real difference in the two routes' input string shape (one is a Postgres-returned timestamp without a trailing `Z`, which Sheets' date auto-detection recognizes; the other is a fresh `new Date().toISOString()` call, which has a trailing `Z` that Sheets doesn't auto-parse the same way) — not a data-loss issue, both values are complete and correct, just displayed differently. All 3 test dogs, both test owners, both magic-link tokens, and all 3 corresponding Sheets rows were deleted afterward and confirmed at zero remaining.
+
+### Documentation
+
+No dedicated new reference doc — this is a single schema correction, not a new subsystem, so it's covered here and by the checklist's manual-follow-up item, matching how the earlier Aug 23 "(0-10)" header change was handled.
+
+**Supporting services/tools:** `server.js`, Google Sheets (`Signups` tab).
