@@ -1073,4 +1073,54 @@ These were derived from `companion-commons-map.svg`'s own "white fill circle" pe
 
 **The aspect-ratio fix and why it matters:** `.cc-graphic` must stay perfectly square at every viewport width, or the circular photo crops render as ovals instead of circles. This is done via `aspect-ratio: 1/1` — never a fixed `height` paired with `max-width`, since that combination breaks the square at narrow widths (a real bug, found and fixed Aug 31 2026). The code comment directly above `.cc-graphic` in `preview.html` carries this same warning — do not remove it as part of a future cleanup.
 
+---
+
+## August 31, 2026 (continued) — Hero Graphic Wired Into the Real Homepage; Founder Story, Public Insights, and Trust & Data Copy Rewrites
+
+Four more commits landed the same day as the hero graphic's first commit above (`34a8d32`): wiring the graphic into the live site for real, then three separate copy-only passes across `about.html`, `public-insights.html`, and `trust-and-data.html`.
+
+### Hero graphic wired into index.html, replacing the old 6-dog hub-and-spoke design (`a69d141`)
+
+**What we did:** Replaced the homepage's old hero visual — SVG connector lines, a small hub badge, and 6 individual dog-photo divs — with the map/logo/photo-ring graphic built and verified in isolation the day before (`Public/assets/images/hero graphics/preview.html`). `index.html` now uses one `<img>` for the full map+logo SVG (both baked into that single file) plus 5 `<img class="hero-map-photo hero-map-photo-{position}">` elements. Reused the existing `.community-visual` container as-is — it was already built correctly (`width:100%; aspect-ratio:1/1; max-width:600px`), unlike `preview.html`'s own original container, which had needed the aspect-ratio fix documented in the entry above. In `styles.css`, the old `.dog-network`/`.dog-hub`/`.dog-photo` rules (plus 6 numbered position variants and their separate tablet/mobile fixed-pixel overrides) were replaced with `.hero-map-base`/`.hero-map-photo` and 5 named position classes, using the exact percentages already derived from the map SVG's own ring geometry (see the "Hero Graphic — Photo Replacement" reference section above). Percentage-based sizing means no separate breakpoint overrides are needed this time — it scales continuously with `.community-visual`'s own responsive size, unlike the old fixed-px version it replaced.
+
+**Investigated first, before touching anything:** confirmed via a full grep of `main.js` and `index.html`'s one inline script (unrelated Lucide icon init) that zero JS anywhere measured, animated, or otherwise depended on the old hero markup or its CSS — safe to remove outright, not just deprecate. Also confirmed no downstream section depends on the hero's exact height.
+
+**The aspect-ratio fix carries forward here too, worth restating plainly rather than just cross-referencing:** `.hero-map-photo`'s container must stay perfectly square at every real viewport width, or the circular photo crops render as ovals — the exact same bug class found and fixed in `preview.html` the day before (a fixed `height` paired with `max-width` breaks the square at narrow widths; `aspect-ratio: 1/1` on a container with no other explicit dimension is what actually works). The warning comment carries over into `styles.css` directly above `.hero-map-photo`, and the same rule was added to `CLAUDE.md`'s standing rules so it survives independent of any one file's own comment.
+
+**Verified live on the real homepage at three widths** — container and all 5 photos computed square (width == height) in every case: ~400px (371.995×371.995), ~700px (500×500, correctly capped by the existing tablet breakpoint), ~1400px (599.99×599.99). Checked the hero-to-impact-band section boundary directly: 0px gap, no overlap, nothing downstream shifted. Zero console errors.
+
+**Why:** this is the concept — built and reviewed in isolation specifically so it could be checked before touching the real, live homepage — going live for the first time, superseding the placeholder 6-dog design that had been live since the original Aug 19 homepage-photo work.
+
+**Supporting services/tools:** `Public/index.html`, `Public/assets/css/styles.css`.
+
+### about.html: founder story rewrite (`6cf3e50`)
+
+Replaced the founder/story body paragraphs with new copy, split into 7 separate `<p>` elements matching the specified paragraph breaks. Blockquote, eyebrow, heading, and the "Please Join Me" CTA link were all left untouched — only the body text content changed, same wrapper/structure/classes as before.
+
+Verified the 3 new em-dash characters (a literal U+2014 character, not an HTML entity) wrote correctly and didn't get garbled — checked programmatically, not just by eye. Rendered live at both desktop and mobile widths: paragraph spacing reads even and consistent throughout, including around the new short one-line "I even co-founded..." paragraph, which doesn't read as orphaned or oddly spaced next to the longer paragraphs around it. Zero console errors.
+
+**Supporting services/tools:** `Public/about.html`.
+
+### public-insights.html: "Why This Matters" headline + body rewrite — and a real em-dash convention finding (`4294b1b`)
+
+Replaced the section's headline and single body paragraph with new copy, splitting the body into 4 separate `<p>` elements. Eyebrow and the section's wrapper/classes (`content-section alt tight-top tight-bottom`) were untouched.
+
+**A real, worth-recording finding surfaced while matching this file's existing style:** unlike `about.html` (which uses a literal em-dash character), `public-insights.html` already had 8 pre-existing em-dashes, all written as the `&mdash;` HTML entity, zero literal characters — confirmed by checking every existing instance before adding new copy, not assumed. Matched that file's own convention: the 2 new em-dashes in this pass are both `&mdash;` entities. **This means the project currently has no single sitewide em-dash convention** — some files use the literal character, others use the entity, decided file-by-file rather than enforced anywhere. Not a bug (both render identically to a reader), but worth having on record as a real inconsistency, in case it ever matters for a find-and-replace pass, a copy-paste between pages, or a future style-linting pass.
+
+Rendered live at both desktop (1200px) and mobile (375px): the longer new headline wraps cleanly with no overflow or truncation at either width. Checked paragraph spacing numerically, not just visually — all 4 paragraphs have a consistent, real 17px margin between them, matching the spacing convention already used elsewhere on the page. Section boundaries above and below remain clean. Zero console errors.
+
+**Supporting services/tools:** `Public/public-insights.html`.
+
+### trust-and-data.html: third "Independent by Design" box rewrite, plus a real gap found during verification (`e834917`)
+
+Replaced the third box in the "Independent by Design" row — "Transparent partnerships" / "Data partnerships and their purposes are explained clearly." — with "You stay in control" / "Stop logging anytime — no obligation, no penalty, ever." Same `content-card` markup as the other two boxes in the row; only the heading/body text changed.
+
+**Verified the new copy's actual claim before shipping it, not just the wording:** confirmed directly against `server.js` that no login, account gate, or inactivity/cleanup logic exists anywhere in the codebase — a user can simply stop responding to reminders with zero consequence, and their dashboard link stays live indefinitely. The SMS "Reply STOP" mechanism is real and enforced at the carrier level by Twilio, not just a documented policy. Confirmed the new copy makes no claim about already-submitted data — it's scoped to future participation only, consistent with the existing data-retention policy (de-identified check-ins are kept after opt-out). This file had zero pre-existing em-dashes of either kind, so there was no established convention to match — used the literal character as given, verified programmatically for correct encoding.
+
+Rendered live at desktop (1200px) and mobile (375px): the box matches the other two in height (177px, identical top position) at desktop and stacks cleanly in the single-column mobile layout. Zero console errors.
+
+**A real, adjacent gap surfaced while verifying this box's "stop anytime" claim, not yet fixed:** both `faqs.html` and `privacy.html` promise a user can "unsubscribe from emails" (FAQ: *"Reply STOP to any SMS, unsubscribe from emails, or contact us directly..."*), but no actual unsubscribe mechanism exists anywhere in the codebase for the email channel — no SendGrid unsubscribe group, no `List-Unsubscribe` header on any outbound email, no in-app opt-out endpoint. SMS opt-out is genuinely real (Twilio-enforced "Reply STOP," confirmed above); email opt-out is a promise with nothing behind it yet. Not fixed this session — flagged as a new open item, see the checklist's NEXT STEP list.
+
+**Supporting services/tools:** `Public/trust-and-data.html`.
+
 **Simplest way to swap in a new photo:** keep the exact same filename and overwrite the file in place. As long as the replacement is also a square crop in the same general style, no CSS or position changes are needed — the percentages above are keyed to the filename, not the image content.
