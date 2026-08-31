@@ -508,137 +508,68 @@ body.copy-editing [data-copy]:focus {
   height: auto;
 }
 
-/* Dog network container */
-.dog-network {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1;
-}
+/* ===== HERO MAP GRAPHIC (map + logo badge + 5 photo circles) ===== */
 
-/* Connecting lines + coral convergence dot */
-.dog-network-lines {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  top: 0;
-  left: 0;
-  z-index: 1;
-}
-
-/* ===== CENTER HUB ===== */
-
-.dog-hub {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 190px;
-  height: 190px;
-  border-radius: 50%;
-  background: #fffdfc;
-  padding: 30px;
-  box-shadow:
-    0 0 0 2px #e6d9ca,
-    inset 0 0 0 1px rgba(0, 0, 0, 0.05);
-  z-index: 10;
-}
-
-.dog-hub svg {
-  width: 100%;
-  height: 100%;
+.hero-map-base {
   display: block;
+  width: 100%;
+  height: 100%;
 }
 
-/* ===== SIX DOGS, EVENLY SPACED AROUND THE HUB ===== */
-
-.dog-photo {
+/* Container MUST stay perfectly square at every viewport width, or
+   border-radius: 50% on the photo circles renders as ovals instead of
+   circles. .community-visual already handles this correctly via
+   aspect-ratio: 1/1 (see its own rule above) -- never give it a fixed
+   height alongside a max-width, that combination breaks the square at
+   narrow widths. This was a real bug, found and fixed Aug 31 2026 in
+   the isolated preview page this graphic was built in. Do not
+   reintroduce it here. */
+.hero-map-photo {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 150px;
-  height: 150px;
   border-radius: 50%;
-  background: #fff;
-  border: 3px solid #e6d9ca;
+  object-fit: cover;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  overflow: hidden;
-  z-index: 5;
   transition: box-shadow 0.3s ease, transform 0.3s ease;
 }
 
-.dog-photo img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center;
-  border-radius: 50%;
-  display: block;
-}
-
-.dog-photo:hover {
+.hero-map-photo:hover {
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
-  transform: translate(-50%, calc(-50% - 4px));
+  transform: translateY(-4px);
 }
 
-.dog-photo-1 {
-  /* husky, top */
-  top: 14%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+/* Position/size percentages derived from companion-commons-map.svg's own
+   ring-position circles (cx/cy/r), as a percentage of its 1200x1200
+   canvas -- see the Build Log's "Hero Graphic -- Photo Replacement"
+   section for the full derivation and how to swap a photo later. */
+.hero-map-photo-top {
+  left: 40.4%;
+  top: 13.46%;
+  width: 18.08%;
+  height: 18.08%;
 }
-.dog-photo-1 img {
-  object-position: 45% 42%;
+.hero-map-photo-left {
+  left: 10.2%;
+  top: 38.98%;
+  width: 17.4%;
+  height: 17.4%;
 }
-
-.dog-photo-2 {
-  /* bluebonnets, upper-right */
-  top: 32%;
-  left: 81.2%;
-  transform: translate(-50%, -50%);
+.hero-map-photo-right {
+  left: 71.29%;
+  top: 38.35%;
+  width: 18.35%;
+  height: 18.35%;
 }
-
-.dog-photo-3 {
-  /* black lab, lower-right */
-  top: 68%;
-  left: 81.2%;
-  transform: translate(-50%, -50%);
+.hero-map-photo-bottom-left {
+  left: 22.53%;
+  top: 68.62%;
+  width: 17.94%;
+  height: 17.94%;
 }
-.dog-photo-3 img {
-  object-position: 55% 42%;
-}
-
-.dog-photo-4 {
-  /* pumpkin, bottom */
-  top: 86%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-}
-.dog-photo-4 img {
-  object-position: 48% center;
-}
-
-.dog-photo-5 {
-  /* terrier, lower-left */
-  top: 68%;
-  left: 18.8%;
-  transform: translate(-50%, -50%);
-}
-.dog-photo-5 img {
-  object-position: 58% 35%;
-}
-
-.dog-photo-6 {
-  /* boxer, upper-left */
-  top: 32%;
-  left: 18.8%;
-  transform: translate(-50%, -50%);
-}
-.dog-photo-6 img {
-  object-position: 50% 30%;
+.hero-map-photo-bottom-right {
+  left: 58.75%;
+  top: 68.8%;
+  width: 18.08%;
+  height: 18.08%;
 }
 
 /* ===== TEXT COLUMN (right side) ===== */
@@ -692,17 +623,6 @@ body.copy-editing [data-copy]:focus {
     margin: 0 auto;
   }
 
-  .dog-hub {
-    width: 158px;
-    height: 158px;
-    padding: 25px;
-  }
-
-  .dog-photo {
-    width: 125px;
-    height: 125px;
-  }
-
   .community-message {
     text-align: center;
     margin-top: 1.5rem;
@@ -740,27 +660,16 @@ body.copy-editing [data-copy]:focus {
   .community-message p:last-child {
     font-size: 0.95rem;
   }
-
-  .dog-hub {
-    width: 108px;
-    height: 108px;
-    padding: 17px;
-  }
-
-  .dog-photo {
-    width: 86px;
-    height: 86px;
-  }
 }
 
 /* ===== ACCESSIBILITY ===== */
 
 @media (prefers-reduced-motion: reduce) {
-  .dog-photo {
+  .hero-map-photo {
     transition: none;
   }
 
-  .dog-photo:hover {
+  .hero-map-photo:hover {
     transform: none;
   }
 }
