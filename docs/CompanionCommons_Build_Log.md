@@ -1373,3 +1373,21 @@ Direct follow-up to the entry above, run once John confirmed `migration_add_medi
 **Result: all 6 verification steps pass.** The medication-tracking system built in the prior entry is now confirmed correct end-to-end against real, live data — the progressive-disclosure UX (0/1/2+ active), correct per-medication attribution (including the specific "not accidentally the wrong one" case), the stop mechanism's effect on future active-counting versus historical data preservation, and the zero-owner-identifying-data scoping rule are no longer just code-reviewed or unit-tested claims. This closes checklist item 33.
 
 **Supporting services/tools:** `server.js` (unchanged this pass — verification only, no code changes), Supabase (live `medications`/`medication_weekly_updates` tables, post-migration).
+
+---
+
+## September 1, 2026 (continued) — Medication Tracking: Baseline-Signup Staging Path Verified Live
+
+Closes the one item the prior entry flagged as not yet covered: whether `pending_medications` actually survives the real `/api/send-magic-link` → `/verify` handoff, not just the standalone `POST /api/medications` add-path and the weekly-update flow already verified.
+
+**Run against the real `/api/send-magic-link` route**, not a direct table insert, with 2 medications submitted together in the initial baseline payload (a joint supplement for "hip stiffness," owner-observed; a steroid for "skin allergy," vet-diagnosed) — deliberately the more complex case, since a single-medication test wouldn't catch an array-handling bug that only shows up with 2+ entries. Used Twilio's reserved test number so nothing real could be dialed.
+
+**Staging confirmed by direct read-back, not by trusting the route's success response**: queried the real `magic_link_tokens` row afterward and found `pending_medications` holding both entries with every field intact — category, condition_treated, condition_source, and date_started all correct for both, in the same shape submitted.
+
+**Real `/verify` GET request against the actual token** (not a synthetic re-implementation) — followed the 302 redirect to `/dashboard/:dog_id`, confirming a genuine new `senior_dogs` row was created. Queried `medications` for that exact `dog_id` and found both rows present, each field-by-field matched against what was originally submitted (category, condition_treated, condition_source, date_started, `date_stopped: null`), and both correctly carrying the newly created dog's real ID — not a stale or mismatched one. The token was independently confirmed marked `used_at`.
+
+**Cleanup, including the real owner row this pass created** (unlike the earlier 6-step pass, which used a direct-insert dog with no owner) — deleted medications, the magic-link token, the new `senior_dogs` row, and the new `owners` row, then verified zero remaining across every table this pass touched, including checking `sms_queue` by both `pet_id` and `owner_id` in case a queued reminder had been created. All confirmed at zero.
+
+**Result: full pass.** The baseline-signup staging path is now verified with the same rigor as the other 6 steps — real HTTP requests, real database read-backs at each stage, not just a 200 response trusted at face value. This closes the residual flagged in checklist item 33; the medication-tracking system is now fully verified across every path it can be reached through (baseline signup, direct add, weekly update, stop).
+
+**Supporting services/tools:** `server.js` (unchanged this pass — verification only), Supabase (`magic_link_tokens`, `medications`, `senior_dogs`, `owners`), Twilio (reserved test-number send only).
