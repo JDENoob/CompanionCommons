@@ -1238,3 +1238,33 @@ New zip regex: `/^\d{5}(-\d{4})?$/` — still not a perfect residency gate (stil
 Started a clean dev server (stray `node.exe` confirmed at zero first, per standing rule). Ran 4 real requests to `/api/send-magic-link`, varying only `zip_code`, everything else held to a valid payload using Twilio's own reserved test number (`+15005550006`, guaranteed never to deliver or charge): a real 5-digit US ZIP (`90210`) and a real ZIP+4 (`90210-1234`) both correctly succeeded; a UK postcode (`SW1A 1AA`) and a random string (`abcde`) both correctly failed with the new, clearer error message. Both successful test tokens deleted from `magic_link_tokens` afterward, confirmed at 0 remaining; confirmed 0 `owners`/`senior_dogs` rows either (neither test reached `/verify`).
 
 **Supporting services/tools:** `server.js`, `Public/terms.html`, `Public/privacy.html`, Twilio (Console, for the token rotation — no API calls made against it).
+
+---
+
+## September 1, 2026 (continued) — Real Phone Validation, Closing the US/Canada Gap Twilio's Own Settings Can't
+
+Direct follow-up to the same session's phone-number finding above: a correctly country-coded non-US number (e.g. a UK mobile as `+447911123456`) passed `sanitizePhone` completely unvalidated, since the old logic only ever checked digit *count* (10 digits → assume US, 11-15 → accept as-is), never which country a number actually belongs to.
+
+### Why Twilio's own account-level fix doesn't fully close this
+
+John had already restricted Twilio's account-level Geo Permissions. That's a real, meaningful gate for most of the original gap — but it's structurally incapable of solving one specific piece of it: **the US and Canada share the same `+1` country code.** Geo Permissions gates by country, so it can allow or block "+1 numbers" as a whole, but it cannot distinguish a US `+1` number from a Canadian `+1` number — that distinction only exists one level down, in which North American Numbering Plan area code was actually assigned to which country. Closing that specific remaining gap required an app-layer check with real numbering-plan data, not an account setting.
+
+### The fix
+
+Added `libphonenumber-js` (`npm install`, installed cleanly, confirmed version `1.13.12`). **Verified it can actually make the US/Canada distinction before writing any app code**, per real NANP area-code data: Toronto's `416` and Calgary's `403` area codes both correctly resolved to `CA`; San Francisco's `415` and New York's `212` both correctly resolved to `US`; all four `isValid: true`. Confirmed real, not assumed.
+
+Replaced `sanitizePhone`'s digit-count guessing with `parsePhoneNumberFromString(phone, 'US')`, requiring `parsed.isValid() && parsed.country === 'US'` — reject anything else, return `''` exactly as before (same contract every existing caller already expects). The `'US'` default-country hint preserves the one piece of old behavior worth keeping: a bare national number typed with no country code at all (e.g. `"4155552671"` or `"(415) 555-2671"`) is still correctly read as a US number, since the hint only applies when the input doesn't already carry its own explicit country code (a leading `+` or `00` always wins over the hint). The stale error message ("Invalid phone number. Must be 10+ digits.") was also updated — it no longer reflects the real rejection reasons now in play — to "Please enter a valid US phone number."
+
+**Confirmed this is genuinely the single, shared implementation, not something needing a parallel fix elsewhere:** grepped for both the function name and any duplicated raw-digit-stripping logic. Two real call sites exist — `/api/send-magic-link` (signup) and `/api/resend-dashboard-link` (looking up an existing owner by phone) — both already routed through this one function (the resend route's own code comment already stated this was deliberate: "so 'what counts as a valid phone/email' can't quietly drift between the two routes"). No third, independent implementation exists anywhere. The stricter check applies to both automatically.
+
+### Verification — real signups against the actual running server, not assumed from the library alone
+
+Ran 7 real requests to `/api/send-magic-link`, varying only `phone`:
+- **4 real US-format variants** — canonical E.164 (`+15005550006`), bare digits (`5005550006`), parens (`(500) 555-0006`), dashes (`500-555-0006`), all using Twilio's own reserved test number so nothing real could be dialed — all 4 correctly normalized to the identical `+15005550006` and correctly created a real `magic_link_tokens` row, confirmed by direct query. 3 of the 4 then hit a transient Twilio-side `[HTTP 502] Failed to execute request` at the actual SMS-send step — a separate, later step from the phone-validation fix itself, confirmed unrelated by retrying one of the failed formats immediately afterward, which succeeded cleanly on retry.
+- **A UK number with its real country code** (`+447911123456`) — correctly rejected with the new "Please enter a valid US phone number" message, zero token created.
+- **A Canadian number with a real Toronto area code** (`+14165551234`) — the specific case this fix exists for — correctly rejected the same way. This is the number that would have passed both the old app logic *and* Twilio's account-level Geo Permissions (since both start with `+1`), and is now the first real gate to actually catch it.
+- **The prior session's "10 raw digits, no country code" edge case**, re-tested with a foreign-patterned 10-digit string (`7911123456`, a UK subscriber number with neither its trunk `0` nor country code) — now correctly rejected at the validation layer itself (`400`, clear message) rather than the old behavior of silently passing validation and only failing later, accidentally, at the real Twilio send. Confirmed as an improvement, not a regression — it was already effectively unreachable before, just via a less clear, less immediate failure path.
+
+All 5 real tokens created during this pass (4 valid-format cases + 1 retry) deleted afterward; confirmed 0 remaining, and confirmed 0 `owners`/`senior_dogs` rows (no test reached `/verify`).
+
+**Supporting services/tools:** `server.js`, `libphonenumber-js` (new dependency), Twilio (real SMS test-number sends only, no account-level API calls).

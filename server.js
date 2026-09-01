@@ -19,6 +19,7 @@ const { createClient } = require('@supabase/supabase-js');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const twilio = require('twilio');
+const { parsePhoneNumberFromString } = require('libphonenumber-js');
 const { google } = require('googleapis');
 const sgMail = require('@sendgrid/mail');
 const crypto = require('crypto');
@@ -735,15 +736,30 @@ const sanitizeName = (name, maxLength = 100) => {
     .substring(0, maxLength);
 };
 
-// Sanitize phone: remove all non-digits, validate length
+// Sanitize + validate phone: must resolve to a real, valid US number.
+//
+// Replaced Sep 1 2026's digit-count guessing (10 digits -> assume US,
+// 11-15 digits -> accept as-is) -- that let a correctly country-coded
+// non-US number (e.g. a UK mobile as +447911123456) pass through
+// completely unvalidated, closed as its own gap that session. Real
+// parsing via libphonenumber-js closes the remaining, more important
+// gap: Twilio's account-level Geo Permissions (restricted by John) can
+// only gate by country, and the US and Canada share the +1 country code
+// -- Twilio's own setting structurally cannot tell them apart. This
+// app-layer check can, using real North American Numbering Plan area-
+// code data (e.g. Toronto's 416 resolves to CA, not US), confirmed
+// empirically before this was written.
+//
+// The 'US' default-country hint means a bare national number typed
+// without a country code (e.g. "4155552671" or "(415) 555-2671") is
+// still correctly interpreted as a US number, same as before -- the
+// hint only applies when the input has no explicit country code of its
+// own (a leading + or 00 always wins over the hint).
 const sanitizePhone = (phone) => {
   if (typeof phone !== 'string') return '';
-  const cleaned = phone.replace(/\D/g, ''); // Remove all non-digits
-  // Return in E.164 format or empty if invalid
-  if (cleaned.length < 10) return '';
-  if (cleaned.length === 10) return `+1${cleaned}`;
-  if (cleaned.length > 15) return '';
-  return `+${cleaned}`;
+  const parsed = parsePhoneNumberFromString(phone, 'US');
+  if (!parsed || !parsed.isValid() || parsed.country !== 'US') return '';
+  return parsed.number; // E.164, e.g. "+14155552671" -- same return shape as before
 };
 
 // Sanitize select fields (gender, trend, etc): lowercase, limit to allowed values
@@ -6477,11 +6493,15 @@ app.post('/api/send-magic-link', async (req, res) => {
       });
     }
 
-    // Validate phone format
+    // Validate phone format -- sanitizePhone now rejects both malformed
+    // numbers and correctly-formed non-US numbers (including Canada,
+    // which Twilio's own account-level Geo Permissions can't separate
+    // from the US since both share the +1 country code), so the message
+    // needs to cover both real rejection reasons, not just digit count.
     if (!cleanPhone) {
       return res.status(400).json({
         success: false,
-        error: 'Invalid phone number. Must be 10+ digits.'
+        error: 'Please enter a valid US phone number.'
       });
     }
 
