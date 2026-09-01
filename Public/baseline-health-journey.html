@@ -552,7 +552,22 @@
                   </div>
                   <div class="form-group">
                     <label>What's it for? *</label>
-                    <input type="text" class="med-condition" maxlength="100" placeholder="E.g., 'arthritis', 'anxiety'" required>
+                    <select class="med-condition" required>
+                      <option value="">Select...</option>
+                      <option value="arthritis_joint_pain">Arthritis / joint pain</option>
+                      <option value="hip_elbow_dysplasia">Hip or elbow dysplasia</option>
+                      <option value="allergies">Allergies</option>
+                      <option value="skin_condition">Skin condition</option>
+                      <option value="digestive_gi">Digestive / GI issue</option>
+                      <option value="anxiety_behavioral">Anxiety / behavioral</option>
+                      <option value="ear_infection">Ear infection</option>
+                      <option value="chronic_pain_other">Chronic pain (other)</option>
+                      <option value="post_surgical_recovery">Post-surgical recovery</option>
+                      <option value="other">Other</option>
+                    </select>
+                    <div class="med-condition-other-wrap" style="display: none; margin-top: 8px;">
+                      <input type="text" class="med-condition-other" maxlength="200" placeholder="Briefly describe the condition">
+                    </div>
                   </div>
                   <div class="form-group">
                     <label>How do you know this? *</label>
@@ -697,6 +712,14 @@
       function addMedicationRow() {
         const row = medicationRowTemplate.content.firstElementChild.cloneNode(true);
         row.querySelector('.remove-medication-btn').addEventListener('click', () => row.remove());
+        // condition_treated is a closed dropdown now (was free text) --
+        // the "Other" option reveals a paired free-text detail field,
+        // hidden otherwise. Same pattern hand-copied into add-dog.html.
+        const conditionSelect = row.querySelector('.med-condition');
+        const conditionOtherWrap = row.querySelector('.med-condition-other-wrap');
+        conditionSelect.addEventListener('change', () => {
+          conditionOtherWrap.style.display = conditionSelect.value === 'other' ? 'block' : 'none';
+        });
         medicationsContainer.appendChild(row);
       }
 
@@ -706,19 +729,28 @@
       // Every row present must be fully filled in (a half-filled row is a
       // sign the owner started but didn't mean to submit it half-done) --
       // matching the same "fail loudly, don't silently drop" instinct as
-      // the score-item validation above.
+      // the score-item validation above. "Other" additionally requires
+      // its paired free-text detail field to be filled in.
       function collectMedications() {
         const rows = medicationsContainer.querySelectorAll('.medication-row');
         const medications = [];
         for (const row of rows) {
           const category = row.querySelector('.med-category').value;
-          const condition = row.querySelector('.med-condition').value.trim();
+          const condition = row.querySelector('.med-condition').value;
+          const conditionOther = row.querySelector('.med-condition-other').value.trim();
           const source = row.querySelector('.med-source').value;
           const dateStarted = row.querySelector('.med-date-started').value;
           if (!category || !condition || !source || !dateStarted) {
             return { valid: false, medications: [] };
           }
-          medications.push({ category: category, condition_treated: condition, condition_source: source, date_started: dateStarted });
+          if (condition === 'other' && !conditionOther) {
+            return { valid: false, medications: [] };
+          }
+          const entry = { category: category, condition_treated: condition, condition_source: source, date_started: dateStarted };
+          if (condition === 'other') {
+            entry.condition_treated_other_detail = conditionOther;
+          }
+          medications.push(entry);
         }
         return { valid: true, medications: medications };
       }

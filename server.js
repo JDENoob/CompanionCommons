@@ -349,6 +349,34 @@ const MEDICATION_CONDITION_SOURCE_LABELS = {
   owner_reported_vet_diagnosis: 'A vet told us this'
 };
 
+// condition_treated: closed vocabulary as of Sep 2026 (was free text).
+// 'other' is the deliberate escape valve -- paired with
+// condition_treated_other_detail, a nullable free-text column that's
+// ONLY ever populated when condition_treated === 'other', and gets the
+// exact same B2B/licensing export-exclusion treatment as dog_notes,
+// mobility_checkins.observation, and medication_weekly_updates.note (see
+// the Build Log's dated entry for this rule). Same rationale as the
+// existing MEDICATION_CATEGORIES/treatment_category taxonomy: a closed
+// list is a smaller risk surface than open free text and genuinely more
+// analytically useful downstream.
+const MEDICATION_CONDITIONS_TREATED = [
+  'arthritis_joint_pain', 'hip_elbow_dysplasia', 'allergies', 'skin_condition',
+  'digestive_gi', 'anxiety_behavioral', 'ear_infection', 'chronic_pain_other',
+  'post_surgical_recovery', 'other'
+];
+const MEDICATION_CONDITION_TREATED_LABELS = {
+  arthritis_joint_pain: 'Arthritis / joint pain',
+  hip_elbow_dysplasia: 'Hip or elbow dysplasia',
+  allergies: 'Allergies',
+  skin_condition: 'Skin condition',
+  digestive_gi: 'Digestive / GI issue',
+  anxiety_behavioral: 'Anxiety / behavioral',
+  ear_infection: 'Ear infection',
+  chronic_pain_other: 'Chronic pain (other)',
+  post_surgical_recovery: 'Post-surgical recovery',
+  other: 'Other'
+};
+
 // The weekly-update "chip" options. 'none' is a real allowed value in
 // medication_weekly_updates.change_type's CHECK constraint (matching
 // treatment_category's own inclusion of 'none' for vocabulary
@@ -375,8 +403,24 @@ function cleanMedicationEntry(raw) {
   const category = typeof raw.category === 'string' ? raw.category.trim().toLowerCase() : '';
   if (!MEDICATION_CATEGORIES.includes(category)) return null;
 
-  const conditionTreated = sanitizeString(raw.condition_treated, 100);
-  if (!conditionTreated) return null;
+  // Closed vocabulary, not free text -- manual includes() check (not
+  // sanitizeSelect(), which silently coerces an invalid value to the
+  // list's first entry rather than rejecting, wrong for a real
+  // validation gate) matching the same pattern already used for
+  // category/condition_source in this function.
+  const conditionTreated = typeof raw.condition_treated === 'string' ? raw.condition_treated.trim().toLowerCase() : '';
+  if (!MEDICATION_CONDITIONS_TREATED.includes(conditionTreated)) return null;
+
+  // condition_treated_other_detail is the ONLY free-text piece of this
+  // field left. Required (and validated non-empty) when 'other' is
+  // selected; silently discarded otherwise -- a stray detail string sent
+  // alongside a real closed-list value isn't malicious/malformed input
+  // worth failing the whole request over, just irrelevant.
+  let conditionTreatedOtherDetail = null;
+  if (conditionTreated === 'other') {
+    conditionTreatedOtherDetail = sanitizeString(raw.condition_treated_other_detail, 200);
+    if (!conditionTreatedOtherDetail) return null;
+  }
 
   const conditionSource = typeof raw.condition_source === 'string' ? raw.condition_source.trim().toLowerCase() : '';
   if (!MEDICATION_CONDITION_SOURCES.includes(conditionSource)) return null;
@@ -391,7 +435,13 @@ function cleanMedicationEntry(raw) {
   if (isNaN(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== dateStarted) return null;
   if (parsedDate > new Date()) return null;
 
-  return { category, condition_treated: conditionTreated, condition_source: conditionSource, date_started: dateStarted };
+  return {
+    category,
+    condition_treated: conditionTreated,
+    condition_treated_other_detail: conditionTreatedOtherDetail,
+    condition_source: conditionSource,
+    date_started: dateStarted
+  };
 }
 
 // Validates a whole raw array of baseline medications. undefined/null is
@@ -465,7 +515,7 @@ function buildMedicationUpdateSectionHtml(activeMedications) {
       <label for="medication_id">Which one?</label>
       <select id="medication_id" name="medication_id">
         <option value="">Select one</option>
-        ${activeMedications.map(m => `<option value="${m.id}">${escapeHtml(TREATMENT_CATEGORY_LABELS[m.category] || m.category)} (${escapeHtml(m.condition_treated)})</option>`).join('')}
+        ${activeMedications.map(m => `<option value="${m.id}">${escapeHtml(TREATMENT_CATEGORY_LABELS[m.category] || m.category)} (${escapeHtml(MEDICATION_CONDITION_TREATED_LABELS[m.condition_treated] || m.condition_treated)})</option>`).join('')}
       </select>
     </div>`;
 
@@ -1430,7 +1480,12 @@ async function ensureGoogleSheetTabsExist() {
     const spreadsheet = await sheetsClient.spreadsheets.get({ spreadsheetId: SHEET_ID });
     const existingTitles = spreadsheet.data.sheets.map(s => s.properties.title);
 
-    const neededTabs = ['Signups', 'CheckIns', 'Notes'];
+    // 'Notes' deliberately excluded (removed Sep 2026) -- dog_notes'
+    // free text no longer syncs to Sheets in any form, see the Build Log's
+    // dated entry for this rule. Existing live 'Notes' tabs, if any, are
+    // left alone (this only controls what gets auto-created going
+    // forward) -- untouched historical data, not deleted.
+    const neededTabs = ['Signups', 'CheckIns'];
     const tabsToCreate = neededTabs.filter(t => !existingTitles.includes(t));
 
     if (tabsToCreate.length > 0) {
@@ -1468,13 +1523,12 @@ async function ensureGoogleSheetTabsExist() {
         ]);
       }
       if (tabsToCreate.includes('CheckIns')) {
+        // 'Notes' column removed (Sep 2026) -- free-text check-in
+        // observations no longer sync to Sheets in any form. Structured
+        // scores only, matching the standing rule this project applies to
+        // every free-text field's B2B/licensing export exposure.
         await appendRowToSheet('CheckIns', [
-          'Timestamp', 'Dog ID', 'Dog Name', 'Week Number', 'Mobility (0-10)', 'Energy (0-10)', 'Appetite (0-10)', 'Cognitive (0-10)', 'Weight', 'Notes'
-        ]);
-      }
-      if (tabsToCreate.includes('Notes')) {
-        await appendRowToSheet('Notes', [
-          'Timestamp', 'Dog ID', 'Dog Name', 'Note'
+          'Timestamp', 'Dog ID', 'Dog Name', 'Week Number', 'Mobility (0-10)', 'Energy (0-10)', 'Appetite (0-10)', 'Cognitive (0-10)', 'Weight'
         ]);
       }
     }
@@ -2723,6 +2777,9 @@ app.post('/api/checkin-senior', async (req, res) => {
 
     // Export to Google Sheets (CheckIns tab) — real-time, one row per
     // check-in. Doesn't block or affect the response if this fails.
+    // Free-text `observation` is deliberately NOT included (removed Sep
+    // 2026) -- same export-exclusion rule as dog_notes, structured
+    // scores only.
     await appendRowToSheet('CheckIns', [
       new Date().toISOString(),
       dog_id,
@@ -2732,8 +2789,7 @@ app.post('/api/checkin-senior', async (req, res) => {
       currentScores.energy ?? '',
       currentScores.appetite ?? '',
       currentScores.cognitive ?? '',
-      weightLbsInt ?? '',
-      observation || ''
+      weightLbsInt ?? ''
     ]);
 
     console.log(`✅ Week ${weekNumber} check-in saved for ${dog.dog_name}`);
@@ -4577,21 +4633,10 @@ app.post('/api/notes/:dog_id', async (req, res) => {
 
     if (error) throw error;
 
-    // Export to Google Sheets (Notes tab) — real-time, same as signups and
-    // check-ins. Needs the dog's name, which the notes table itself doesn't
-    // store, so fetch it here.
-    const { data: dogForNote } = await supabase
-      .from('senior_dogs')
-      .select('dog_name')
-      .eq('id', dog_id)
-      .single();
-
-    await appendRowToSheet('Notes', [
-      new Date().toISOString(),
-      dog_id,
-      dogForNote?.dog_name || '',
-      note_text.trim()
-    ]);
+    // No Sheets export here (removed Sep 2026) -- dog_notes is free
+    // text, and free-text fields no longer sync to Sheets in any form.
+    // The note itself is still fully collected and stored in Supabase,
+    // completely unaffected -- this only ever touched the export.
 
     res.json({ success: true });
   } catch (error) {
@@ -4608,13 +4653,13 @@ app.post('/api/notes/:dog_id', async (req, res) => {
 // ============================================
 app.post('/api/medications', async (req, res) => {
   try {
-    const { dog_id, category, condition_treated, condition_source, date_started } = req.body;
+    const { dog_id, category, condition_treated, condition_treated_other_detail, condition_source, date_started } = req.body;
 
     if (!dog_id) {
       return res.status(400).json({ success: false, error: 'Missing required field: dog_id' });
     }
 
-    const clean = cleanMedicationEntry({ category, condition_treated, condition_source, date_started });
+    const clean = cleanMedicationEntry({ category, condition_treated, condition_treated_other_detail, condition_source, date_started });
     if (!clean) {
       return res.status(400).json({ success: false, error: 'Missing or invalid medication fields' });
     }
