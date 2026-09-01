@@ -1199,6 +1199,41 @@ No dedicated new reference doc — this is a single schema correction, not a new
 
 ---
 
+## September 1, 2026 — A Real Email Unsubscribe Mechanism, Closing a Gap Flagged Two Sessions Earlier
+
+### The gap
+
+`faqs.html` and `privacy.html` had both promised email unsubscribe since the Aug 31 trust-and-data copy pass ("Reply STOP to any SMS, unsubscribe from emails, or contact us directly...") — flagged that same session as a real, not-yet-fixed gap: nothing in the codebase actually implemented it for the email channel. No SendGrid unsubscribe group, no `List-Unsubscribe` header on any outbound email, no in-app opt-out endpoint of any kind. SMS opt-out was (and is) genuinely real, enforced by Twilio's "Reply STOP" at the carrier level — this gap was email-only.
+
+### Investigated first, before building anything
+
+Confirmed via a live read-only Supabase query that no email-consent field existed anywhere in the schema — `owners`/`senior_dogs` had `sms_consent` (per-dog) but nothing equivalent for email. Cross-checked the doc claiming to list every real email type (`All_Email_Communications.md`) against the actual live `sgMail.send()` call sites in `server.js`, rather than trusting the doc — confirmed 5 real sites total, only 2 of which are genuinely unprompted, automatic nudges:
+
+- **Gated (opt-out applies):** the single-dog and combined churn/re-engagement emails (`sendChurnAlertEmail`, `sendCombinedChurnAlertEmail`) — these fire automatically, unprompted by anything the user just did.
+- **Deliberately left ungated:** the dashboard-link resend email, and both Contact Us emails (notification to `hello@`, confirmation to the submitter). All three are direct responses to an action the user just took themselves — requesting their own link back, or submitting the contact form — matching CAN-SPAM's own transactional/commercial distinction. An unsubscribe promise reasonably covers "we're reaching out to you unprompted," not "you get no confirmation that the message you just sent us arrived." The Contact Us notification isn't even sent to a user at all — it goes to the business inbox.
+
+### What was built
+
+- **`migration_add_email_opt_out.sql`** — one new column, `owners.email_opt_out boolean not null default false`.
+- **A real scoping decision, not the obvious default:** opt-out is owner-scoped, not per-dog — a deliberate deviation from `sms_consent`'s per-dog storage. Reasoning: the churn email is already owner-scoped by design (Stage 4 of the multi-dog project — one combined email per owner covering every overdue dog, not one email per dog), so a single unsubscribe link embedded in that one email can only sensibly mean "stop sending me these," not "stop sending me these for this one specific dog but keep the others." A per-dog flag would have needed multiple unsubscribe links in the same email for no real benefit, since nothing else in the app lets an owner treat their dogs' email preferences separately.
+- **`buildEmailUnsubscribeFooter(ownerId)`** — one shared helper generating the unsubscribe link/footer HTML, used by both churn email templates so they can't drift the way headers and writes have drifted apart elsewhere in this project. Returns an empty string when no real `ownerId` is available (e.g. the `/api/test-email` template-preview endpoint), rather than rendering a broken link.
+- **`GET /unsubscribe/:owner_id`** — a real, working route. Keyed on the bare owner UUID, same trust model already used by `/checkins/:owner_id`, deliberately *not* the `magic_link_tokens` mechanism (random token, 15-minute expiry, single-use) — an unsubscribe link needs to stay valid indefinitely and be safely re-clickable, the opposite of what that mechanism exists for. Idempotent: re-clicking an already-processed link just re-shows the same confirmation. Sets `email_opt_out = true` and shows the exact confirmation copy specified for the task: "You've been unsubscribed from email reminders — you'll still receive SMS reminders unless you also reply STOP to those."
+- **The actual gate**, added to `sendChurnAlertsForOwnerGroup`: looks up the owner's `email_opt_out` before sending and skips with `reason: 'email_opted_out'` if true. Fails *open* (sends anyway) on a lookup error, deliberately — a transient DB glitch shouldn't silently and permanently block a real owner's re-engagement email, same reasoning already applied to the neighboring `emailResult` failure branch in that same function.
+
+### Verification, done in two passes across two sessions
+
+**Session 1 (before the migration was run):** a dry-run trace of the real, updated `sendChurnAlertsForOwnerGroup` — extracted verbatim via string-slice + `eval`, stubbed Supabase, no real sends — confirmed the gating logic itself was correct. A live hit against `GET /unsubscribe/<a real disposable test owner>` confirmed the route's *lookup* logic worked (found the real owner), and failed only at the expected point — the update step — with `Could not find the 'email_opt_out' column`, proving the route was correct and blocked purely by the not-yet-run migration, the same pattern already seen elsewhere in this project's history.
+
+**Session 2 (after John ran the migration in Supabase's SQL Editor):** re-verified for real against the live column, not the dry-run stand-in. Confirmed the column exists with the correct `boolean`/`default: false` shape directly from Postgres's own schema report. Created a disposable test owner, confirmed `email_opt_out: false` at creation, hit the real `GET /unsubscribe/<id>` — got a genuine `200` (not the earlier "column not found" `500`) — and independently read the row back directly from Supabase (not trusted from the route's own response) to confirm `email_opt_out: true`. Ran the real `sendChurnAlertsForOwnerGroup` function against that now-opted-out owner: skipped correctly, citing `email_opted_out`, send function never invoked. **As a control**, created a second disposable test owner who was never unsubscribed and ran the same function against them: sent normally, with `ownerId` confirmed correctly threaded through to the email function's arguments — proving the gate discriminates correctly rather than just always skipping. Re-confirmed the `404` branch for a nonexistent owner ID. Both test owners, and every table touched (`owners`, `churn_flags`, `senior_dogs`), confirmed back at 0 afterward.
+
+`faqs.html`/`privacy.html` copy updated in the same commit to describe the real mechanism (a link included in reminder emails) instead of a vague, undescribed promise.
+
+**Commit:** `a4b1e8a`.
+
+**Supporting services/tools:** `server.js`, `migration_add_email_opt_out.sql`, `Public/faqs.html`, `Public/privacy.html`, Supabase.
+
+---
+
 ## September 1, 2026 — A Real Credential Leak Mid-Investigation, and the US-Residents-Only Gap It Interrupted
 
 ### The incident: a Twilio API call leaked the account's real auth token into this session's own transcript
