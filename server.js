@@ -6514,11 +6514,25 @@ app.post('/api/send-magic-link', async (req, res) => {
       });
     }
 
+    // US-only gate (Sep 1 2026): the old /^\d{5}$/ only proved "5 numeric
+    // digits" -- Germany, France, and several other countries also use
+    // 5-digit numeric postal codes, so it never actually distinguished a
+    // US ZIP from a foreign one. This isn't a perfect residency check
+    // either (a US ZIP alone doesn't prove physical presence, and this
+    // still can't tell a US ZIP from Germany's own 5-digit codes) -- see
+    // the Build Log for the full investigation and the deliberate call to
+    // treat this + the new Terms/Privacy language as sufficient for a
+    // 10-person, personally-vetted closed beta rather than build IP
+    // geo-blocking or phone country-code validation right now. Accepts
+    // ZIP+4 (a genuinely US-specific format nothing else uses) in
+    // addition to plain 5-digit, and rejects anything with a letter --
+    // which the old regex already did, but is now stated explicitly since
+    // that's specifically what would catch a Canadian postal code.
     const cleanZip = typeof zip_code === 'string' ? zip_code.trim() : '';
-    if (!/^\d{5}$/.test(cleanZip)) {
+    if (!/^\d{5}(-\d{4})?$/.test(cleanZip)) {
       return res.status(400).json({
         success: false,
-        error: 'ZIP code must be exactly 5 digits'
+        error: 'ZIP code must be a valid US ZIP code (5 digits, optionally followed by -XXXX)'
       });
     }
 
