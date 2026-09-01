@@ -7560,6 +7560,96 @@ async function sendDashboardLinkEmail(ownerEmail, checkinsLink) {
 }
 
 // ============================================
+// EMAIL UNSUBSCRIBE
+// GET /unsubscribe/:owner_id
+//
+// Closes a real gap: faqs.html/privacy.html both promise email unsubscribe,
+// but nothing implemented it (SMS "Reply STOP" already works correctly via
+// Twilio and is unaffected by this). One click, no login -- the standard
+// pattern for any real unsubscribe link (deliberately a state-changing GET,
+// the accepted exception to that usual rule for exactly this use case).
+//
+// Keyed on the bare owner_id, same trust model already used by
+// /checkins/:owner_id and /dashboard/:dog_id -- a 122-bit random UUID,
+// not a separate expiring token. Deliberately NOT reusing the
+// magic_link_tokens mechanism (random token + 15-min expiry + single-use):
+// an unsubscribe link needs to stay valid indefinitely and be safely
+// re-clickable, the opposite of what that mechanism is built for.
+//
+// Idempotent -- clicking an already-processed link just re-shows the same
+// confirmation, no error.
+// ============================================
+app.get('/unsubscribe/:owner_id', async (req, res) => {
+  const { owner_id } = req.params;
+
+  const { data: owner, error } = await supabase
+    .from('owners')
+    .select('id')
+    .eq('id', owner_id)
+    .single();
+
+  if (error || !owner) {
+    return res.status(404).send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Not Found | Companion Commons</title>
+        <style>
+          body { font-family: -apple-system, sans-serif; max-width: 500px; margin: 60px auto; padding: 20px; text-align: center; background: #f5f5f5; }
+          .card { background: white; border-radius: 12px; padding: 40px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <h2 style="margin: 0 0 10px 0;">We couldn't find that account</h2>
+          <p style="color: #666;">Please check the link from your email, or use our <a href="/contact.html">contact form</a> if you need help.</p>
+        </div>
+      </body>
+      </html>
+    `);
+  }
+
+  const { error: updateError } = await supabase
+    .from('owners')
+    .update({ email_opt_out: true })
+    .eq('id', owner_id);
+
+  if (updateError) {
+    console.error(`❌ Error setting email_opt_out for owner ${owner_id}:`, updateError.message);
+    return res.status(500).send('Something went wrong. Please try again or contact us directly.');
+  }
+
+  console.log(`✅ Owner ${owner_id} unsubscribed from email reminders`);
+
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>Unsubscribed | Companion Commons</title>
+      <style>
+        body { font-family: -apple-system, sans-serif; max-width: 500px; margin: 60px auto; padding: 20px; text-align: center; background: #f5f5f5; }
+        .card { background: white; border-radius: 12px; padding: 40px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        a { color: #d96f56; }
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <h2 style="margin: 0 0 10px 0;">You've been unsubscribed</h2>
+        <p style="color: #666; line-height: 1.6;">
+          You've been unsubscribed from email reminders — you'll still receive SMS reminders unless you also reply STOP to those.
+        </p>
+        <p style="color: #999; font-size: 13px; margin-top: 24px;">
+          Changed your mind, or have a question? <a href="/contact.html">Contact us</a>.
+        </p>
+      </div>
+    </body>
+    </html>
+  `);
+});
+
+// ============================================
 // SELF-SERVICE "RESEND MY DASHBOARD LINK"
 // POST /api/resend-dashboard-link
 //
@@ -8042,7 +8132,20 @@ app.get('/founding.html', (req, res) => {
 // ============================================
 
 // Send churn alert email (dog hasn't checked in)
-async function sendChurnAlertEmail(ownerEmail, dogName, lastScore, lastCheckInDate, dogId) {
+// Shared unsubscribe footer for both churn email templates -- one
+// implementation so the two templates can't drift the way headers/writes
+// have drifted apart before in this project. Returns '' when ownerId is
+// unavailable (e.g. the /api/test-email template-preview endpoint, which
+// has no real owner to link to) rather than rendering a broken link.
+function buildEmailUnsubscribeFooter(ownerId) {
+  if (!ownerId) return '';
+  return `
+            <p style="color: #999; font-size: 11px; margin-top: 12px; text-align: center;">
+              <a href="${BASE_URL}/unsubscribe/${ownerId}" style="color: #999;">Unsubscribe from these email reminders</a>
+            </p>`;
+}
+
+async function sendChurnAlertEmail(ownerEmail, dogName, lastScore, lastCheckInDate, dogId, ownerId = null) {
   if (!SENDGRID_API_KEY) {
     console.warn('⚠️ SendGrid not configured. Email not sent.');
     return;
@@ -8088,7 +8191,7 @@ async function sendChurnAlertEmail(ownerEmail, dogName, lastScore, lastCheckInDa
             </div>
             <p style="color: #999; font-size: 12px; margin-top: 30px; text-align: center;">
               Companion Commons — Together we can change the future of pet health understanding
-            </p>
+            </p>${buildEmailUnsubscribeFooter(ownerId)}
           </div>
         </div>
       `
@@ -8149,6 +8252,11 @@ async function sendCombinedChurnAlertEmail(ownerEmail, alerts) {
       `;
     }).join('');
 
+    // Every alert in this group shares the same owner (see the grouping
+    // in sendChurnAlertsForOwnerGroup's callers) -- derived here rather
+    // than added as a new parameter, since alerts already carries it.
+    const ownerId = alerts[0]?.dog?.owner_id || null;
+
     const msg = {
       to: ownerEmail,
       from: SENDGRID_FROM_EMAIL,
@@ -8163,7 +8271,7 @@ async function sendCombinedChurnAlertEmail(ownerEmail, alerts) {
             ${dogBlocks}
             <p style="color: #999; font-size: 12px; margin-top: 30px; text-align: center;">
               Companion Commons — Together we can change the future of pet health understanding
-            </p>
+            </p>${buildEmailUnsubscribeFooter(ownerId)}
           </div>
         </div>
       `
@@ -8446,8 +8554,35 @@ async function sendChurnAlertsForOwnerGroup(ownerEmail, alerts, options = {}) {
     return { sent: false, dogCount: alerts.length, reason: 'no_email' };
   }
 
+  // Real email opt-out check (added Sep 1 2026, closing the gap flagged in
+  // faqs.html/privacy.html since Aug 31 -- see migration_add_email_opt_out.sql).
+  // Scoped to the owner, since this email itself is owner-scoped (one
+  // combined send per owner, not one per dog). Dogs with no owner_id
+  // (legacy/ownerless, none currently live) have no owner row to check
+  // against and behave exactly as before this change -- there's no real
+  // unsubscribe target to scope an opt-out to for them.
+  const ownerIdForOptOutCheck = alerts[0]?.dog?.owner_id || null;
+  if (ownerIdForOptOutCheck) {
+    const { data: ownerRow, error: ownerLookupError } = await supabase
+      .from('owners')
+      .select('email_opt_out')
+      .eq('id', ownerIdForOptOutCheck)
+      .single();
+    if (ownerLookupError) {
+      console.warn(`⚠️ Could not check email_opt_out for owner ${ownerIdForOptOutCheck}:`, ownerLookupError.message);
+      // Fail open (send anyway) rather than silently and permanently
+      // blocking a real owner's re-engagement email over a transient
+      // lookup error -- same "don't let a glitch look like a deliberate
+      // opt-out" reasoning as the emailResult failure branch below.
+    } else if (ownerRow?.email_opt_out) {
+      const names = alerts.map(a => a.dog.dog_name).join(', ');
+      console.log(`⏭️  Owner of ${names} opted out of email reminders — skipping`);
+      return { sent: false, dogCount: alerts.length, reason: 'email_opted_out' };
+    }
+  }
+
   const emailResult = alerts.length === 1
-    ? await sendChurnAlertEmail(toEmail, alerts[0].dog.dog_name, alerts[0].lastScore, alerts[0].lastCheckInDate, alerts[0].dog.id)
+    ? await sendChurnAlertEmail(toEmail, alerts[0].dog.dog_name, alerts[0].lastScore, alerts[0].lastCheckInDate, alerts[0].dog.id, alerts[0].dog.owner_id)
     : await sendCombinedChurnAlertEmail(toEmail, alerts);
 
   // Either function returns undefined if SendGrid isn't configured at all,
