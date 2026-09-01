@@ -22,4 +22,8 @@ UNION ALL
 SELECT 'contact_submissions', COUNT(*) FROM contact_submissions
 UNION ALL
 SELECT 'sms_queue', COUNT(*) FROM sms_queue
+UNION ALL
+SELECT 'medications', COUNT(*) FROM medications
+UNION ALL
+SELECT 'medication_weekly_updates', COUNT(*) FROM medication_weekly_updates
 ORDER BY table_name;

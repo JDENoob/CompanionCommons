@@ -326,6 +326,224 @@ function buildSingleItemWidgetHtml(domainKey, currentValue, { baseline = false }
 }
 
 // ============================================
+// MEDICATIONS (category-level tracking)
+// Full design rationale: docs/CompanionCommons_Build_Log.md's Sep 2026
+// entry for this feature. Locked decisions this code encodes:
+//   - Dose is never collected, anywhere.
+//   - Medication/supplement NAME is deliberately not a field yet --
+//     blocked on real drug-name autocomplete + lawyer review.
+//   - Neither medications nor medication_weekly_updates ever stores an
+//     owner-identifying column (dog_id + health-relevant fields only),
+//     so both stay "separation-compatible" with the future identifiable/
+//     de-identifiable architecture split by construction.
+// ============================================
+
+// Reuses the exact category vocabulary/labels already established for
+// senior_dogs.treatment_category -- one source of truth, not a second
+// hand-typed list that could drift from the original.
+const MEDICATION_CATEGORIES = Object.keys(TREATMENT_CATEGORY_LABELS);
+
+const MEDICATION_CONDITION_SOURCES = ['owner_observed', 'owner_reported_vet_diagnosis'];
+const MEDICATION_CONDITION_SOURCE_LABELS = {
+  owner_observed: "I've noticed this myself",
+  owner_reported_vet_diagnosis: 'A vet told us this'
+};
+
+// The weekly-update "chip" options. 'none' is a real allowed value in
+// medication_weekly_updates.change_type's CHECK constraint (matching
+// treatment_category's own inclusion of 'none' for vocabulary
+// consistency), but the app itself never writes a row with change_type:
+// 'none' -- answering "no changes" to the yes/no question simply means
+// no row gets created at all, the same "nothing to report = zero rows"
+// pattern already used elsewhere in this app.
+const MEDICATION_CHANGE_TYPES = ['started_new', 'stopped', 'changed_switched', 'side_effect', 'other'];
+const MEDICATION_CHANGE_TYPE_LABELS = {
+  started_new: 'Started something new',
+  stopped: 'Stopped this medication/supplement',
+  changed_switched: 'Changed or switched',
+  side_effect: 'Noticed a possible side effect',
+  other: 'Something else'
+};
+
+// Validates + cleans one raw baseline medication entry. Returns null if
+// invalid -- callers reject the WHOLE request on any null rather than
+// silently dropping a bad entry, matching isValidInstrumentValue()'s
+// established "fail loudly" pattern elsewhere in this file.
+function cleanMedicationEntry(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+
+  const category = typeof raw.category === 'string' ? raw.category.trim().toLowerCase() : '';
+  if (!MEDICATION_CATEGORIES.includes(category)) return null;
+
+  const conditionTreated = sanitizeString(raw.condition_treated, 100);
+  if (!conditionTreated) return null;
+
+  const conditionSource = typeof raw.condition_source === 'string' ? raw.condition_source.trim().toLowerCase() : '';
+  if (!MEDICATION_CONDITION_SOURCES.includes(conditionSource)) return null;
+
+  const dateStarted = typeof raw.date_started === 'string' ? raw.date_started.trim() : '';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStarted)) return null;
+  const parsedDate = new Date(dateStarted + 'T00:00:00Z');
+  // Reject an impossible calendar date (e.g. "2026-02-30" parses to March
+  // 2nd instead of throwing, so round-tripping back to the same string is
+  // the real check) and reject a future start date -- a medication can't
+  // have started in the future.
+  if (isNaN(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== dateStarted) return null;
+  if (parsedDate > new Date()) return null;
+
+  return { category, condition_treated: conditionTreated, condition_source: conditionSource, date_started: dateStarted };
+}
+
+// Validates a whole raw array of baseline medications. undefined/null is
+// valid (medications are optional at signup) -> []. Anything else that
+// isn't a clean array of valid entries returns null, so the caller can
+// reject the whole request rather than silently dropping bad rows.
+function cleanMedicationsArray(rawArray) {
+  if (rawArray === undefined || rawArray === null) return [];
+  if (!Array.isArray(rawArray)) return null;
+  const cleaned = [];
+  for (const raw of rawArray) {
+    const entry = cleanMedicationEntry(raw);
+    if (!entry) return null;
+    cleaned.push(entry);
+  }
+  return cleaned;
+}
+
+// Single source of truth for "active medications" -- date_stopped IS
+// NULL -- checked here and only here, wherever the app needs to know.
+async function getActiveMedicationsForDog(dog_id) {
+  const { data, error } = await supabase
+    .from('medications')
+    .select('id, category, condition_treated')
+    .eq('dog_id', dog_id)
+    .is('date_stopped', null)
+    .order('date_started', { ascending: true });
+  if (error) {
+    console.error(`Error fetching active medications for dog ${dog_id}:`, error.message);
+    return [];
+  }
+  return data || [];
+}
+
+// Sets date_stopped (+ updated_at) for one medication. Shared by the
+// direct "mark as stopped" endpoint and the weekly-update flow's
+// 'stopped' chip, so there's exactly one implementation of what
+// "stopping a medication" actually does to the row. .is('date_stopped',
+// null) guards against re-stamping an already-stopped row with a new date.
+async function stopMedication(medicationId, stopDate = null) {
+  const dateStopped = stopDate || new Date().toISOString().slice(0, 10);
+  const { error } = await supabase
+    .from('medications')
+    .update({ date_stopped: dateStopped, updated_at: new Date().toISOString() })
+    .eq('id', medicationId)
+    .is('date_stopped', null);
+  if (error) {
+    console.error(`Error stopping medication ${medicationId}:`, error.message);
+    return false;
+  }
+  return true;
+}
+
+// Builds the weekly medication-update section for a check-in form.
+// Progressive disclosure per the locked UX design:
+//   0 active  -> '' (not even the question is rendered)
+//   1 active  -> single yes/no, chips shown on "yes", auto-attributed
+//   2+ active -> same yes/no, but a "which one?" selector appears first
+// Shared by both real check-in surfaces (standalone page, dashboard's
+// inline modal) -- one implementation, not a 3rd/4th hand-typed copy.
+function buildMedicationUpdateSectionHtml(activeMedications) {
+  if (!activeMedications || activeMedications.length === 0) return '';
+
+  const single = activeMedications.length === 1;
+  const questionLabel = single
+    ? `Any changes to ${escapeHtml(TREATMENT_CATEGORY_LABELS[activeMedications[0].category] || activeMedications[0].category)} this week?`
+    : `Any changes to your dog's medications or supplements this week?`;
+
+  const whichOneHtml = single ? '' : `
+    <div id="medWhichOne" style="display: none; margin-top: 12px;">
+      <label for="medication_id">Which one?</label>
+      <select id="medication_id" name="medication_id">
+        <option value="">Select one</option>
+        ${activeMedications.map(m => `<option value="${m.id}">${escapeHtml(TREATMENT_CATEGORY_LABELS[m.category] || m.category)} (${escapeHtml(m.condition_treated)})</option>`).join('')}
+      </select>
+    </div>`;
+
+  const chipsHtml = `
+    <div id="medChips" style="display: none; margin-top: 12px;">
+      <label for="medication_change_type">What changed?</label>
+      <select id="medication_change_type" name="medication_change_type">
+        <option value="">Select one</option>
+        ${MEDICATION_CHANGE_TYPES.map(t => `<option value="${t}">${escapeHtml(MEDICATION_CHANGE_TYPE_LABELS[t])}</option>`).join('')}
+      </select>
+      <label for="medication_update_note" style="margin-top: 10px;">Anything else? (optional)</label>
+      <input type="text" id="medication_update_note" name="medication_update_note" maxlength="200" placeholder="A short note">
+    </div>`;
+
+  return `
+    <h2 style="font-size: 15px; font-weight: 600; color: #333; margin: 24px 0 4px 0;">Medications &amp; Supplements</h2>
+    <div id="medUpdateSection" data-single="${single}">
+      <label>${questionLabel}</label>
+      <div style="display: flex; gap: 16px; margin-top: 6px;">
+        <label style="display: inline-flex; align-items: center; gap: 6px; font-weight: 400;"><input type="radio" name="medication_update_answer" value="yes"> Yes</label>
+        <label style="display: inline-flex; align-items: center; gap: 6px; font-weight: 400;"><input type="radio" name="medication_update_answer" value="no" checked> No</label>
+      </div>
+      ${whichOneHtml}
+      ${chipsHtml}
+    </div>`;
+}
+
+// Client-side show/hide wiring + pre-submit validation for the section
+// above. Same style as SCORE_ITEM_WIDGET_SCRIPT (plain functions in the
+// page's own global scope, not a module) -- if #medUpdateSection isn't on
+// the page (0 active medications), every function here is a safe no-op.
+const MEDICATION_UPDATE_SCRIPT = `
+  (function() {
+    var section = document.getElementById('medUpdateSection');
+    if (!section) return;
+    var isSingle = section.getAttribute('data-single') === 'true';
+    var whichOne = document.getElementById('medWhichOne');
+    var chips = document.getElementById('medChips');
+    var medSelect = document.getElementById('medication_id');
+
+    function updateVisibility() {
+      var checked = section.querySelector('input[name="medication_update_answer"]:checked');
+      var yes = !!checked && checked.value === 'yes';
+      if (whichOne) whichOne.style.display = (yes && !isSingle) ? 'block' : 'none';
+      var showChips = yes && (isSingle || (medSelect && medSelect.value));
+      if (chips) chips.style.display = showChips ? 'block' : 'none';
+    }
+
+    var radios = section.querySelectorAll('input[name="medication_update_answer"]');
+    for (var i = 0; i < radios.length; i++) {
+      radios[i].addEventListener('change', updateVisibility);
+    }
+    if (medSelect) medSelect.addEventListener('change', updateVisibility);
+  })();
+
+  // Call from a form's submit handler alongside formHasAllScoreItemsAnswered.
+  // Returns { valid: true } or { valid: false, message: '...' }.
+  function medicationUpdateSectionIsValid() {
+    var section = document.getElementById('medUpdateSection');
+    if (!section) return { valid: true };
+    var checked = section.querySelector('input[name="medication_update_answer"]:checked');
+    if (!checked || checked.value !== 'yes') return { valid: true };
+    var isSingle = section.getAttribute('data-single') === 'true';
+    if (!isSingle) {
+      var medSelect = document.getElementById('medication_id');
+      if (!medSelect || !medSelect.value) {
+        return { valid: false, message: 'Please select which medication or supplement changed.' };
+      }
+    }
+    var changeType = document.getElementById('medication_change_type');
+    if (!changeType || !changeType.value) {
+      return { valid: false, message: 'Please select what changed.' };
+    }
+    return { valid: true };
+  }
+`;
+
+// ============================================
 // VALIDATE REQUIRED ENVIRONMENT VARIABLES
 // ============================================
 const requiredEnvVars = [
@@ -1572,6 +1790,7 @@ app.get('/check-in/:dog_id', async (req, res) => {
     const latestEnergy = latestRow?.energy_score ?? dog.baseline_energy_score ?? null;
     const latestAppetite = latestRow?.appetite_score ?? dog.baseline_appetite_score ?? null;
     const latestWeight = latestCheckins?.find(c => c.weight_lbs != null)?.weight_lbs ?? dog.weight_lbs ?? null;
+    const activeMedications = await getActiveMedicationsForDog(dog_id);
 
     // Calculate the actual current week based on when the dog was enrolled
     // (matches the same calculation used at submission time in /api/checkin-senior)
@@ -1696,6 +1915,8 @@ app.get('/check-in/:dog_id', async (req, res) => {
             <h2 style="font-size: 15px; font-weight: 600; color: #333; margin: 24px 0 4px 0;">Appetite</h2>
             ${buildSingleItemWidgetHtml('appetite', latestAppetite)}
 
+            ${buildMedicationUpdateSectionHtml(activeMedications)}
+
             ${showCognitive ? `
             <h2 style="font-size: 15px; font-weight: 600; color: #333; margin: 24px 0 4px 0;">Cognitive &amp; Behavior</h2>
             <p class="hint" style="margin: 0 0 16px 0;">Asked every 4th week.</p>
@@ -1730,6 +1951,7 @@ app.get('/check-in/:dog_id', async (req, res) => {
 
         <script>
           ${SCORE_ITEM_WIDGET_SCRIPT}
+          ${MEDICATION_UPDATE_SCRIPT}
 
           document.getElementById('checkinForm').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -1740,7 +1962,14 @@ app.get('/check-in/:dog_id', async (req, res) => {
               return;
             }
 
+            const medCheck = medicationUpdateSectionIsValid();
+            if (!medCheck.valid) {
+              alert(medCheck.message);
+              return;
+            }
+
             const formData = new FormData(e.target);
+            const medAnswer = formData.get('medication_update_answer');
             try {
               const response = await fetch('/api/checkin-senior', {
                 method: 'POST',
@@ -1758,7 +1987,10 @@ app.get('/check-in/:dog_id', async (req, res) => {
                   cognitive_interest: formData.get('cognitive_interest') ? parseInt(formData.get('cognitive_interest')) : null,
                   cognitive_sleep_wake: formData.get('cognitive_sleep_wake') ? parseInt(formData.get('cognitive_sleep_wake')) : null,
                   weight_lbs: formData.get('weight_lbs') ? parseInt(formData.get('weight_lbs')) : null,
-                  observation: formData.get('observation') || null
+                  observation: formData.get('observation') || null,
+                  medication_id: medAnswer === 'yes' ? (formData.get('medication_id') || null) : null,
+                  medication_change_type: medAnswer === 'yes' ? (formData.get('medication_change_type') || null) : null,
+                  medication_update_note: medAnswer === 'yes' ? (formData.get('medication_update_note') || null) : null
                 })
               });
 
@@ -2120,7 +2352,10 @@ app.post('/api/checkin-senior', async (req, res) => {
       cognitive_interest,
       cognitive_sleep_wake,
       weight_lbs,
-      observation
+      observation,
+      medication_id,
+      medication_change_type,
+      medication_update_note
     } = req.body;
 
     if (!dog_id) {
@@ -2327,6 +2562,62 @@ app.post('/api/checkin-senior', async (req, res) => {
       });
 
     if (saveError) throw saveError;
+
+    // ============================================
+    // MEDICATION WEEKLY UPDATE (optional -- only present when the
+    // check-in form's progressive-disclosure medication section was
+    // answered "yes"). Non-blocking: a problem here shouldn't fail the
+    // whole check-in submission, which is the more important data to not
+    // lose -- same "don't let a secondary write sink the primary one"
+    // reasoning already applied to the SMS queue / Sheets export below.
+    // ============================================
+    if (medication_change_type) {
+      try {
+        if (!MEDICATION_CHANGE_TYPES.includes(medication_change_type)) {
+          console.warn(`⚠️ Invalid medication_change_type "${medication_change_type}" for dog ${dog_id}, skipping medication update`);
+        } else {
+          const activeMeds = await getActiveMedicationsForDog(dog_id);
+          let targetMedicationId = medication_id || null;
+
+          if (targetMedicationId) {
+            // Must actually be one of this dog's own active medications --
+            // never trust a client-supplied ID blindly (could be a typo,
+            // a stale ID from a since-stopped medication, or someone
+            // else's dog entirely).
+            if (!activeMeds.some(m => m.id === targetMedicationId)) {
+              console.warn(`⚠️ medication_id ${targetMedicationId} is not an active medication for dog ${dog_id}, skipping medication update`);
+              targetMedicationId = null;
+            }
+          } else if (activeMeds.length === 1) {
+            // No medication_id sent -- only valid when there's exactly one
+            // active medication to auto-attribute to (the single-toggle
+            // UX case). 0 or 2+ active with no ID is a malformed request.
+            targetMedicationId = activeMeds[0].id;
+          }
+
+          if (targetMedicationId) {
+            const cleanNote = medication_update_note ? sanitizeString(medication_update_note, 200) : null;
+            const { error: medUpdateError } = await supabase
+              .from('medication_weekly_updates')
+              .insert({
+                medication_id: targetMedicationId,
+                week_number: weekNumber,
+                change_type: medication_change_type,
+                note: cleanNote || null
+              });
+            if (medUpdateError) {
+              console.error(`❌ Error saving medication weekly update for dog ${dog_id}:`, medUpdateError.message);
+            } else if (medication_change_type === 'stopped') {
+              await stopMedication(targetMedicationId);
+            }
+          } else {
+            console.warn(`⚠️ Could not determine which medication to attribute the update to for dog ${dog_id} (0 or 2+ active with no medication_id) — skipped`);
+          }
+        }
+      } catch (medError) {
+        console.error(`❌ Unexpected error processing medication update for dog ${dog_id}:`, medError.message);
+      }
+    }
 
     // ============================================
     // STEP 27C: UPDATE STREAK (current is live-calculated, only longest is stored)
@@ -4309,6 +4600,89 @@ app.post('/api/notes/:dog_id', async (req, res) => {
   }
 });
 
+// ============================================
+// MEDICATIONS -- add one for an EXISTING dog, any time (not just baseline
+// signup, which stages through /api/send-magic-link + /verify or inserts
+// directly via /api/add-dog instead). Reuses the exact same validation
+// (cleanMedicationEntry) as both signup paths -- one implementation.
+// ============================================
+app.post('/api/medications', async (req, res) => {
+  try {
+    const { dog_id, category, condition_treated, condition_source, date_started } = req.body;
+
+    if (!dog_id) {
+      return res.status(400).json({ success: false, error: 'Missing required field: dog_id' });
+    }
+
+    const clean = cleanMedicationEntry({ category, condition_treated, condition_source, date_started });
+    if (!clean) {
+      return res.status(400).json({ success: false, error: 'Missing or invalid medication fields' });
+    }
+
+    // Confirm the dog is real before creating anything against it, same
+    // pattern as /api/add-dog's owner check.
+    const { data: dog, error: dogLookupError } = await supabase
+      .from('senior_dogs')
+      .select('id')
+      .eq('id', dog_id)
+      .maybeSingle();
+    if (dogLookupError || !dog) {
+      return res.status(404).json({ success: false, error: 'Dog not found' });
+    }
+
+    const { data: newMed, error: insertError } = await supabase
+      .from('medications')
+      .insert({ dog_id, ...clean })
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error(`❌ Error adding medication for dog ${dog_id}:`, insertError.message);
+      return res.status(500).json({ success: false, error: 'Failed to add medication' });
+    }
+
+    res.json({ success: true, medication: newMed });
+  } catch (error) {
+    console.error('Error in POST /api/medications:', error);
+    res.status(500).json({ success: false, error: 'Server error' });
+  }
+});
+
+// Marks one medication stopped -- sets date_stopped, does NOT delete the
+// row (historical weekly updates stay attached to it). Shares the exact
+// same stopMedication() helper the weekly-update flow's "stopped" chip
+// uses, so there's one real implementation of what "stopping a
+// medication" does, not two that could drift.
+app.post('/api/medications/:id/stop', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const { data: medication, error: lookupError } = await supabase
+      .from('medications')
+      .select('id, date_stopped')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (lookupError || !medication) {
+      return res.status(404).json({ success: false, error: 'Medication not found' });
+    }
+    if (medication.date_stopped) {
+      // Idempotent -- already stopped, not an error.
+      return res.json({ success: true, alreadyStopped: true });
+    }
+
+    const stopped = await stopMedication(id);
+    if (!stopped) {
+      return res.status(500).json({ success: false, error: 'Failed to stop medication' });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error in POST /api/medications/:id/stop:', error);
+    res.status(500).json({ success: false, error: 'Server error' });
+  }
+});
+
 app.get('/dashboard/:dog_id', async (req, res) => {
   try {
     const { dog_id } = req.params;
@@ -4666,6 +5040,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
     const dashboardNow = new Date();
     const nextCheckinWeekNumber = Math.max(1, Math.floor((dashboardNow - dogCreatedAt) / (7 * 24 * 60 * 60 * 1000)) + 1);
     const showCognitiveThisWeek = nextCheckinWeekNumber % 4 === 0;
+    const activeMedicationsForModal = await getActiveMedicationsForDog(dog_id);
 
     // STEP: Real "update due" calculation, separate from nextCheckinWeekNumber
     // above (which is used for saving check-ins and the every-4th-week
@@ -5413,6 +5788,8 @@ app.get('/dashboard/:dog_id', async (req, res) => {
               <h3 style="font-size: 15px; font-weight: 600; color: #333; margin: 24px 0 4px 0;">Appetite</h3>
               ${buildSingleItemWidgetHtml('appetite', latestAppetiteScore)}
 
+              ${buildMedicationUpdateSectionHtml(activeMedicationsForModal)}
+
               ${showCognitiveThisWeek ? `
               <h3 style="font-size: 15px; font-weight: 600; color: #333; margin: 24px 0 4px 0;">Cognitive &amp; Behavior</h3>
               <p style="font-size: 12px; color: #666; margin: 0 0 16px 0;">Asked every 4th week.</p>
@@ -5599,6 +5976,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
           const closeBtn = document.getElementById('closeCheckInBtn');
 
           ${SCORE_ITEM_WIDGET_SCRIPT}
+          ${MEDICATION_UPDATE_SCRIPT}
 
           // openBtn won't exist during the baseline period (disabled button
           // has no id then) — guard so this doesn't crash the rest of the
@@ -5720,7 +6098,14 @@ app.get('/dashboard/:dog_id', async (req, res) => {
               return;
             }
 
+            const medCheck = medicationUpdateSectionIsValid();
+            if (!medCheck.valid) {
+              alert(medCheck.message);
+              return;
+            }
+
             const formData = new FormData(e.target);
+            const medAnswer = formData.get('medication_update_answer');
             try {
               const response = await fetch('/api/checkin-senior', {
                 method: 'POST',
@@ -5738,7 +6123,10 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                   cognitive_interest: formData.get('cognitive_interest') ? parseInt(formData.get('cognitive_interest')) : null,
                   cognitive_sleep_wake: formData.get('cognitive_sleep_wake') ? parseInt(formData.get('cognitive_sleep_wake')) : null,
                   weight_lbs: formData.get('weight_lbs') ? parseInt(formData.get('weight_lbs')) : null,
-                  observation: formData.get('observation') || null
+                  observation: formData.get('observation') || null,
+                  medication_id: medAnswer === 'yes' ? (formData.get('medication_id') || null) : null,
+                  medication_change_type: medAnswer === 'yes' ? (formData.get('medication_change_type') || null) : null,
+                  medication_update_note: medAnswer === 'yes' ? (formData.get('medication_update_note') || null) : null
                 })
               });
 
@@ -6383,7 +6771,8 @@ app.post('/api/send-magic-link', async (req, res) => {
       zip_code,
       diet_type,
       pet_insurance,
-      treatment_category
+      treatment_category,
+      medications
     } = req.body;
 
     // Validate required fields
@@ -6391,6 +6780,19 @@ app.post('/api/send-magic-link', async (req, res) => {
       return res.status(400).json({
         success: false,
         error: 'Missing required fields'
+      });
+    }
+
+    // Medications are optional at signup, but if anything was submitted it
+    // must all be valid -- reject the whole request rather than silently
+    // dropping a bad entry. Staged as JSON on the token (see
+    // migration_add_medications.sql) and copied to real medications rows
+    // at /verify time, once a real dog_id exists.
+    const cleanMedications = cleanMedicationsArray(medications);
+    if (cleanMedications === null) {
+      return res.status(400).json({
+        success: false,
+        error: 'One or more medications/supplements has invalid or missing fields'
       });
     }
 
@@ -6651,6 +7053,7 @@ app.post('/api/send-magic-link', async (req, res) => {
         diet_type: cleanDietType,
         pet_insurance: cleanPetInsurance,
         treatment_category: cleanTreatmentCategories,
+        pending_medications: cleanMedications,
         existing_owner_id: existingOwnerId,
         consent_given_at: new Date().toISOString(),
         expires_at: expiresAt,
@@ -7103,6 +7506,23 @@ app.get('/verify', async (req, res) => {
 
     const dogId = newDog[0].id;
 
+    // Copy staged baseline medications (see migration_add_medications.sql)
+    // into real medications rows now that a real dog_id exists. Re-cleaned
+    // here, not just trusted from the token — defense in depth, same
+    // "validate at every boundary" pattern already used for every other
+    // baseline field on this route. Non-fatal on failure: losing a
+    // medication entry shouldn't block the whole signup/redirect, the
+    // same reasoning already applied to the Sheets export below.
+    const pendingMeds = cleanMedicationsArray(tokenData.pending_medications) || [];
+    if (pendingMeds.length > 0) {
+      const { error: medsInsertError } = await supabase
+        .from('medications')
+        .insert(pendingMeds.map(m => ({ dog_id: dogId, ...m })));
+      if (medsInsertError) {
+        console.error(`❌ Error inserting baseline medications for dog ${dogId}:`, medsInsertError.message);
+      }
+    }
+
     // Mark the token as used
     const { error: updateError } = await supabase
       .from('magic_link_tokens')
@@ -7233,13 +7653,27 @@ app.post('/api/add-dog', async (req, res) => {
       spayed_neutered,
       diet_type,
       pet_insurance,
-      treatment_category
+      treatment_category,
+      medications
     } = req.body;
 
     if (!owner_id || !dog_name || !breed || !age || !gender || !consent) {
       return res.status(400).json({
         success: false,
         error: 'Missing required fields'
+      });
+    }
+
+    // Medications are optional, but if anything was submitted it must all
+    // be valid — reject the whole request rather than silently dropping a
+    // bad entry. This route creates the dog synchronously (no token
+    // staging step needed, unlike /verify), so real medications rows are
+    // inserted directly below once dogId exists.
+    const cleanMedications = cleanMedicationsArray(medications);
+    if (cleanMedications === null) {
+      return res.status(400).json({
+        success: false,
+        error: 'One or more medications/supplements has invalid or missing fields'
       });
     }
 
@@ -7391,6 +7825,18 @@ app.post('/api/add-dog', async (req, res) => {
 
     const dogId = newDog[0].id;
     console.log(`✅ Profile created via add-dog for ${cleanName} (ID: ${dogId}, owner: ${owner.id})`);
+
+    // No staging needed on this route (dog already exists) -- insert real
+    // medications rows directly. Non-fatal on failure, same reasoning as
+    // /verify's equivalent step.
+    if (cleanMedications.length > 0) {
+      const { error: medsInsertError } = await supabase
+        .from('medications')
+        .insert(cleanMedications.map(m => ({ dog_id: dogId, ...m })));
+      if (medsInsertError) {
+        console.error(`❌ Error inserting baseline medications for dog ${dogId}:`, medsInsertError.message);
+      }
+    }
 
     // Same Signups tab, same join key (dog UUID) as the main signup route.
     await appendRowToSheet('Signups', [

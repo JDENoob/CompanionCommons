@@ -1,7 +1,17 @@
 -- ============================================================================
--- CompanionCommons — Delete all rows from the 9 real data tables
+-- CompanionCommons — Delete all rows from the 11 real data tables
 -- (senior_dogs, owners, magic_link_tokens, mobility_checkins, dog_notes,
---  health_alerts, churn_flags, contact_submissions, sms_queue)
+--  health_alerts, churn_flags, contact_submissions, sms_queue, medications,
+--  medication_weekly_updates)
+--
+-- medications/medication_weekly_updates added when those tables were
+-- created (see migration_add_medications.sql) -- both have a real,
+-- migration-confirmed ON DELETE CASCADE from medication_weekly_updates ->
+-- medications -> senior_dogs, so deleting senior_dogs alone would cascade
+-- correctly regardless, but both are still deleted explicitly here first,
+-- matching this script's existing "delete children before parents,
+-- whether or not the FK is confirmed" convention rather than relying on
+-- CASCADE silently doing the work.
 --
 -- Does NOT touch page_content (live, admin-edited site copy — not
 -- test/user data). Does NOT drop or alter any table/column. Does NOT
@@ -64,6 +74,8 @@ DELETE FROM dog_notes;
 DELETE FROM health_alerts;
 DELETE FROM churn_flags;
 DELETE FROM sms_queue;
+DELETE FROM medication_weekly_updates; -- child of medications, delete first
+DELETE FROM medications;
 
 -- 2. magic_link_tokens references owners (ON DELETE SET NULL, non-blocking)
 --    but is cleared here anyway, ahead of owners, for the same reason as above.
