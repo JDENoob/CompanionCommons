@@ -66,6 +66,24 @@ const TREATMENT_CATEGORY_LABELS = {
   // 'none' deliberately omitted — handled separately, not shown as a "medication"
 };
 
+// The version of terms.html/privacy.html a signup's consent record is
+// tied to (see migration_add_consent_policy_version.sql). A bare
+// consent_given_at timestamp alone can't answer "which policy text was
+// the owner actually agreeing to," which matters the moment either page
+// is ever substantively revised — this is a real consent-record
+// requirement, not decoration.
+//
+// STANDING MAINTENANCE REQUIREMENT: bump this string by hand whenever
+// terms.html or privacy.html's actual content changes (not for a typo
+// fix or styling tweak — a real change to what's being agreed to).
+// There is no automatic detection of this — nothing enforces the bump,
+// so it depends on remembering to update it here in the same session as
+// any real Terms/Privacy edit. Current value reflects the most recent
+// commit that actually changed either file's content (603ee48, Sep 1
+// 2026 — "Tighten ZIP validation and add US-residents-only Terms/Privacy
+// language"), confirmed via `git log` against both files, not assumed.
+const CURRENT_CONSENT_POLICY_VERSION = '2026-09-01';
+
 // ============================================
 // STEP P10: HEALTH CHECK-IN INSTRUMENT (v2)
 // Full design rationale: docs/CompanionCommons_Health_Instrument_Design.md
@@ -7527,6 +7545,7 @@ app.post('/api/send-magic-link', async (req, res) => {
         pending_medications: cleanMedications,
         existing_owner_id: existingOwnerId,
         consent_given_at: new Date().toISOString(),
+        consent_policy_version: CURRENT_CONSENT_POLICY_VERSION,
         expires_at: expiresAt,
         used_at: null,
         created_at: new Date().toISOString()
@@ -7933,6 +7952,7 @@ app.get('/verify', async (req, res) => {
         treatment_category: tokenData.treatment_category,
         owner_id: ownerId,
         consent_given_at: tokenData.consent_given_at,
+        consent_policy_version: tokenData.consent_policy_version,
         created_at: now,
         preferred_reminder_day: 3,        // Wednesday (mid-week, neutral)
         preferred_reminder_time: '14:00'  // 2:00 PM (afternoon, safe for all)
@@ -8283,6 +8303,7 @@ app.post('/api/add-dog', async (req, res) => {
         treatment_category: cleanTreatmentCategories,
         owner_id: owner.id,
         consent_given_at: now,
+        consent_policy_version: CURRENT_CONSENT_POLICY_VERSION,
         created_at: now,
         preferred_reminder_day: 3,
         preferred_reminder_time: '14:00'
