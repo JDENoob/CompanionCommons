@@ -1596,3 +1596,35 @@ Per the same `9cd0be7` bulk-import commit, listed every route it introduced (35 
 `node --check server.js` passes. Clean local server start with zero errors (stray `node.exe` confirmed at 0 first, per standing rule). `GET /api/get-all-dogs` confirmed returning a real 404 post-removal, not a 500 or a stale route. No test data was needed for this fix — it was a pure deletion with no schema or data dependency.
 
 **Supporting services/tools:** `server.js`.
+
+---
+
+## September 2, 2026 (continued) — 3 of 4 Sibling Routes Removed, Closing the Most Urgent Real Exposure
+
+Direct follow-up to the sibling audit above. Each of the 4 was investigated in full first — complete handler code, read-only vs. real side effects, live schema vs. dead, and (for the two most consequential ones) whether it could actually be triggered to do something real against an arbitrary target right now. `governance/stats` deliberately excluded from this pass, held open pending John's decision on whether it's abandoned dead code or an unfinished real feature (a public transparency dashboard whose frontend, `governance.html`, is now just a redirect stub to `privacy.html`).
+
+### `POST /api/test-email` — the real finding of this investigation, more urgent than `get-all-dogs` itself
+
+Confirmed by reading `sendChurnAlertEmail` directly (server.js:9120-9174): given only `email`, `dogName`, and `dogId` — none of which need to correspond to anything real, since the function never validates the dog exists — it performs an unconditional, real `sgMail.send()` using the project's actual SendGrid account and real "Companion Commons" branding. `email` is the delivery target with **zero restriction to the caller's own address**, no CAPTCHA, no rate limit specific to this route. **Unlike every other exposure found this session, this one required no beta data to exist — it was exploitable today, right now, to send an arbitrary volume of real branded email to any address**, a genuine harassment/impersonation and SendGrid-quota-abuse vector, not merely a data leak. Removed outright.
+
+### `POST /api/test-churn-detection` — same fix, lower urgency, confirmed safe-by-design before removal
+
+Read every dog in the live `senior_dogs` table and ran the real `evaluateDogForChurn` against each, but never returned that data to the caller (only counts). Confirmed via the actual function signatures before removing anything, not assumed: `evaluateDogForChurn`'s `sendSmsReminders` option defaults to `false` and this call site never overrode it (zero SMS ever sent by this route), and `sendChurnAlertsForOwnerGroup`'s `toEmail = emailOverride || ownerEmail` resolution — combined with this call site passing a literal `null` as the `ownerEmail` positional argument — meant even a misconfigured/missing `SENDGRID_FROM_EMAIL` would hit the function's own no-email early exit rather than ever falling back to a real owner's address. A genuinely well-built internal QA tool, just one with no business being reachable with zero authentication once beta data exists. Removed.
+
+### `POST /api/age-bella-data` / `POST /api/clear-bella-alert` — confirmed inert, removed anyway on principle
+
+Both hardcoded to one fixed UUID (`550e8400-e29b-41d4-a716-446655440002`) — confirmed, via the ID's own shape, to be a variant of RFC 4122's canonical example UUID (real IDs in this app are always `gen_random_uuid()`-generated and could never coincidentally match this well-known pattern), and confirmed empirically and live, read-only, that zero rows exist for it in `senior_dogs`, `mobility_checkins`, or `churn_flags` today. Neither route accepts any parameter that could redirect it at a different dog — genuinely inert, and not attacker-redirectable even in principle. Removed anyway: real write (`mobility_checkins` update) and delete (`churn_flags` delete) capability, unauthenticated, has no reason to sit in a production file regardless of current blast radius.
+
+### Cleanup: two stale comments referencing the removed routes
+
+`buildEmailUnsubscribeFooter`'s own comment cited `/api/test-email` as an example caller with no real owner — updated to remove the now-dangling reference. `evaluateDogForChurn`'s header comment described itself as "used by both the real hourly cron and the manual `/api/test-churn-detection` endpoint" — updated to state it's now the cron's only real caller, with a note that the function stays a standalone shared implementation in case a real, properly-gated internal test tool (behind `/admin` auth, not a public route) is ever built again.
+
+### Verification
+
+Fresh, final grep across `server.js` and `Public/` for all 4 route names, after every code change (not just after the route deletions, but after the comment cleanup too): zero remaining references except the intentional historical note left in `evaluateDogForChurn`'s own comment explaining the removal. `node --check server.js` passes. Clean local server boot, zero errors, stray `node.exe` confirmed at 0 first. Live-tested all 4 removed routes: each now returns a real 404. Live-tested `/api/governance/stats` immediately after, confirming it's genuinely untouched and still returns 200 — the one route deliberately held out of this pass.
+
+### Result
+
+Closes 3 of the 4 items flagged in checklist item 38. The single most urgent real, live, immediately-exploitable exposure this whole sibling-audit surfaced — `/api/test-email`'s arbitrary-recipient send capability — is now closed. `governance/stats` remains open, a real decision for John rather than a cleanup task: is this a dead debugging leftover, or an unfinished real feature worth actually building the frontend for?
+
+**Supporting services/tools:** `server.js`.

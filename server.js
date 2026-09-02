@@ -7029,205 +7029,6 @@ app.get('/health', (req, res) => {
 });
 
 // ============================================
-// TEST EMAIL (STEP 9 - Testing SendGrid)
-// ============================================
-app.post('/api/test-email', async (req, res) => {
-  try {
-    const { email, dogName, lastScore, lastCheckInDate, dogId } = req.body;
-
-    if (!email || !dogName || !dogId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing required fields: email, dogName, dogId'
-      });
-    }
-
-    const result = await sendChurnAlertEmail(
-      email,
-      dogName,
-      // ?? not || — same bug class as the two fixes in /api/checkin-senior
-      // and evaluateDogForChurn (Stage 4a review): 0 is a legitimate
-      // mobility score on the new 0-10 scale, and || would silently
-      // override an intentional lastScore: 0 test payload with the default.
-      lastScore ?? 5,
-      lastCheckInDate || new Date().toISOString(),
-      dogId
-    );
-
-    if (result.success) {
-      res.json({
-        success: true,
-        message: `Test email sent to ${email}`
-      });
-    } else {
-      res.status(500).json({
-        success: false,
-        error: result.error
-      });
-    }
-  } catch (error) {
-    console.error('Error sending test email:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-});
-
-// ============================================
-// TEST CHURN DETECTION (STEP 10 - Manual trigger)
-// ============================================
-app.post('/api/test-churn-detection', async (req, res) => {
-  try {
-    console.log('🔍 Manual churn detection trigger...');
-    let alertsSent = 0;
-    let dogsChecked = 0;
-
-    // Get all senior dogs
-    const { data: allDogs } = await supabase
-      .from('senior_dogs')
-      .select('id, dog_name, owner_id, baseline_mobility_score, created_at');
-
-    if (!allDogs || allDogs.length === 0) {
-      return res.json({
-        success: true,
-        message: 'No dogs found',
-        dogsChecked: 0,
-        alertsSent: 0
-      });
-    }
-
-    dogsChecked = allDogs.length;
-    const now = new Date();
-
-    // For each dog, run the exact same shared evaluation the real cron uses
-    // (see evaluateDogForChurn) — no SMS reminders (a manual trigger
-    // shouldn't have SMS side effects). Then group by owner (STAGE 4) and
-    // send, always to SENDGRID_FROM_EMAIL instead of the real owner, so a
-    // test run never emails an actual user.
-    const needsAlert = [];
-    for (const dog of allDogs) {
-      try {
-        const result = await evaluateDogForChurn(dog);
-        if (!result.skipped && result.needsAlert) needsAlert.push(result);
-      } catch (dogError) {
-        console.error(`Error processing dog ${dog.id}:`, dogError.message);
-      }
-    }
-
-    const groups = new Map();
-    for (const alert of needsAlert) {
-      const key = alert.dog.owner_id || `solo:${alert.dog.id}`;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(alert);
-    }
-
-    for (const alerts of groups.values()) {
-      const result = await sendChurnAlertsForOwnerGroup(null, alerts, { emailOverride: SENDGRID_FROM_EMAIL });
-      if (result.sent) alertsSent += result.dogCount;
-    }
-
-    res.json({
-      success: true,
-      message: `Churn detection complete`,
-      dogsChecked,
-      alertsSent,
-      timestamp: now.toISOString()
-    });
-
-  } catch (error) {
-    console.error('Error in test churn detection:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-});
-
-// ============================================
-// AGE BELLA'S DATA (for STEP 11 testing)
-// ============================================
-app.post('/api/age-bella-data', async (req, res) => {
-  try {
-    const bellaId = '550e8400-e29b-41d4-a716-446655440002';
-
-    // Set her last check-in to 8 days ago AND update week_number to an older week
-    const eightDaysAgo = new Date();
-    eightDaysAgo.setDate(eightDaysAgo.getDate() - 8);
-
-    // Get Bella's dog info to calculate what week 8 days ago was
-    const { data: bellaInfo } = await supabase
-      .from('senior_dogs')
-      .select('created_at')
-      .eq('id', bellaId)
-      .single();
-
-    if (!bellaInfo) throw new Error('Bella not found');
-
-    // Calculate week number for 8 days ago
-    const created = new Date(bellaInfo.created_at);
-    const pastDate = new Date();
-    pastDate.setDate(pastDate.getDate() - 8);
-    const pastWeek = Math.floor((pastDate - created) / (7 * 24 * 60 * 60 * 1000)) + 1;
-
-    const { error } = await supabase
-      .from('mobility_checkins')
-      .update({
-        created_at: eightDaysAgo.toISOString(),
-        week_number: Math.max(1, pastWeek) // Ensure week_number is at least 1
-      })
-      .eq('dog_id', bellaId)
-      .order('created_at', { ascending: false })
-      .limit(1);
-
-    if (error) throw error;
-
-    res.json({
-      success: true,
-      message: `Bella's last check-in aged to week ${Math.max(1, pastWeek)} (${eightDaysAgo.toLocaleDateString()})`,
-      timestamp: new Date().toISOString()
-    });
-
-  } catch (error) {
-    console.error('Error aging Bella data:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-});
-
-// ============================================
-// CLEAR BELLA'S CHURN FLAG (for STEP 11 testing)
-// ============================================
-app.post('/api/clear-bella-alert', async (req, res) => {
-  try {
-    const bellaId = '550e8400-e29b-41d4-a716-446655440002';
-
-    // Delete Bella's recent churn flags
-    const { error } = await supabase
-      .from('churn_flags')
-      .delete()
-      .eq('dog_id', bellaId);
-
-    if (error) throw error;
-
-    res.json({
-      success: true,
-      message: `Bella's churn flags cleared. She can now be alerted again.`,
-      timestamp: new Date().toISOString()
-    });
-
-  } catch (error) {
-    console.error('Error clearing Bella alert:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-});
-
-// ============================================
 // SEND MAGIC LINK (STEP 19 - Authentication Flow)
 // Baseline survey → Magic link token → SMS delivery
 // ============================================
@@ -9107,8 +8908,7 @@ app.get('/founding.html', (req, res) => {
 // Shared unsubscribe footer for both churn email templates -- one
 // implementation so the two templates can't drift the way headers/writes
 // have drifted apart before in this project. Returns '' when ownerId is
-// unavailable (e.g. the /api/test-email template-preview endpoint, which
-// has no real owner to link to) rather than rendering a broken link.
+// unavailable rather than rendering a broken link.
 function buildEmailUnsubscribeFooter(ownerId) {
   if (!ownerId) return '';
   return `
@@ -9260,11 +9060,12 @@ async function sendCombinedChurnAlertEmail(ownerEmail, alerts) {
 
 // ============================================
 // SHARED CHURN-EVALUATION LOGIC FOR ONE DOG
-// Used by both the real hourly cron and the manual /api/test-churn-detection
-// endpoint, so there's exactly one implementation to fix going forward —
-// this is exactly why the baseline-period fix from earlier today lived in
-// the cron but not the test endpoint until this refactor: two copies of the
-// same logic had already started to drift.
+// Used by the real hourly cron. (The manual /api/test-churn-detection
+// endpoint that used to also call this was removed Sep 2 2026 — see the
+// Build Log's "pre-beta blocker" entry — so this is the only real caller
+// today, but the function stays a standalone shared implementation rather
+// than inlined into the cron, in case a real internal test tool needs it
+// again later, built properly behind /admin auth next time.)
 //
 // STAGE 4 (multi-dog owner project) change: this function used to send the
 // churn re-engagement email itself. It no longer does — it only evaluates
