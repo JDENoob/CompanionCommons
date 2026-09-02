@@ -594,6 +594,182 @@ const MEDICATION_UPDATE_SCRIPT = `
 `;
 
 // ============================================
+// MEDICATION-EVENT-TRIGGERED OPT-IN + MILESTONE-PAYOFF MESSAGING
+// Leverages the already-unbounded reminder/churn/display infrastructure
+// confirmed live (no week_number ceiling anywhere in that pipeline) --
+// this is NOT a new "keep logging past 12 weeks" mechanism, it's
+// medication-event awareness layered on top of a pipeline that already
+// runs indefinitely. In-app only (dashboard banner + the standalone
+// check-in confirmation screen), matching the Aug 18 "this is a health
+// journey, not a dataset contribution" decision that already keeps
+// getStreakMilestoneMessage dashboard/confirmation-only -- no new SMS or
+// email send type is added by this feature.
+// ============================================
+
+// Which of the 4 tracked domains (mobility/energy/appetite/cognitive) a
+// medication event is most relevant to. condition_treated (what's
+// actually being treated) is checked FIRST -- it's the more direct
+// semantic signal (e.g. "digestive_gi" unambiguously points at appetite
+// in a way a drug-class category alone couldn't tell you). category
+// (drug class) is the fallback for the conditions that don't map cleanly
+// to one specific tracked domain (allergies, skin_condition,
+// ear_infection, 'other' -- these could plausibly touch several domains
+// at once, not one). energy is the final catch-all when neither maps
+// confidently, since among the 4 tracked domains it's this app's closest
+// analog to a general-wellbeing signal.
+const MEDICATION_CONDITION_TO_DOMAIN = {
+  arthritis_joint_pain: 'mobility',
+  hip_elbow_dysplasia: 'mobility',
+  chronic_pain_other: 'mobility',
+  post_surgical_recovery: 'mobility',
+  digestive_gi: 'appetite',
+  anxiety_behavioral: 'cognitive'
+  // allergies, skin_condition, ear_infection, other: no single confident
+  // domain match -- falls through to the category map below, then to
+  // the energy catch-all.
+};
+const MEDICATION_CATEGORY_TO_DOMAIN = {
+  joint_supplement: 'mobility',
+  nsaid: 'mobility',
+  pain_medication: 'mobility'
+  // steroid, other_prescription, other_supplement: too broad to map to
+  // one domain confidently -- falls through to the energy catch-all.
+};
+const MEDICATION_EVENT_DOMAIN_FALLBACK = 'energy';
+const MEDICATION_EVENT_DOMAIN_LABELS = { mobility: 'mobility', energy: 'energy', appetite: 'appetite', cognitive: 'cognitive/behavior' };
+const MEDICATION_EVENT_VERB = { started: 'started', stopped: 'stopped', changed: 'changed' };
+
+function getMedicationEventDomain(category, conditionTreated) {
+  return MEDICATION_CONDITION_TO_DOMAIN[conditionTreated]
+    || MEDICATION_CATEGORY_TO_DOMAIN[category]
+    || MEDICATION_EVENT_DOMAIN_FALLBACK;
+}
+
+// Creates one medication_response_windows row for a real trigger event and
+// returns the opt-in prompt payload the caller's JSON response should
+// surface to the client -- shared by all three real trigger points
+// (POST /api/medications, POST /api/medications/:id/stop, and the
+// checkin-senior weekly-update handler) so the row shape and prompt copy
+// can't drift between them. Returns null (and logs) on a DB error rather
+// than throwing -- this is a secondary, non-blocking write, same "don't
+// let a secondary write sink the primary action" reasoning already
+// applied to the medication weekly-update block and the SMS queue.
+async function createMedicationResponseWindow(dogId, dogName, medication, eventType, eventWeekNumber) {
+  const domain = getMedicationEventDomain(medication.category, medication.condition_treated);
+  const domainLabel = MEDICATION_EVENT_DOMAIN_LABELS[domain];
+  const categoryLabel = TREATMENT_CATEGORY_LABELS[medication.category] || medication.category;
+
+  const { data: windowRow, error } = await supabase
+    .from('medication_response_windows')
+    .insert({
+      dog_id: dogId,
+      medication_id: medication.id,
+      event_type: eventType,
+      event_week_number: eventWeekNumber,
+      opt_in_shown: true
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error(`❌ Error creating medication_response_windows row for dog ${dogId}:`, error.message);
+    return null;
+  }
+
+  return {
+    window_id: windowRow.id,
+    event_type: eventType,
+    domain,
+    message: `You just ${MEDICATION_EVENT_VERB[eventType]} ${categoryLabel} for ${dogName}. Want us to highlight how ${dogName}'s ${domainLabel} trend looks over the next few months?`
+  };
+}
+
+// Among a list of { week_number, [scoreField] } rows, finds the most
+// recent one at or before targetWeek with a non-null value for scoreField
+// -- same "most recent row that actually has a value" fallback pattern
+// already used throughout this file (e.g. the cognitive-specific prefill
+// lookups, which only ask every 4th week). Falls back to baselineValue
+// when nothing qualifies.
+function getDomainScoreAtOrBeforeWeek(rows, targetWeek, scoreField, baselineValue) {
+  const candidates = (rows || [])
+    .filter(r => r.week_number <= targetWeek && r[scoreField] != null)
+    .sort((a, b) => b.week_number - a.week_number);
+  return candidates.length > 0 ? candidates[0][scoreField] : (baselineValue ?? null);
+}
+
+// Computes which of a dog's OPTED-IN medication_response_windows are due
+// for their payoff trend at the given week -- every 4-week multiple after
+// the event (4, 8, 12, 16, 20...), reusing the exact same "never go
+// silent past 12" extension pattern already established in
+// getStreakMilestoneMessage (streak > 12 && streak % 4 === 0) rather than
+// inventing a second hardcoded checkpoint table. Shared by
+// /api/checkin-senior (fires right when a submission happens to land on a
+// payoff week -- currentWeekScores lets it use this week's just-computed
+// values without a race against its own not-yet-committed insert) and
+// GET /dashboard/:dog_id (so viewing the dashboard on or after that week
+// shows the same real payoff, not just the one moment of submission) --
+// one real implementation, not two that could drift.
+async function computeDueMedicationMilestones(dogId, dog, weekNumber, currentWeekScores) {
+  const { data: optedInWindows } = await supabase
+    .from('medication_response_windows')
+    .select('id, medication_id, event_type, event_week_number')
+    .eq('dog_id', dogId)
+    .eq('opt_in_response', true);
+
+  const dueWindows = (optedInWindows || []).filter(w => {
+    const weeksSince = weekNumber - w.event_week_number;
+    return weeksSince > 0 && weeksSince % 4 === 0;
+  });
+  if (dueWindows.length === 0) return [];
+
+  const { data: pastCheckins } = await supabase
+    .from('mobility_checkins')
+    .select('week_number, mobility_score, energy_score, appetite_score, cognitive_score')
+    .eq('dog_id', dogId)
+    .order('week_number', { ascending: true });
+
+  const rows = (pastCheckins || []).filter(r => r.week_number !== weekNumber);
+  if (currentWeekScores) {
+    rows.push({
+      week_number: weekNumber,
+      mobility_score: currentWeekScores.mobility ?? null,
+      energy_score: currentWeekScores.energy ?? null,
+      appetite_score: currentWeekScores.appetite ?? null,
+      cognitive_score: currentWeekScores.cognitive ?? null
+    });
+  }
+
+  const domainScoreField = { mobility: 'mobility_score', energy: 'energy_score', appetite: 'appetite_score', cognitive: 'cognitive_score' };
+  const domainBaseline = {
+    mobility: dog.baseline_mobility_score, energy: dog.baseline_energy_score,
+    appetite: dog.baseline_appetite_score, cognitive: dog.baseline_cognitive_score
+  };
+
+  const results = [];
+  for (const w of dueWindows) {
+    const { data: medication } = await supabase
+      .from('medications')
+      .select('category, condition_treated')
+      .eq('id', w.medication_id)
+      .maybeSingle();
+    if (!medication) continue; // deleted/unreachable -- skip rather than crash the whole batch
+
+    const domain = getMedicationEventDomain(medication.category, medication.condition_treated);
+    const scoreField = domainScoreField[domain];
+    const startScore = getDomainScoreAtOrBeforeWeek(rows, w.event_week_number, scoreField, domainBaseline[domain]);
+    const currentScore = getDomainScoreAtOrBeforeWeek(rows, weekNumber, scoreField, domainBaseline[domain]);
+
+    results.push({
+      window_id: w.id,
+      weeks_since_event: weekNumber - w.event_week_number,
+      domain,
+      trend: describeMedicationEventTrend(MEDICATION_EVENT_DOMAIN_LABELS[domain], startScore, currentScore)
+    });
+  }
+  return results;
+}
+
+// ============================================
 // VALIDATE REQUIRED ENVIRONMENT VARIABLES
 // ============================================
 const requiredEnvVars = [
@@ -2007,6 +2183,24 @@ app.get('/check-in/:dog_id', async (req, res) => {
           ${SCORE_ITEM_WIDGET_SCRIPT}
           ${MEDICATION_UPDATE_SCRIPT}
 
+          // Answers a medication-event opt-in prompt shown on this
+          // confirmation screen (see createMedicationResponseWindow in
+          // server.js). Reads the window id from the prompt div's own data
+          // attribute rather than embedding it inside each button's onclick
+          // string, so nothing here needs nested-quote escaping.
+          function respondToMedOptIn(optIn) {
+            var el = document.getElementById('medOptInPrompt');
+            if (!el) return;
+            var windowId = el.getAttribute('data-window-id');
+            document.getElementById('medOptInButtons').style.display = 'none';
+            document.getElementById('medOptInThanks').style.display = 'block';
+            fetch('/api/medication-response-windows/' + windowId + '/respond', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ opt_in: optIn })
+            });
+          }
+
           document.getElementById('checkinForm').addEventListener('submit', async (e) => {
             e.preventDefault();
 
@@ -2070,6 +2264,23 @@ app.get('/check-in/:dog_id', async (req, res) => {
                   </p>
                 \` : '';
 
+                const medOptInPromptHtml = result.medication_opt_in_prompt ? \`
+                  <div id="medOptInPrompt" data-window-id="\${result.medication_opt_in_prompt.window_id}" style="background: #FFF8E7; border: 1px solid #A89968; border-radius: 8px; padding: 14px 16px; margin: 16px 0; text-align: left;">
+                    <p style="margin: 0 0 10px 0; font-size: 14px; color: #5D4E37;">\${result.medication_opt_in_prompt.message}</p>
+                    <div id="medOptInButtons">
+                      <button onclick="respondToMedOptIn(true)" style="background: #A89968; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; margin-right: 8px;">Yes, track it</button>
+                      <button onclick="respondToMedOptIn(false)" style="background: transparent; color: #8A7A4F; border: 1px solid #A89968; padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer;">No thanks</button>
+                    </div>
+                    <p id="medOptInThanks" style="display: none; margin: 0; font-size: 13px; color: #8A7A4F;">Thanks — noted.</p>
+                  </div>
+                \` : '';
+
+                const medMilestonesHtml = (result.medication_milestones && result.medication_milestones.length > 0)
+                  ? result.medication_milestones.map(function(m) {
+                      return \`<p style="font-size: 14px; color: #2C2C2C; margin: 12px 0; background: #F0ECE3; border-radius: 8px; padding: 10px 12px; text-align: left;">\${m.trend}</p>\`;
+                    }).join('')
+                  : '';
+
                 document.body.innerHTML = \`
                   <div class="card" style="text-align: center;">
                     <h2 style="color: green;">✅ Check-In Submitted!</h2>
@@ -2082,6 +2293,8 @@ app.get('/check-in/:dog_id', async (req, res) => {
                     <p style="font-size: 14px; color: #666; margin: 20px 0;">
                       \${result.change_text}
                     </p>
+                    \${medOptInPromptHtml}
+                    \${medMilestonesHtml}
                     <a href="/dashboard/${dog_id}" style="display: inline-block; background: #007AFF; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600; margin: 8px 0 20px 0;">View Dashboard</a>
                     <p style="font-size: 12px; color: #999;">
                       You'll get SMS updates each week. Thanks for tracking!
@@ -2625,6 +2838,18 @@ app.post('/api/checkin-senior', async (req, res) => {
     // lose -- same "don't let a secondary write sink the primary one"
     // reasoning already applied to the SMS queue / Sheets export below.
     // ============================================
+    // Medication-event opt-in prompt for the two trigger types reachable
+    // via THIS handler -- 'changed_switched' (per the original spec) and
+    // 'stopped' (added here too, deliberately beyond the original scope:
+    // this weekly-update chip is the only REAL, reachable UI a real owner
+    // uses to stop a medication today -- POST /api/medications/:id/stop has
+    // no dedicated frontend caller of its own. Wiring the response-window
+    // creation into stopMedication() itself would have covered both
+    // callers for free, but stopMedication() doesn't know dog_id/dog_name;
+    // duplicating the small amount of window-creation logic here, right
+    // where dog/activeMeds/weekNumber are already in scope, was simpler
+    // than reshaping that shared helper's signature for both callers).
+    let medicationOptInPromptFromCheckin = null;
     if (medication_change_type) {
       try {
         if (!MEDICATION_CHANGE_TYPES.includes(medication_change_type)) {
@@ -2663,6 +2888,14 @@ app.post('/api/checkin-senior', async (req, res) => {
               console.error(`❌ Error saving medication weekly update for dog ${dog_id}:`, medUpdateError.message);
             } else if (medication_change_type === 'stopped') {
               await stopMedication(targetMedicationId);
+            }
+
+            if (!medUpdateError && (medication_change_type === 'changed_switched' || medication_change_type === 'stopped')) {
+              const targetMed = activeMeds.find(m => m.id === targetMedicationId);
+              if (targetMed) {
+                const eventType = medication_change_type === 'stopped' ? 'stopped' : 'changed';
+                medicationOptInPromptFromCheckin = await createMedicationResponseWindow(dog_id, dog.dog_name, targetMed, eventType, weekNumber);
+              }
             }
           } else {
             console.warn(`⚠️ Could not determine which medication to attribute the update to for dog ${dog_id} (0 or 2+ active with no medication_id) — skipped`);
@@ -2792,6 +3025,17 @@ app.post('/api/checkin-senior', async (req, res) => {
       weightLbsInt ?? ''
     ]);
 
+    // Medication-event milestone payoff -- fires independently of (and
+    // alongside) the general streak milestone above. Deliberately NOT
+    // suppressed when milestoneMessage is also set this week: a general
+    // 16-week logging-consistency streak and a "since starting the joint
+    // supplement 12 weeks ago" trend are genuinely different information,
+    // not two versions of the same message, and they already render in
+    // separate UI blocks -- no real conflict to resolve by picking one.
+    // Skips a query entirely for the common case (a dog with zero
+    // opted-in medication-event windows).
+    const medicationMilestones = await computeDueMedicationMilestones(dog_id, dog, weekNumber, currentScores);
+
     console.log(`✅ Week ${weekNumber} check-in saved for ${dog.dog_name}`);
     console.log(`🔥 Current streak: ${currentStreak}, longest: ${longestStreak}`);
 
@@ -2805,7 +3049,9 @@ app.post('/api/checkin-senior', async (req, res) => {
       current_streak: currentStreak,
       longest_streak: longestStreak,
       milestone_message: milestoneMessage,
-      was_cognitive_week: weekNumber % 4 === 0
+      was_cognitive_week: weekNumber % 4 === 0,
+      medication_opt_in_prompt: medicationOptInPromptFromCheckin,
+      medication_milestones: medicationMilestones
     });
 
   } catch (error) {
@@ -4221,6 +4467,26 @@ function describeWeightJourneyTrend(baseline, latest) {
   return `Weight: ${baseline} lb → ${latest} lb (steady since baseline)`;
 }
 
+// Neutral, non-evaluative trend summary for a medication-event milestone
+// payoff -- "here's how things have looked" framing, deliberately never
+// "improved"/"declined" (matching the project's standing neutral-language
+// rule for health copy, same reasoning already applied to
+// describeJourneyTrend/describeWeightJourneyTrend above). Reuses the exact
+// same diff-and-round arithmetic already established in
+// describeJourneyTrend (roundToOneDecimal(latest - start)) rather than a
+// second trend calculation -- only the wording differs, since
+// describeJourneyTrend's "since baseline" framing doesn't fit a
+// medication-event context.
+function describeMedicationEventTrend(domainLabel, startScore, currentScore) {
+  if (startScore == null || currentScore == null) {
+    return `Not enough ${domainLabel} data yet to show a trend.`;
+  }
+  const diff = roundToOneDecimal(currentScore - startScore);
+  if (diff === 0) return `${domainLabel[0].toUpperCase()}${domainLabel.slice(1)} has stayed at ${currentScore}/10 since then.`;
+  const direction = diff > 0 ? 'moved up' : 'moved down';
+  return `${domainLabel[0].toUpperCase()}${domainLabel.slice(1)} has ${direction} from ${startScore}/10 to ${currentScore}/10 since then (${diff > 0 ? '+' : ''}${diff}).`;
+}
+
 // Templated (NOT AI/LLM-generated) neutral written health summary, shared
 // by the main dashboard and the Journey Summary report. Deterministic
 // server-side logic plugging real calculated numbers into pre-written
@@ -4665,10 +4931,12 @@ app.post('/api/medications', async (req, res) => {
     }
 
     // Confirm the dog is real before creating anything against it, same
-    // pattern as /api/add-dog's owner check.
+    // pattern as /api/add-dog's owner check. Also pulls dog_name/created_at
+    // now -- needed below for the medication-event opt-in prompt (dog_name
+    // in the message copy, created_at to determine "started after baseline").
     const { data: dog, error: dogLookupError } = await supabase
       .from('senior_dogs')
-      .select('id')
+      .select('id, dog_name, created_at')
       .eq('id', dog_id)
       .maybeSingle();
     if (dogLookupError || !dog) {
@@ -4686,7 +4954,22 @@ app.post('/api/medications', async (req, res) => {
       return res.status(500).json({ success: false, error: 'Failed to add medication' });
     }
 
-    res.json({ success: true, medication: newMed });
+    // Medication-event opt-in prompt: only for a medication STARTED after
+    // baseline -- one added during the still-open 7-day baseline period has
+    // no real "before" period to compare a future trend against, so no
+    // window is created for it (matches the same baseline-period gate
+    // already used at check-in save time). Non-blocking: a failure here
+    // shouldn't fail the medication add itself, which is the more
+    // important write to not lose.
+    let medicationOptInPrompt = null;
+    const daysSinceSignupForMed = (new Date() - new Date(dog.created_at)) / (24 * 60 * 60 * 1000);
+    const isPastBaselineForMed = Math.floor(daysSinceSignupForMed / 7) > 0;
+    if (isPastBaselineForMed) {
+      const eventWeekNumber = Math.max(1, Math.floor(daysSinceSignupForMed / 7) + 1);
+      medicationOptInPrompt = await createMedicationResponseWindow(dog_id, dog.dog_name, newMed, 'started', eventWeekNumber);
+    }
+
+    res.json({ success: true, medication: newMed, medication_opt_in_prompt: medicationOptInPrompt });
   } catch (error) {
     console.error('Error in POST /api/medications:', error);
     res.status(500).json({ success: false, error: 'Server error' });
@@ -4702,9 +4985,12 @@ app.post('/api/medications/:id/stop', async (req, res) => {
   try {
     const { id } = req.params;
 
+    // dog_id/category/condition_treated pulled now (not just id/date_stopped)
+    // -- needed below for the medication-event opt-in prompt, same fields
+    // createMedicationResponseWindow needs from every trigger point.
     const { data: medication, error: lookupError } = await supabase
       .from('medications')
-      .select('id, date_stopped')
+      .select('id, date_stopped, dog_id, category, condition_treated')
       .eq('id', id)
       .maybeSingle();
 
@@ -4712,8 +4998,10 @@ app.post('/api/medications/:id/stop', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Medication not found' });
     }
     if (medication.date_stopped) {
-      // Idempotent -- already stopped, not an error.
-      return res.json({ success: true, alreadyStopped: true });
+      // Idempotent -- already stopped, not an error. No new opt-in prompt
+      // either -- the medication was already stopped by an earlier call,
+      // so a window for this event already exists (or never will).
+      return res.json({ success: true, alreadyStopped: true, medication_opt_in_prompt: null });
     }
 
     const stopped = await stopMedication(id);
@@ -4721,9 +5009,69 @@ app.post('/api/medications/:id/stop', async (req, res) => {
       return res.status(500).json({ success: false, error: 'Failed to stop medication' });
     }
 
-    res.json({ success: true });
+    // Medication-event opt-in prompt -- a stop event always has a real
+    // "before" reference (at minimum the dog's baseline score), so unlike
+    // "started" there's no baseline-period gate here. Non-blocking: a
+    // failure here shouldn't fail the stop itself, which already succeeded.
+    let medicationOptInPrompt = null;
+    const { data: dog } = await supabase
+      .from('senior_dogs')
+      .select('dog_name, created_at')
+      .eq('id', medication.dog_id)
+      .maybeSingle();
+    if (dog) {
+      const daysSinceSignupForStop = (new Date() - new Date(dog.created_at)) / (24 * 60 * 60 * 1000);
+      const eventWeekNumber = Math.max(1, Math.floor(daysSinceSignupForStop / 7) + 1);
+      medicationOptInPrompt = await createMedicationResponseWindow(medication.dog_id, dog.dog_name, medication, 'stopped', eventWeekNumber);
+    }
+
+    res.json({ success: true, medication_opt_in_prompt: medicationOptInPrompt });
   } catch (error) {
     console.error('Error in POST /api/medications/:id/stop:', error);
+    res.status(500).json({ success: false, error: 'Server error' });
+  }
+});
+
+// Records an owner's yes/no answer to a medication-event opt-in prompt
+// (see createMedicationResponseWindow above). Idempotent in one direction
+// only -- once a real answer is stored, a second call returns that same
+// stored value rather than overwriting it, so a stray double-click/double
+// fetch can't flip a real "yes" back to "no" or vice versa.
+app.post('/api/medication-response-windows/:id/respond', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { opt_in } = req.body;
+
+    if (typeof opt_in !== 'boolean') {
+      return res.status(400).json({ success: false, error: 'opt_in must be true or false' });
+    }
+
+    const { data: windowRow, error: lookupError } = await supabase
+      .from('medication_response_windows')
+      .select('id, opt_in_response')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (lookupError || !windowRow) {
+      return res.status(404).json({ success: false, error: 'Not found' });
+    }
+    if (windowRow.opt_in_response !== null) {
+      return res.json({ success: true, opt_in_response: windowRow.opt_in_response });
+    }
+
+    const { error: updateError } = await supabase
+      .from('medication_response_windows')
+      .update({ opt_in_response: opt_in })
+      .eq('id', id);
+
+    if (updateError) {
+      console.error(`❌ Error saving medication_response_windows response for window ${id}:`, updateError.message);
+      return res.status(500).json({ success: false, error: 'Failed to save response' });
+    }
+
+    res.json({ success: true, opt_in_response: opt_in });
+  } catch (error) {
+    console.error('Error in POST /api/medication-response-windows/:id/respond:', error);
     res.status(500).json({ success: false, error: 'Server error' });
   }
 });
@@ -5122,6 +5470,68 @@ app.get('/dashboard/:dog_id', async (req, res) => {
     const daysUntilFirstUpdate = isInBaselinePeriod ? Math.max(1, 7 - Math.floor(daysSinceSignup)) : 0;
     const hasUpdateDue = !isInBaselinePeriod && weeksSinceSignup > mostRecentSubmittedWeek;
     const dueWeekNumber = weeksSinceSignup; // the week number that's actually due right now, if any
+
+    // ============================================
+    // MEDICATION-EVENT OPT-IN PROMPT + MILESTONE PAYOFF (dashboard surfaces)
+    // Two independent things, both computed here:
+    //   1. Any PENDING (opt_in_response IS NULL) medication_response_windows
+    //      row for this dog -- this is the real, durable "in-app prompt"
+    //      surface for the two trigger points with no confirmation screen
+    //      of their own (POST /api/medications, POST
+    //      /api/medications/:id/stop have no dedicated frontend caller
+    //      today) -- without this, those two event types would create a
+    //      real DB row but the owner would never actually see the prompt
+    //      anywhere. The standalone check-in confirmation screen ALSO
+    //      shows this immediately for the two events reachable from there
+    //      (stopped/changed via the weekly-update chip) -- this dashboard
+    //      banner is what remains visible afterward if not yet answered,
+    //      and is the ONLY surface for the other two headless endpoints.
+    //   2. Any medication-event milestone due at mostRecentSubmittedWeek --
+    //      same computeDueMedicationMilestones() used by
+    //      /api/checkin-senior, so a dashboard view on or after the exact
+    //      submission moment shows the identical real payoff, not a
+    //      second hand-rolled version.
+    // Both skipped entirely (no query) for a dog with zero medication
+    // events -- the common case.
+    // ============================================
+    const { data: pendingMedOptInWindows } = await supabase
+      .from('medication_response_windows')
+      .select('id, event_type, medication_id')
+      .eq('dog_id', dog_id)
+      .is('opt_in_response', null);
+
+    let medicationOptInBannerHtml = '';
+    if (pendingMedOptInWindows && pendingMedOptInWindows.length > 0) {
+      const promptBlocks = [];
+      for (const w of pendingMedOptInWindows) {
+        const { data: medForPrompt } = await supabase
+          .from('medications')
+          .select('id, category, condition_treated')
+          .eq('id', w.medication_id)
+          .maybeSingle();
+        if (!medForPrompt) continue;
+        const domain = getMedicationEventDomain(medForPrompt.category, medForPrompt.condition_treated);
+        const domainLabel = MEDICATION_EVENT_DOMAIN_LABELS[domain];
+        const categoryLabel = TREATMENT_CATEGORY_LABELS[medForPrompt.category] || medForPrompt.category;
+        promptBlocks.push(`
+          <div style="background: #FFF8E7; border-left: 4px solid #A89968; border-radius: 8px; padding: 16px 20px; margin: 20px 0;">
+            <p style="margin: 0 0 10px 0; color: #5D4E37; font-size: 14px;">You recently ${escapeHtml(MEDICATION_EVENT_VERB[w.event_type] || w.event_type)} ${escapeHtml(categoryLabel)} for ${escapeHtml(dog.dog_name)}. Want us to highlight how ${escapeHtml(dog.dog_name)}'s ${escapeHtml(domainLabel)} trend looks over the next few months?</p>
+            <button onclick="fetch('/api/medication-response-windows/${w.id}/respond', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({opt_in:true})}).then(() => location.reload())" style="background: #A89968; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; margin-right: 8px;">Yes, track it</button>
+            <button onclick="fetch('/api/medication-response-windows/${w.id}/respond', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({opt_in:false})}).then(() => location.reload())" style="background: transparent; color: #8A7A4F; border: 1px solid #A89968; padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer;">No thanks</button>
+          </div>`);
+      }
+      medicationOptInBannerHtml = promptBlocks.join('');
+    }
+
+    const dueMedicationMilestones = mostRecentSubmittedWeek > 0
+      ? await computeDueMedicationMilestones(dog_id, dog, mostRecentSubmittedWeek)
+      : [];
+    const medicationMilestoneBannerHtml = dueMedicationMilestones.length > 0
+      ? dueMedicationMilestones.map(m => `
+          <div style="background: #F0ECE3; border-left: 4px solid #A89968; border-radius: 8px; padding: 16px 20px; margin: 20px 0;">
+            <p style="margin: 0; color: #2C2C2C; font-size: 14px;">${escapeHtml(m.trend)}</p>
+          </div>`).join('')
+      : '';
 
     // ============================================
     // JOURNEY SUMMARY — real data, built from what's already loaded above.
@@ -5574,6 +5984,9 @@ app.get('/dashboard/:dog_id', async (req, res) => {
             <p style="margin: 0; color: #5D4E37; font-size: 14px;">${escapeHtml(dog.dog_name)} completed the original 12-week check-in plan. ${PROGRAM_CONTINUATION_NOTE}</p>
           </div>
           ` : ''}
+
+          ${medicationOptInBannerHtml}
+          ${medicationMilestoneBannerHtml}
 
           <div class="peer-card" style="margin: 20px 0;">
             <h2>Health Summary</h2>

@@ -26,4 +26,6 @@ UNION ALL
 SELECT 'medications', COUNT(*) FROM medications
 UNION ALL
 SELECT 'medication_weekly_updates', COUNT(*) FROM medication_weekly_updates
+UNION ALL
+SELECT 'medication_response_windows', COUNT(*) FROM medication_response_windows
 ORDER BY table_name;
