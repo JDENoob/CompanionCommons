@@ -1517,3 +1517,45 @@ All test data (1 dog, 2 medications, 1 check-in) deleted afterward, confirmed at
 **Genuinely still open, not resolved this session, same two-session pattern as every other migration-gated feature this project has shipped**: the full live 0→prompt-shown→opt-in→milestone-fires sequence (task items 7-10) needs `migration_add_medication_response_windows.sql` to actually be running against real data — and, separately, `migration_medication_condition_dropdown.sql` (Sept 1, already pending before this session) needs to run before `POST /api/medications` can be exercised at all. Flagged for a follow-up verification pass once both are run.
 
 **Supporting services/tools:** `server.js`, `migration_add_medication_response_windows.sql` (new), `sql-utilities/delete_all_test_data.sql`, `sql-utilities/verify_test_data_wiped.sql`.
+
+---
+
+## September 2, 2026 (continued) — Medication-Event Feature: Full Live Verification, One Real Bug Found and Fixed
+
+Both pending migrations (`migration_add_medication_response_windows.sql` and `migration_medication_condition_dropdown.sql`, Sept 1) confirmed run. Closes out the "genuinely still open" item from the entry above with a real live pass, not another reachability-only check.
+
+### A real bug found and fixed: the dashboard's milestone banner always showed "stayed at X" instead of the real trend
+
+`computeDueMedicationMilestones`'s row-building step unconditionally filtered out any existing `mobility_checkins` row at the target `weekNumber` (`rows = pastCheckins.filter(r => r.week_number !== weekNumber)`), then only pushed a replacement row back in `if (currentWeekScores)`. This was correct for the `/api/checkin-senior` caller, which always supplies `currentWeekScores` (this week's just-computed values, to avoid racing its own not-yet-committed insert). It silently broke the `GET /dashboard/:dog_id` caller, which supplies nothing and relies purely on the query — and since `weekNumber` there is `mostRecentSubmittedWeek`, **by definition** the week number of a real, already-saved row, the filter discarded that exact row every single time and nothing ever replaced it. The "current" score resolution then fell through to baseline, producing a false "stayed at X" message on every dashboard view regardless of what actually happened.
+
+**Found via live verification, not code review** — Dog A's checkin-senior response correctly showed `"Mobility has moved down from 6/10 to 2/10 since then (-4)."`, but the dashboard, loaded immediately after, showed `"Mobility has stayed at 6/10 since then."` for the same window. Traced to the filter above by re-reading the actual function against the real query results.
+
+**Fix:** only filter (and only replace) when `currentWeekScores` is actually provided — otherwise use `pastCheckins` exactly as read, since there's no fresher alternative to fall back to anyway. Re-verified immediately after the fix: same dog, same window, dashboard now correctly reads `"Mobility has moved down from 6/10 to 2/10 since then (-4)."`, byte-for-byte matching the confirmation-screen text.
+
+### Full verification, both real trigger dogs
+
+**Dog A — "started" event, opt-in, full milestone payoff (both surfaces):**
+- Created past baseline (`created_at` 42 days back → computed week 7), `baseline_mobility_score: 6.0`.
+- Real `POST /api/medications` call (`joint_supplement` / `arthritis_joint_pain`) — succeeded for real this time (blocked last session by the then-still-pending condition dropdown migration). Response correctly included `medication_opt_in_prompt` with `domain: "mobility"` and the exact expected message naming "Joint Supplement" and "mobility." `medication_response_windows` row confirmed directly: `event_type: "started"`, `event_week_number: 7`, `opt_in_response: null`.
+- **Dashboard banner (item 7) confirmed live**: `GET /dashboard/:dog_id` before responding showed the pending-opt-in banner with matching copy and a correctly-embedded window id in both Yes/No button links.
+- A real test-harness bug on my own side (a shell `||` fallback that double-fired the POST when a missing `python3` formatter made the first pipeline "fail") created a duplicate medication + window — caught immediately by a mismatched window id in the dashboard grep, diagnosed via a direct DB query, and cleaned up before continuing. Not an application bug.
+- Responded `opt_in: true` → confirmed `{"success":true,"opt_in_response":true}` and the same value directly in the DB. Dashboard re-checked: pending banner correctly gone.
+- Advanced `created_at` to put the dog at computed week 11 (73 days back), submitted a **real** `POST /api/checkin-senior` with all 4 mobility items `= 2` (composite `2.0`). Response's `medication_milestones` contained exactly one entry: `weeks_since_event: 4`, `domain: "mobility"`, `trend: "Mobility has moved down from 6/10 to 2/10 since then (-4)."` — hand-verified against the known inputs (baseline 6.0, since no earlier checkin existed at/before week 7; submitted composite 2.0; diff -4.0) — a real, computed number, not placeholder text.
+- Same trend confirmed on the dashboard after the bug fix above.
+
+**Dog B — "stopped" (declined) + "changed" (opted in) on the same dog, proving both gates work side by side:**
+- Created past baseline (week 4), two active medications inserted directly (no dedicated add-UI exists for either, same as last session): Med B1 (`nsaid`/`digestive_gi` → appetite domain), Med B2 (`other_supplement`/`anxiety_behavioral` → cognitive domain).
+- Real `POST /api/checkin-senior` at week 4 with `medication_change_type: "stopped"`, explicit `medication_id` for B1 (2 active medications means the "which one?" path, not auto-attribution). Response correctly included the opt-in prompt (`event_type: "stopped"`, `domain: "appetite"`, correct "NSAID" category label) — confirming the confirmation-screen surface for a stopped event, not just started. Responded `opt_in: false` → confirmed `{"success":true,"opt_in_response":false}`, and the DB row correctly stored `false` (not `null`) — the real distinction this schema was built to capture.
+- Advanced to week 5, real `POST /api/checkin-senior` with `medication_change_type: "changed_switched"` for B2. Response correctly created an `event_type: "changed"` window (`domain: "cognitive"`), and the general streak-milestone message ("2 weeks in a row...") fired in the same response — real, live confirmation of the Requirement 6 decision (both shown, not suppressed against each other), not just a design claim. Responded `opt_in: true`.
+- Advanced to week 8 (4 weeks past B1's declined event) and submitted a real check-in: `medication_milestones: []` — correctly empty, both in the JSON response and on the dashboard (0 milestone banners rendered) — the declined opt-out genuinely suppresses the payoff.
+- Advanced to week 9 (4 weeks past B2's opted-in event) and submitted a real check-in with real cognitive values: `medication_milestones` contained **exactly** B2's window (`domain: "cognitive"`, `trend: "Cognitive/behavior has moved down from 3/10 to 2/10 since then (-1)."`, hand-verified against baseline 3.0 and submitted composite 2.0) — B1's declined window correctly still absent. Same result confirmed on the dashboard: exactly one milestone banner, zero pending-opt-in banners (both already answered).
+
+### Cleanup
+
+All test data deleted across every table this feature touches for both dogs: `medication_response_windows`, `mobility_checkins`, `medications`, `sms_queue` (0 rows either way — both test dogs had `sms_consent: false`), and `senior_dogs` — the latter initially blocked by a real, unrelated FK (`health_alerts`, triggered by the genuine score swings in the test data itself, e.g. Dog A's 6→2 mobility drop), cleared first before the dog rows would delete. Confirmed zero remaining per dog across every table, and confirmed the `medication_response_windows` **table-wide** total at 0 — proof this verification pass is the only data that table has ever held since the migration ran.
+
+### Result
+
+The medication-event-triggered opt-in + milestone-payoff feature is now fully verified end-to-end, on real live data, across both migrations, all three event types, both the opt-in and opt-out paths, and both UI surfaces (check-in confirmation screen, dashboard banner) — closing checklist item 34.
+
+**Supporting services/tools:** `server.js` (one real bug fixed: `computeDueMedicationMilestones`'s row-filtering logic), Supabase (`medication_response_windows`, `medications`, `mobility_checkins`, `senior_dogs`, `health_alerts`).

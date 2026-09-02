@@ -728,7 +728,20 @@ async function computeDueMedicationMilestones(dogId, dog, weekNumber, currentWee
     .eq('dog_id', dogId)
     .order('week_number', { ascending: true });
 
-  const rows = (pastCheckins || []).filter(r => r.week_number !== weekNumber);
+  // Real bug found during live verification (Sep 2): this used to always
+  // filter out any existing row at weekNumber, on the assumption
+  // currentWeekScores would always be there to replace it -- true for the
+  // /api/checkin-senior caller (which passes currentWeekScores to avoid a
+  // race against its own not-yet-committed insert), but false for the
+  // GET /dashboard/:dog_id caller, which passes nothing and relies purely
+  // on this query. Since weekNumber there is mostRecentSubmittedWeek --
+  // BY DEFINITION the week_number of a real, already-saved row -- the old
+  // unconditional filter silently discarded that exact row and never put
+  // anything back, so "current" always fell through to baseline. Only
+  // filter (and replace) when a fresher in-memory snapshot actually exists.
+  const rows = currentWeekScores
+    ? (pastCheckins || []).filter(r => r.week_number !== weekNumber)
+    : (pastCheckins || []);
   if (currentWeekScores) {
     rows.push({
       week_number: weekNumber,
