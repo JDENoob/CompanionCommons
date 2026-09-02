@@ -9830,31 +9830,6 @@ setInterval(async () => {
 }, 60000); // Run every 60 seconds
 
 // ============================================
-// GET ALL DOGS (for testing/debugging)
-// ============================================
-app.get('/api/get-all-dogs', async (req, res) => {
-  try {
-    const { data: dogs, error } = await supabase
-      .from('senior_dogs')
-      .select('id, dog_name, breed, age, gender, baseline_mobility_score, created_at')
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      return res.status(500).json({ error: error.message });
-    }
-
-    res.json({
-      success: true,
-      total: dogs.length,
-      dogs: dogs
-    });
-  } catch (error) {
-    console.error('Error fetching dogs:', error);
-    res.status(500).json({ error: 'Failed to fetch dogs' });
-  }
-});
-
-// ============================================
 // 404 HANDLER (must be last)
 // ============================================
 app.use((req, res) => {

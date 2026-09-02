@@ -1559,3 +1559,40 @@ All test data deleted across every table this feature touches for both dogs: `me
 The medication-event-triggered opt-in + milestone-payoff feature is now fully verified end-to-end, on real live data, across both migrations, all three event types, both the opt-in and opt-out paths, and both UI surfaces (check-in confirmation screen, dashboard banner) — closing checklist item 34.
 
 **Supporting services/tools:** `server.js` (one real bug fixed: `computeDueMedicationMilestones`'s row-filtering logic), Supabase (`medication_response_windows`, `medications`, `mobility_checkins`, `senior_dogs`, `health_alerts`).
+
+---
+
+## September 2, 2026 (continued) — Real Pre-Beta Blocker Found and Closed: `/api/get-all-dogs`, an Unauthenticated Full-Database Dump
+
+Found in passing during the link-revocation Phase 1 audit (which was itself scanning every route touching `owner_id`/`dog_id`), then given its own dedicated investigation and fix.
+
+### What was found
+
+`GET /api/get-all-dogs` (server.js, unchanged since it was written) queried `senior_dogs` — the real, live, currently-written table — and returned every dog in the database: `id, dog_name, breed, age, gender, baseline_mobility_score, created_at`, no pagination, no filter, no cap. It carried its own original comment, still sitting directly above it: `// GET ALL DOGS (for testing/debugging)`.
+
+**Why this combination was genuinely dangerous, not just untidy:**
+- **No dedicated authentication of any kind.** The only thing standing in front of it was the site-wide `SITE_PASSWORD` "Coming Soon" wall — a temporary, shared, pre-launch mechanism covering the *entire* site, not a control built for this endpoint. `SITE_PASSWORD` removal is already an open, undecided item on this project's own checklist (item 2) — the moment that happens, this endpoint would become fully public with zero remaining protection.
+- **It queried the live schema, not a dead one.** Confirmed via `git log -S`: this route was introduced in the same Aug 14 bulk-import commit (`9cd0be7`) that also produced the already-known-and-removed dead `dashboard.html`/`/api/get-dog-dashboard/:dog_id` pair (Aug 25 finding). Those were safe *because* their underlying tables (`users`/`pets`/`survey_*`) were fully dropped Aug 22 — calling them today just errors out. `senior_dogs` was never dropped; it's the table every real signup and check-in writes to right now. A request to this URL would have returned real, current, live data, not an error.
+- **Genuinely dead in the frontend.** Grepped `Public/` and `server.js` twice, once during the original passing-flag and again immediately before deletion: zero callers anywhere, either time.
+- **Not owner PII** — worth stating precisely rather than overselling the finding: the query never joined `owners` and never selected `phone`/`email`/`zip_code` (even though those columns exist directly on `senior_dogs` too), so no contact info was exposed. What it exposed was real dog names, breed, age, gender, baseline score, and signup date, for every dog — identifying-adjacent, and exactly the kind of structured dataset this platform's own B2B licensing thesis depends on treating as a real asset, but not a contact-info leak.
+- **Currently inert only because `senior_dogs` is at 0 rows** (confirmed multiple times this session, most recently minutes before this investigation) — a fact about today's data volume, not a statement that the bug wasn't real. The first real beta signup would have been exposed by it.
+
+### The fix
+
+Deleted the route outright (not gated, not gutted to return less — removed entirely), per the same reasoning already used for the Aug 25 dead-dashboard finding: nothing calls it, so there's nothing to preserve. Confirmed via a fresh, immediate re-grep right before deletion (not trusting the earlier passing-flag check) that nothing had started calling it in between. Verified after: `node --check server.js` passes, a clean local server boots with zero errors, and `GET /api/get-all-dogs` now correctly falls through to the real 404 handler.
+
+### Sibling check — same commit, same era, checked for the same shape
+
+Per the same `9cd0be7` bulk-import commit, listed every route it introduced (35 total) and checked which of the non-obviously-legitimate ones still exist today and share `get-all-dogs`'s real danger combination (dead in the frontend + queries live schema + no dedicated auth). **None removed — reported for a separate discussion, per instruction, not touched:**
+
+- **`GET /api/governance/stats`** — the closest true sibling in shape (dead in the frontend, live-schema query, same incidental-only `SITE_PASSWORD` protection), but a meaningfully different character and severity. It only returns aggregate counts (`foundingMembers`, `totalDataPoints`, `smsOptInRate`, etc.) — no per-dog or per-owner data at all — and its own inline comment shows it was *updated*, not just left alone, at some later point to read from the real `senior_dogs`/`mobility_checkins` tables instead of the dead legacy schema it originally targeted. `governance.html` — presumably the page meant to display these stats on a real "Transparent Dashboard" — is not a real page anymore; it's now a 12-line redirect stub straight to `privacy.html`. This reads as an intentionally-public feature whose frontend was later replaced or never finished, orphaning the API behind it, rather than a forgotten debugging tool. Different problem shape, same real exposure today.
+- **`POST /api/test-email`** — unauthenticated, and a different risk *type* entirely: not a data leak, but an arbitrary-recipient real-email-send capability (calls the real `sendChurnAlertEmail` against whatever address is POSTed). A live abuse/spam/reputation vector, not a privacy one. Worth noting this is not an accidental orphan the way `get-all-dogs` was — it's referenced and actively used as a real internal test tool elsewhere in this project's own history (e.g. the Sept 1 medication-tracking build's own verification pass used it directly).
+- **`POST /api/test-churn-detection`** — unauthenticated, processes every real dog via the real `evaluateDogForChurn`, but returns only counts in its response (no dog data leaked back to the caller) and its own design deliberately routes all test sends to the internal `SENDGRID_FROM_EMAIL` address, never a real owner. Same "actively used internal QA tool" character as `test-email`, referenced by name in multiple earlier Build Log entries this project has already produced.
+- **`POST /api/age-bella-data` / `POST /api/clear-bella-alert`** — unauthenticated, but both hardcoded to one specific, fixed test-dog UUID (`550e8400-e29b-41d4-a716-446655440002`, "Bella") from early development. Given this project's repeated full test-data wipes (confirmed at 0 rows as of this session), that specific ID almost certainly no longer exists — and even in the worst case, neither route can enumerate, dump, or affect any dog other than that one fixed ID. Bounded blast radius by construction, unlike `get-all-dogs`'s unbounded "every row" shape.
+- **Already known, different class entirely, not re-investigated here:** `/api/admin/users`, `/api/user/:user_id`, `/api/pet/:pet_id/progress`, and `/api/signups` all query the fully-dropped `users`/`pets`/`survey_*` schema (dropped Aug 22) — they error on every call today, so they carry none of `get-all-dogs`'s real exposure regardless of auth.
+
+### Verification
+
+`node --check server.js` passes. Clean local server start with zero errors (stray `node.exe` confirmed at 0 first, per standing rule). `GET /api/get-all-dogs` confirmed returning a real 404 post-removal, not a 500 or a stale route. No test data was needed for this fix — it was a pure deletion with no schema or data dependency.
+
+**Supporting services/tools:** `server.js`.
