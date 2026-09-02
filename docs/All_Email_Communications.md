@@ -27,6 +27,8 @@ There are exactly two automatic email templates in the codebase — both are the
 > [View {dogName}'s Progress and Update] → `{BASE_URL}/dashboard/{dogId}`
 >
 > Companion Commons — Together we can change the future of pet health understanding
+>
+> *(footer, small print)* Unsubscribe from these email reminders → `{BASE_URL}/unsubscribe/{ownerId}`
 
 ### Churn / re-engagement email — combined (2+ overdue dogs, same owner)
 
@@ -43,6 +45,8 @@ There are exactly two automatic email templates in the codebase — both are the
 > [View {dogName}'s Progress and Update] → `{BASE_URL}/dashboard/{dogId}`
 >
 > Companion Commons — Together we can change the future of pet health understanding
+>
+> *(footer, small print)* Unsubscribe from these email reminders → `{BASE_URL}/unsubscribe/{ownerId}`
 
 ---
 
@@ -50,7 +54,9 @@ There are exactly two automatic email templates in the codebase — both are the
 
 Same gate for both: the churn cron won't even evaluate a dog for an alert until **`reminderDay1`** has passed — day 1 of the current missed week, 2:00 PM (`server.js:8312-8314`), the identical gate that also governs SMS Reminder #1 (see the companion doc). This exists specifically so the email can never fire before the first SMS reminder would have gone out — added Aug 21 2026, after the email originally had no time gate at all and could fire on the very first cron tick after midnight.
 
-Two other gates apply before this one: the dog must be past its 7-day baseline period (`isInBaselinePeriod`), and must genuinely have no check-in for the current week (`thisWeekCheckin`). No SMS-consent-style opt-in gate exists for email — only a `toEmail` presence check.
+Two other gates apply before this one: the dog must be past its 7-day baseline period (`isInBaselinePeriod`), and must genuinely have no check-in for the current week (`thisWeekCheckin`), and a `toEmail` presence check (no email on file → skipped, logged as `no_email`).
+
+**A real opt-out gate now exists too (added Sep 1 2026)** — `sendChurnAlertsForOwnerGroup` checks the owner's `email_opt_out` column before sending either template; a `true` value skips the send entirely (`reason: 'email_opted_out'`), logged, no `churn_flags` row written either (so re-opting-in later doesn't need anything cleared). Owner-scoped, not per-dog — matches the email itself already being one combined send per owner, not one per dog. Fails **open** (sends anyway) on a transient lookup error, deliberately, so a DB glitch can't silently and permanently block a real owner's re-engagement email. Set via the real, working `GET /unsubscribe/:owner_id` route (linked from the footer of both templates above), which is idempotent and doesn't expire — unlike the app's other link-based tokens (magic links, etc.), this one is meant to stay valid indefinitely and be safely re-clickable. Full design/build detail: Build Log's Sep 1 "A Real Email Unsubscribe Mechanism" entry.
 
 ---
 
@@ -73,6 +79,8 @@ Same two scenarios as the companion doc, same 11 "missable" weeks (weeks 2–12;
 
 Verified via a dry-run trace of the actual `evaluateDogForChurn`/`sendChurnAlertsForOwnerGroup` functions (extracted verbatim from `server.js`, no real sends) simulating hourly cron ticks across a full 12-week program plus extra headroom — MAX produced exactly one send per week, `[2,3,4,5,6,7,8,9,10,11,12]`; MIN produced zero. See the Build Log's Aug 31 entry for the full methodology, including a real harness bug (real wall-clock `Date`, not parameterized) found and fixed along the way.
 
+**Not reflected in the table above, added for completeness (Sep 1 gate):** an owner who has clicked the real unsubscribe link receives **0** churn emails regardless of missed weeks — the `email_opt_out` gate short-circuits before either template is ever built. The MAX=11 figure above is the correct worst case for an owner who has *not* opted out; it was not re-run against this newer gate since the gate is a simple boolean short-circuit checked before any of the logic the original trace exercised.
+
 ---
 
 ## User-initiated emails (excluded from the automatic-lifecycle counts above)
@@ -85,5 +93,7 @@ These exist in the codebase but only ever fire in direct response to a person's 
 ---
 
 ## Change history
+
+**September 2, 2026:** Sync audit against the live code found this doc was stale on a real, shipped feature — the Sep 1 email-unsubscribe mechanism (a real opt-out gate plus a footer link on both templates) wasn't reflected anywhere. Added the unsubscribe footer to both body templates, replaced the now-incorrect "no opt-in gate exists for email" line with the real gate's behavior (owner-scoped, fails open on a lookup error), and added a MIN/MAX note for the opted-out case. No template *content* changed beyond the new footer line — this was a documentation catch-up, not a code change.
 
 **August 31, 2026:** Doc created, alongside fixing the churn-email dedup bug documented above (24h rolling window → once per dog per week). Companion to `All_SMS_Communications.md`, which had flagged this doc as a possible future addition since Aug 21.
