@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Recover My Account | Companion Commons</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="assets/css/styles.css" />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="favicon.ico" sizes="any" />
+    <link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <script src="assets/js/main.js" defer></script>
+  </head>
+  <body>
+    <header class="site-header" data-header>
+      <div class="container nav-shell">
+        <a class="brand" href="index.html" aria-label="Companion Commons home">
+          <span class="brand-mark" aria-hidden="true"><img src="assets/images/brand/companion-commons-double-c-paw.svg" width="44" height="44" alt="" /></span>
+          <span class="brand-name">Companion<span class="brand-name-sub">Commons</span></span>
+        </a>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="page-hero">
+        <div class="container inner">
+          <p class="eyebrow">Already Signed Up?</p>
+          <h1>Recover Your Account</h1>
+          <p>
+            If your dashboard link stopped working — it was replaced by a newer one, or it's just gone missing — enter the phone number you signed up with and we'll text and email you a fresh recovery link.
+          </p>
+        </div>
+      </section>
+
+      <section class="content-section">
+        <div class="container" style="max-width: 480px;">
+          <form id="recoverForm">
+            <div class="form-group">
+              <label for="phoneValue">Phone number</label>
+              <input type="tel" id="phoneValue" name="phoneValue" required placeholder="(555) 123-4567" autocomplete="tel" />
+              <p style="margin: 8px 0 0 0; font-size: 13px; color: #666;">
+                We use your phone number only — not email — to find your account, so we can reliably match you to exactly one.
+              </p>
+            </div>
+
+            <button type="submit" class="button" style="width: 100%; margin-top: 10px;" id="submitBtn">
+              Send Me a Recovery Link
+            </button>
+          </form>
+
+          <div id="resultMessage" style="display: none; margin-top: 20px; padding: 16px 20px; border-radius: 8px; background: #FFF8E7; color: #5D4E37;"></div>
+
+          <p style="margin-top: 20px; font-size: 13px; color: #666;">
+            The recovery link expires after 15 minutes and works once — whichever you tap first, text or email.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-grid">
+        <div>
+          <div class="footer-brand"><img src="assets/images/brand/companion-commons-double-c-paw.svg" alt="Companion Commons" width="26" height="26" /><span>Companion Commons</span></div>
+          <h2>Companion Commons</h2>
+          <p>Pet families. Shared purpose.</p>
+        </div>
+        <a href="index.html">Return to homepage</a>
+      </div>
+      <div class="container" style="text-align: center; font-size: 12px; opacity: 0.75; margin-top: 18px;">
+        <a href="privacy.html" style="color: #fff;">Privacy Policy</a>
+        <span style="margin: 0 8px;">&middot;</span>
+        <a href="terms.html" style="color: #fff;">Terms of Service</a>
+        <span style="margin: 0 8px;">&middot;</span>
+        <a href="contact.html" style="color: #fff;">Contact Us</a>
+      </div>
+      <div class="container veterinary-disclaimer">
+        <p>
+          Companion Commons is not a veterinary service and does not diagnose,
+          treat, prescribe, or provide veterinary advice. Always consult a
+          licensed veterinarian about your companion's health and care. Think
+          this may be an emergency? Contact your veterinarian or the nearest
+          emergency veterinary hospital immediately.
+        </p>
+      </div>
+    </footer>
+
+    <script>
+      document.getElementById('recoverForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const btn = document.getElementById('submitBtn');
+        const resultBox = document.getElementById('resultMessage');
+        const phone = document.getElementById('phoneValue').value;
+
+        btn.disabled = true;
+        btn.textContent = 'Sending...';
+
+        try {
+          const response = await fetch('/api/recover-account', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone })
+          });
+
+          const result = await response.json();
+          resultBox.textContent = result.message || "If that phone number has an account, we've sent a recovery link to your phone and email.";
+          resultBox.style.display = 'block';
+        } catch (error) {
+          console.error('Error:', error);
+          resultBox.textContent = 'Something went wrong. Please try again in a moment.';
+          resultBox.style.display = 'block';
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Send Me a Recovery Link';
+        }
+      });
+    </script>
+
+    <style>
+      .form-group { margin-bottom: 20px; }
+      label { display: block; font-weight: 500; color: #333; margin-bottom: 6px; font-size: 14px; }
+      #phoneValue {
+        width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-family: inherit; font-size: 14px; box-sizing: border-box;
+      }
+    </style>
+  </body>
+</html>

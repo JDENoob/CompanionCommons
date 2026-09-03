@@ -866,15 +866,22 @@ function parseCookies(req) {
 }
 
 // ============================================
-// OWNER SESSION (STAGE 5 — multi-dog owner project)
-// Additive-only convenience cookie, NOT an auth/login system. It never
-// gates access to anything — dashboard and Journey Summary links keep
-// working with zero session for anyone (a vet, a family member), exactly
-// as they always have. All this cookie ever does is let /dashboard/:dog_id
-// show a bonus dog switcher when the browser holding it already proved
-// phone ownership once via the real magic-link /verify flow. See
-// Multi_Dog_Signup_Build.md, Stage 5, for the full design and the
-// cross-owner edge case this is deliberately guarded against.
+// OWNER SESSION (STAGE 5 — multi-dog owner project; updated Phase 3 of the
+// link-revocation project, see docs/Link_Revocation_Build.md)
+// Originally an additive-only convenience cookie with zero access-control
+// role -- as of Phase 3 it's also one of the two valid ways to pass the
+// access_token check every dog/owner-scoped route now performs (see
+// authorizeOwnerScope, below buildDogSwitcherHtml). What's still true and
+// unchanged: dashboard and Journey Summary links keep working for anyone
+// holding a valid access_token with ZERO session (a vet, a family member),
+// exactly as they always have -- this cookie is still never REQUIRED, only
+// ever an alternative to carrying the token. What's different from the
+// original design: its ABSENCE is no longer purely cosmetic (it used to
+// only gate whether the bonus dog switcher rendered); a request with
+// neither a matching session NOR a matching token is now denied outright.
+// See Multi_Dog_Signup_Build.md, Stage 5, for the original design and the
+// cross-owner edge case it's deliberately guarded against (still fully
+// intact under the new access-check logic).
 // ============================================
 const OWNER_SESSION_COOKIE = 'cc_owner_session';
 const OWNER_SESSION_MAX_AGE = 90 * 24 * 60 * 60 * 1000; // 90 days, sliding
@@ -907,6 +914,104 @@ function buildDogSwitcherHtml(ownersDogs, currentDogId) {
       <a href="#" onclick="fetch('/api/clear-owner-session', {method:'POST'}).then(() => window.location.reload()); return false;" style="font-size: 12px; color: #999; text-decoration: underline;">Not your device? Clear saved account</a>
     </div>
   `;
+}
+
+// ============================================
+// LINK-REVOCATION ACCESS CONTROL (Phase 3 -- see docs/Link_Revocation_Build.md)
+//
+// Every dog/owner-scoped route that used to authorize on the raw
+// dog_id/owner_id UUID alone now requires ONE of:
+//   (a) a token (query param `token` on GET routes, `access_token` field
+//       in the JSON body on POST routes) matching that owner's live
+//       owners.access_token, or
+//   (b) a matching owner-session cookie (OWNER_SESSION_COOKIE, above) --
+//       the same trust bar the dog-switcher already relies on, reused
+//       here so someone who already proved phone ownership this session
+//       isn't forced to carry a token on every click, and so the
+//       switcher's own links (which never carried a token) keep working
+//       unchanged.
+// Denied only when neither is true. This is the actual revocation
+// mechanism: rotating owners.access_token (POST
+// /api/regenerate-access-token) invalidates every outstanding
+// token-based link at once, while the owner's own current browser
+// session keeps working right through the rotation.
+// ============================================
+
+// Fetches the owner's live access_token once. Used both to validate a
+// caller-provided token and to resolve the value this page's own
+// internal links should carry forward, without a second query for the
+// second purpose.
+async function getOwnerAccessToken(ownerId) {
+  if (!ownerId) return null;
+  const { data, error } = await supabase.from('owners').select('access_token').eq('id', ownerId).maybeSingle();
+  if (error || !data) return null;
+  return data.access_token;
+}
+
+// True if this request's owner-session cookie belongs to ownerId.
+function ownerSessionMatches(req, ownerId) {
+  if (!ownerId) return false;
+  const cookies = parseCookies(req);
+  return !!cookies[OWNER_SESSION_COOKIE] && cookies[OWNER_SESSION_COOKIE] === ownerId;
+}
+
+// The real access check every route below calls. Returns the owner's
+// real, live access_token on success (directly usable by the caller to
+// embed in its own page's internal links, regardless of whether session
+// or token is what actually authorized this request) or `null` on
+// denial. A dog/owner with no owner_id at all (ownerless legacy record --
+// none live in this app today) always denies, since there is no owner
+// row to hold a token or a session against.
+async function authorizeOwnerScope(req, ownerId, providedToken) {
+  if (!ownerId) return null;
+  if (ownerSessionMatches(req, ownerId)) {
+    return await getOwnerAccessToken(ownerId);
+  }
+  const realToken = await getOwnerAccessToken(ownerId);
+  if (realToken && providedToken && realToken === providedToken) return realToken;
+  return null;
+}
+
+// Shared "your link stopped working" page for every GET route below --
+// one implementation so the copy/design can't drift per-route. Distinct
+// from the pre-existing "dog/owner not found" 404 -- this is "we found
+// it, but this link's token no longer matches" (e.g. after a real
+// regenerate/rotate).
+function renderLinkInvalidPage() {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>Link No Longer Valid | Companion Commons</title>
+      <style>
+        body { font-family: -apple-system, sans-serif; max-width: 500px; margin: 60px auto; padding: 20px; text-align: center; background: #f5f5f5; }
+        .card { background: white; border-radius: 12px; padding: 40px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        a.cta { display: inline-block; margin-top: 20px; background: #A89968; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500; }
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <h2 style="margin: 0 0 10px 0;">This link is no longer valid</h2>
+        <p style="color: #666; line-height: 1.6;">
+          It may have expired or been replaced by a newer one. You can get a fresh link sent to your phone and email below.
+        </p>
+        <a href="/recover.html" class="cta">Get My Link</a>
+      </div>
+    </body>
+    </html>
+  `;
+}
+
+// Appends the resolved access_token onto an internal href, if one is
+// known -- so a visitor who reached this page via a mailed/shared token
+// link keeps carrying it forward through "Back to Dashboard"-style
+// internal navigation, instead of hitting this same access check with
+// nothing to offer on the very next click.
+function withToken(path, token) {
+  if (!token) return path;
+  const sep = path.includes('?') ? '&' : '?';
+  return `${path}${sep}token=${encodeURIComponent(token)}`;
 }
 
 const COMING_SOON_HTML = `<!doctype html>
@@ -1985,6 +2090,16 @@ app.get('/check-in/:dog_id', async (req, res) => {
       `);
     }
 
+    // Link-revocation access check (Phase 3) -- token (query string) or a
+    // matching owner-session cookie, either is sufficient. `resolvedToken`
+    // is the owner's real current access_token on success, reused below to
+    // keep this page's own internal links (View Dashboard, the check-in
+    // save request) carrying the same token forward.
+    const resolvedToken = await authorizeOwnerScope(req, dog.owner_id, req.query.token || null);
+    if (!resolvedToken) {
+      return res.status(403).send(renderLinkInvalidPage());
+    }
+
     // STEP: Block check-in access during the 7-day baseline period, not just
     // hide the button. Matches the same rule used on the dashboard — this
     // closes the side door where someone could reach this page directly
@@ -2008,7 +2123,7 @@ app.get('/check-in/:dog_id', async (req, res) => {
             <p style="font-size: 40px; margin: 0 0 10px 0;"><i data-lucide="clipboard-list"></i></p>
             <h2 style="margin: 0 0 10px 0;">Not quite ready yet</h2>
             <p style="color: #666;">${dog.dog_name}'s first weekly update becomes available 7 days after signing up. You'll get a text when it's time.</p>
-            <a href="/dashboard/${dog_id}" class="cta">View Dashboard</a>
+            <a href="${withToken('/dashboard/' + dog_id, resolvedToken)}" class="cta">View Dashboard</a>
           </div>
           <script src="https://unpkg.com/lucide@1.33.0"></script>
           <script>lucide.createIcons({ attrs: { width: '1em', height: '1em' } });</script>
@@ -2088,7 +2203,7 @@ app.get('/check-in/:dog_id', async (req, res) => {
             <p style="font-size: 40px; margin: 0 0 10px 0;"><i data-lucide="check-circle"></i></p>
             <h2 style="margin: 0 0 10px 0;">Already checked in this week ✓</h2>
             <p style="color: #666;">${dog.dog_name}'s update for week ${weekNumber} is already recorded. Come back next week for the next one.</p>
-            <a href="/dashboard/${dog_id}" class="cta">View Dashboard</a>
+            <a href="${withToken('/dashboard/' + dog_id, resolvedToken)}" class="cta">View Dashboard</a>
           </div>
           <script src="https://unpkg.com/lucide@1.33.0"></script>
           <script>lucide.createIcons({ attrs: { width: '1em', height: '1em' } });</script>
@@ -2228,9 +2343,11 @@ app.get('/check-in/:dog_id', async (req, res) => {
             fetch('/api/medication-response-windows/' + windowId + '/respond', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ opt_in: optIn })
+              body: JSON.stringify({ opt_in: optIn, access_token: '${resolvedToken}' })
             });
           }
+
+          const PAGE_ACCESS_TOKEN = '${resolvedToken}';
 
           document.getElementById('checkinForm').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -2255,6 +2372,7 @@ app.get('/check-in/:dog_id', async (req, res) => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   dog_id: '${dog_id}',
+                  access_token: PAGE_ACCESS_TOKEN,
                   mobility_getting_up: parseInt(formData.get('mobility_getting_up')),
                   mobility_stairs: parseInt(formData.get('mobility_stairs')),
                   mobility_stiffness_after_rest: parseInt(formData.get('mobility_stiffness_after_rest')),
@@ -2326,7 +2444,7 @@ app.get('/check-in/:dog_id', async (req, res) => {
                     </p>
                     \${medOptInPromptHtml}
                     \${medMilestonesHtml}
-                    <a href="/dashboard/${dog_id}" style="display: inline-block; background: #007AFF; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600; margin: 8px 0 20px 0;">View Dashboard</a>
+                    <a href="${withToken('/dashboard/' + dog_id, resolvedToken)}" style="display: inline-block; background: #007AFF; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600; margin: 8px 0 20px 0;">View Dashboard</a>
                     <p style="font-size: 12px; color: #999;">
                       You'll get SMS updates each week. Thanks for tracking!
                     </p>
@@ -2743,6 +2861,18 @@ app.post('/api/checkin-senior', async (req, res) => {
       });
     }
 
+    // Link-revocation access check (Phase 3) -- token (JSON body) or a
+    // matching owner-session cookie, either is sufficient. A distinct 403
+    // (not the generic 500 catch-all below) so the client can tell "your
+    // link no longer works" apart from a real server error.
+    if (!(await authorizeOwnerScope(req, dog.owner_id, req.body.access_token || null))) {
+      return res.status(403).json({
+        success: false,
+        error: 'This link is no longer valid. Please request a fresh one.',
+        code: 'invalid_access_token'
+      });
+    }
+
     // STEP: Real enforcement of the 7-day baseline gate. Blocking the page
     // isn't enough on its own — this is the actual save endpoint, so this
     // is the check that actually matters. Someone POSTing here directly
@@ -2958,7 +3088,11 @@ app.post('/api/checkin-senior', async (req, res) => {
     // QUEUE NEXT WEEK'S SMS AT PERSONALIZED TIME
     // ============================================
     const nextReminderDate = getNextReminderDate(submissionDayOfWeek, reminderTime);
-    const nextCheckinLink = `${BASE_URL}/check-in/${dog_id}`;
+    // Link-revocation (Phase 3): embeds the owner's current access_token so
+    // this queued reminder keeps working even if the visitor has no active
+    // session by the time it fires next week.
+    const nextCheckinAccessToken = await getOwnerAccessToken(dog.owner_id);
+    const nextCheckinLink = withToken(`${BASE_URL}/check-in/${dog_id}`, nextCheckinAccessToken);
 
     // Only queue a reminder text if this owner actually opted in to SMS reminders.
     if (dog.sms_consent && dog.phone) {
@@ -4687,6 +4821,13 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
       `);
     }
 
+    // Link-revocation access check (Phase 3) -- token (query string) or a
+    // matching owner-session cookie, either is sufficient.
+    const resolvedToken = await authorizeOwnerScope(req, dog.owner_id, req.query.token || null);
+    if (!resolvedToken) {
+      return res.status(403).send(renderLinkInvalidPage());
+    }
+
     // Same week-number calculation used everywhere else — no separate
     // "unlocked" flag stored anywhere, computed live.
     const created = new Date(dog.created_at);
@@ -4710,7 +4851,7 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
             <p style="font-size: 48px; margin: 0 0 20px 0;"><i data-lucide="lock"></i></p>
             <h2 style="margin: 0 0 10px 0;">Not unlocked yet</h2>
             <p style="color: #666;">${escapeHtml(dog.dog_name)}'s breed guide unlocks after your Week 2 check-in. Keep logging!</p>
-            <a href="/dashboard/${dog_id}" style="display: inline-block; margin-top: 20px; background: #007AFF; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none;">Back to Dashboard</a>
+            <a href="${withToken('/dashboard/' + dog_id, resolvedToken)}" style="display: inline-block; margin-top: 20px; background: #007AFF; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none;">Back to Dashboard</a>
           </div>
           <script src="https://unpkg.com/lucide@1.33.0"></script>
           <script>lucide.createIcons({ attrs: { width: '1em', height: '1em' } });</script>
@@ -4895,7 +5036,7 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
             <p style="margin: 12px 0 0 0;">See our <a href="/terms.html">Terms of Service</a> and <a href="/privacy.html">Privacy Policy</a> for more.</p>
           </div>
 
-          <a href="/dashboard/${dog_id}" class="back-link">← Back to Dashboard</a>
+          <a href="${withToken('/dashboard/' + dog_id, resolvedToken)}" class="back-link">← Back to Dashboard</a>
         </div>
         <script src="https://unpkg.com/lucide@1.33.0"></script>
         <script>lucide.createIcons({ attrs: { width: '1em', height: '1em' } });</script>
@@ -4918,10 +5059,25 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
 app.post('/api/notes/:dog_id', async (req, res) => {
   try {
     const { dog_id } = req.params;
-    const { note_text } = req.body;
+    const { note_text, access_token } = req.body;
 
     if (!note_text || !note_text.trim()) {
       return res.status(400).json({ error: 'Note text is required' });
+    }
+
+    // Link-revocation access check (Phase 3). This also closes a
+    // pre-existing, separate gap: the dog's existence was never confirmed
+    // here before inserting -- this lookup now does both jobs.
+    const { data: dog, error: dogLookupError } = await supabase
+      .from('senior_dogs')
+      .select('id, owner_id')
+      .eq('id', dog_id)
+      .maybeSingle();
+    if (dogLookupError || !dog) {
+      return res.status(404).json({ error: 'Dog not found' });
+    }
+    if (!(await authorizeOwnerScope(req, dog.owner_id, access_token || null))) {
+      return res.status(403).json({ error: 'This link is no longer valid. Please request a fresh one.', code: 'invalid_access_token' });
     }
 
     const { error } = await supabase
@@ -4950,7 +5106,7 @@ app.post('/api/notes/:dog_id', async (req, res) => {
 // ============================================
 app.post('/api/medications', async (req, res) => {
   try {
-    const { dog_id, category, condition_treated, condition_treated_other_detail, condition_source, date_started } = req.body;
+    const { dog_id, category, condition_treated, condition_treated_other_detail, condition_source, date_started, access_token } = req.body;
 
     if (!dog_id) {
       return res.status(400).json({ success: false, error: 'Missing required field: dog_id' });
@@ -4964,14 +5120,20 @@ app.post('/api/medications', async (req, res) => {
     // Confirm the dog is real before creating anything against it, same
     // pattern as /api/add-dog's owner check. Also pulls dog_name/created_at
     // now -- needed below for the medication-event opt-in prompt (dog_name
-    // in the message copy, created_at to determine "started after baseline").
+    // in the message copy, created_at to determine "started after baseline") --
+    // and owner_id for the link-revocation access check right after.
     const { data: dog, error: dogLookupError } = await supabase
       .from('senior_dogs')
-      .select('id, dog_name, created_at')
+      .select('id, dog_name, created_at, owner_id')
       .eq('id', dog_id)
       .maybeSingle();
     if (dogLookupError || !dog) {
       return res.status(404).json({ success: false, error: 'Dog not found' });
+    }
+
+    // Link-revocation access check (Phase 3).
+    if (!(await authorizeOwnerScope(req, dog.owner_id, access_token || null))) {
+      return res.status(403).json({ success: false, error: 'This link is no longer valid. Please request a fresh one.', code: 'invalid_access_token' });
     }
 
     const { data: newMed, error: insertError } = await supabase
@@ -5028,6 +5190,20 @@ app.post('/api/medications/:id/stop', async (req, res) => {
     if (lookupError || !medication) {
       return res.status(404).json({ success: false, error: 'Medication not found' });
     }
+    // Link-revocation access check (Phase 3) -- resolved via the
+    // medication's own dog_id before anything is mutated below (including
+    // the idempotent "already stopped" branch, which is still a real
+    // answer about this medication and shouldn't be handed out to
+    // anyone with just the medication's id).
+    const { data: dogForAccessCheck } = await supabase
+      .from('senior_dogs')
+      .select('owner_id')
+      .eq('id', medication.dog_id)
+      .maybeSingle();
+    if (!(await authorizeOwnerScope(req, dogForAccessCheck && dogForAccessCheck.owner_id, req.body.access_token || null))) {
+      return res.status(403).json({ success: false, error: 'This link is no longer valid. Please request a fresh one.', code: 'invalid_access_token' });
+    }
+
     if (medication.date_stopped) {
       // Idempotent -- already stopped, not an error. No new opt-in prompt
       // either -- the medication was already stopped by an earlier call,
@@ -5079,13 +5255,24 @@ app.post('/api/medication-response-windows/:id/respond', async (req, res) => {
 
     const { data: windowRow, error: lookupError } = await supabase
       .from('medication_response_windows')
-      .select('id, opt_in_response')
+      .select('id, opt_in_response, dog_id')
       .eq('id', id)
       .maybeSingle();
 
     if (lookupError || !windowRow) {
       return res.status(404).json({ success: false, error: 'Not found' });
     }
+
+    // Link-revocation access check (Phase 3).
+    const { data: dogForAccessCheck } = await supabase
+      .from('senior_dogs')
+      .select('owner_id')
+      .eq('id', windowRow.dog_id)
+      .maybeSingle();
+    if (!(await authorizeOwnerScope(req, dogForAccessCheck && dogForAccessCheck.owner_id, req.body.access_token || null))) {
+      return res.status(403).json({ success: false, error: 'This link is no longer valid. Please request a fresh one.', code: 'invalid_access_token' });
+    }
+
     if (windowRow.opt_in_response !== null) {
       return res.json({ success: true, opt_in_response: windowRow.opt_in_response });
     }
@@ -5145,6 +5332,18 @@ app.get('/dashboard/:dog_id', async (req, res) => {
       `);
     }
 
+    // Link-revocation access check (Phase 3) -- token (query string) or a
+    // matching owner-session cookie, either is sufficient. resolvedToken
+    // is the owner's real current access_token on success, reused below to
+    // keep this page's own internal links (check-in, breed guide, "View
+    // All My Dogs", the fetch() calls in its embedded scripts) carrying
+    // the same token forward for a visitor who arrived via a mailed link
+    // rather than an existing session.
+    const resolvedToken = await authorizeOwnerScope(req, dog.owner_id, req.query.token || null);
+    if (!resolvedToken) {
+      return res.status(403).send(renderLinkInvalidPage());
+    }
+
     // ============================================
     // STAGE 5 (multi-dog owner project): additive-only owner session.
     // LOCKED DECISION — this block must never gate or change anything
@@ -5159,6 +5358,12 @@ app.get('/dashboard/:dog_id', async (req, res) => {
     // session at all, not leak that other owner's dog list here.
     // ============================================
     let dogSwitcherHtml = '';
+    // Link-revocation (Phase 3): "Regenerate My Link" is only ever shown
+    // -- and only ever works -- inside this same session-matched branch,
+    // since POST /api/regenerate-access-token deliberately authorizes on
+    // the session cookie alone, not a token (see that route's own
+    // comment). No point rendering a button that would just 403.
+    let regenerateLinkHtml = '';
     const dashboardCookies = parseCookies(req);
     const sessionOwnerId = dashboardCookies[OWNER_SESSION_COOKIE];
     if (sessionOwnerId && dog.owner_id && sessionOwnerId === dog.owner_id) {
@@ -5178,6 +5383,8 @@ app.get('/dashboard/:dog_id', async (req, res) => {
       if (ownersDogs && ownersDogs.length > 1) {
         dogSwitcherHtml = buildDogSwitcherHtml(ownersDogs, dog_id);
       }
+
+      regenerateLinkHtml = `<a href="#" onclick="regenerateAccessToken(); return false;" class="back-link" style="margin-left: 16px;">Regenerate My Link</a>`;
     }
 
     // Fetch all check-ins for this dog, ordered by date
@@ -5547,8 +5754,8 @@ app.get('/dashboard/:dog_id', async (req, res) => {
         promptBlocks.push(`
           <div style="background: #FFF8E7; border-left: 4px solid #A89968; border-radius: 8px; padding: 16px 20px; margin: 20px 0;">
             <p style="margin: 0 0 10px 0; color: #5D4E37; font-size: 14px;">You recently ${escapeHtml(MEDICATION_EVENT_VERB[w.event_type] || w.event_type)} ${escapeHtml(categoryLabel)} for ${escapeHtml(dog.dog_name)}. Want us to highlight how ${escapeHtml(dog.dog_name)}'s ${escapeHtml(domainLabel)} trend looks over the next few months?</p>
-            <button onclick="fetch('/api/medication-response-windows/${w.id}/respond', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({opt_in:true})}).then(() => location.reload())" style="background: #A89968; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; margin-right: 8px;">Yes, track it</button>
-            <button onclick="fetch('/api/medication-response-windows/${w.id}/respond', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({opt_in:false})}).then(() => location.reload())" style="background: transparent; color: #8A7A4F; border: 1px solid #A89968; padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer;">No thanks</button>
+            <button onclick="fetch('/api/medication-response-windows/${w.id}/respond', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({opt_in:true, access_token:'${resolvedToken}'})}).then(() => location.reload())" style="background: #A89968; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; margin-right: 8px;">Yes, track it</button>
+            <button onclick="fetch('/api/medication-response-windows/${w.id}/respond', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({opt_in:false, access_token:'${resolvedToken}'})}).then(() => location.reload())" style="background: transparent; color: #8A7A4F; border: 1px solid #A89968; padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer;">No thanks</button>
           </div>`);
       }
       medicationOptInBannerHtml = promptBlocks.join('');
@@ -5953,9 +6160,10 @@ app.get('/dashboard/:dog_id', async (req, res) => {
       </head>
       <body>
         <div class="container">
-          <a href="/check-in/${dog_id}" class="back-link">← Back to Check-In</a>
-          ${dog.owner_id ? `<a href="/add-dog.html?owner_id=${dog.owner_id}" class="back-link" style="margin-left: 16px;">+ Add Another Dog</a>` : ''}
-          ${dog.owner_id ? `<a href="/checkins/${dog.owner_id}" class="back-link" style="margin-left: 16px;">View All My Dogs</a>` : ''}
+          <a href="${withToken('/check-in/' + dog_id, resolvedToken)}" class="back-link">← Back to Check-In</a>
+          ${dog.owner_id ? `<a href="/add-dog.html?owner_id=${dog.owner_id}&token=${encodeURIComponent(resolvedToken)}" class="back-link" style="margin-left: 16px;">+ Add Another Dog</a>` : ''}
+          ${dog.owner_id ? `<a href="${withToken('/checkins/' + dog.owner_id, resolvedToken)}" class="back-link" style="margin-left: 16px;">View All My Dogs</a>` : ''}
+          ${regenerateLinkHtml}
           ${dogSwitcherHtml}
 
           <div class="header">
@@ -5988,7 +6196,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
               <p style="margin: 0 0 4px 0; font-weight: 600; color: #8A7A4F; font-size: 14px;"><i data-lucide="clipboard-edit"></i> Week ${dueWeekNumber} update due</p>
               <p style="margin: 0; color: #5D4E37; font-size: 14px;">Takes about 30 seconds.</p>
             </div>
-            <a href="/check-in/${dog_id}" style="background: #A89968; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 500; white-space: nowrap;">Complete Week ${dueWeekNumber} Update →</a>
+            <a href="${withToken('/check-in/' + dog_id, resolvedToken)}" style="background: #A89968; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 500; white-space: nowrap;">Complete Week ${dueWeekNumber} Update →</a>
           </div>
           ` : ''}
 
@@ -6005,7 +6213,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
               <p style="margin: 0 0 4px 0; font-weight: 600; color: #8A7A4F; font-size: 14px;"><i data-lucide="book-open"></i> Breed guide unlocked</p>
               <p style="margin: 0; color: #5D4E37; font-size: 14px;">${escapeHtml(dog.dog_name)}'s ${escapeHtml(dog.breed) || 'breed'} guide is ready to read.</p>
             </div>
-            <a href="/breed-guide/${dog_id}" style="background: #A89968; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 500; white-space: nowrap;">Read it →</a>
+            <a href="${withToken('/breed-guide/' + dog_id, resolvedToken)}" style="background: #A89968; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 500; white-space: nowrap;">Read it →</a>
           </div>
           ` : ''}
 
@@ -6491,7 +6699,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                 const response = await fetch('/api/notes/${dog_id}', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ note_text: text })
+                  body: JSON.stringify({ note_text: text, access_token: '${resolvedToken}' })
                 });
                 if (response.ok) {
                   window.location.reload();
@@ -6601,6 +6809,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   dog_id: '${dog_id}',
+                  access_token: '${resolvedToken}',
                   mobility_getting_up: parseInt(formData.get('mobility_getting_up')),
                   mobility_stairs: parseInt(formData.get('mobility_stairs')),
                   mobility_stiffness_after_rest: parseInt(formData.get('mobility_stiffness_after_rest')),
@@ -6634,6 +6843,37 @@ app.get('/dashboard/:dog_id', async (req, res) => {
             }
           });
 
+          // Link-revocation (Phase 3): rotates owners.access_token, which
+          // immediately invalidates every outstanding mailed/shared link
+          // built with the old one -- the actual revocation mechanism this
+          // whole project exists for. Session-cookie-authorized only (no
+          // token needed in this fetch), matching the server route's own
+          // deliberate restriction. Confirmed with the visitor first, since
+          // this is a real, irreversible-in-practice action for anyone
+          // still holding an old link (a vet, a family member, an old text).
+          function regenerateAccessToken() {
+            if (!confirm('This will make your current dashboard link (and any you\\'ve shared with a vet or family member) stop working, and give you a brand-new one. Continue?')) {
+              return;
+            }
+            fetch('/api/regenerate-access-token', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ dog_id: '${dog_id}' })
+            })
+              .then(function(r) { return r.json(); })
+              .then(function(result) {
+                if (result.success && result.new_dashboard_url) {
+                  window.location.href = result.new_dashboard_url;
+                } else {
+                  alert('Error: ' + (result.error || 'Could not regenerate your link. Please try again.'));
+                }
+              })
+              .catch(function(err) {
+                console.error('Error regenerating access token:', err);
+                alert('Something went wrong. Please try again.');
+              });
+          }
+
           // Quick photo upload
           document.getElementById('quickPhotoTriggerBtn').addEventListener('click', () => {
             document.getElementById('quickPhotoInput').click();
@@ -6657,6 +6897,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
             const formData = new FormData();
             formData.append('photo', file);
             formData.append('dog_id', '${dog_id}');
+            formData.append('access_token', '${resolvedToken}');
 
             try {
               const response = await fetch('/api/upload-dog-photo', {
@@ -7688,7 +7929,7 @@ app.get('/verify', async (req, res) => {
           preferred_reminder_time: '14:00', // 2:00 PM (afternoon, safe for all)
           created_at: now
         })
-        .select()
+        .select('id')
         .single();
 
       if (newOwnerError || !newOwner) {
@@ -7946,7 +8187,8 @@ app.post('/api/add-dog', async (req, res) => {
       diet_type,
       pet_insurance,
       treatment_category,
-      medications
+      medications,
+      access_token
     } = req.body;
 
     if (!owner_id || !dog_name || !breed || !age || !gender || !consent) {
@@ -7983,6 +8225,15 @@ app.post('/api/add-dog', async (req, res) => {
 
     if (!owner) {
       return res.status(404).json({ success: false, error: 'We could not find your account. Please use the link from your confirmation page, or start a new signup.' });
+    }
+
+    // Link-revocation access check (Phase 3) -- the highest-priority fix
+    // from the Phase 1 audit: this route used to create a real dog (plus
+    // medications) under whatever owner_id was supplied, no proof beyond
+    // knowing the UUID. Session cookie or a matching token, either is
+    // sufficient, same as every other route.
+    if (!(await authorizeOwnerScope(req, owner.id, access_token || null))) {
+      return res.status(403).json({ success: false, error: 'This link is no longer valid. Please request a fresh one.', code: 'invalid_access_token' });
     }
 
     // Same 40-char cap as the main signup route, for the same reason (SMS
@@ -8216,6 +8467,13 @@ app.get('/checkins/:owner_id', async (req, res) => {
       `);
     }
 
+    // Link-revocation access check (Phase 3) -- token (query string) or a
+    // matching owner-session cookie, either is sufficient.
+    const resolvedToken = await authorizeOwnerScope(req, owner_id, req.query.token || null);
+    if (!resolvedToken) {
+      return res.status(403).send(renderLinkInvalidPage());
+    }
+
     // Same week/status math used by /check-in/:dog_id and the dashboard —
     // computed fresh per dog, not stored, so it's always current.
     const now = new Date();
@@ -8238,10 +8496,10 @@ app.get('/checkins/:owner_id', async (req, res) => {
         actionHtml = `<span style="color: #999; font-size: 14px;">Not yet available</span>`;
       } else if (hasCheckinThisWeek) {
         statusText = `Week ${currentWeek} — already checked in ✓`;
-        actionHtml = `<a href="/dashboard/${dog.id}" style="color: #d96f56; font-weight: 600; text-decoration: none; font-size: 14px;">View Dashboard →</a>`;
+        actionHtml = `<a href="${withToken('/dashboard/' + dog.id, resolvedToken)}" style="color: #d96f56; font-weight: 600; text-decoration: none; font-size: 14px;">View Dashboard →</a>`;
       } else {
         statusText = `Week ${currentWeek} check-in is ready`;
-        actionHtml = `<a href="/check-in/${dog.id}" style="display: inline-block; background: #d96f56; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">Check In Now</a>`;
+        actionHtml = `<a href="${withToken('/check-in/' + dog.id, resolvedToken)}" style="display: inline-block; background: #d96f56; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">Check In Now</a>`;
       }
 
       const photoHtml = dog.photo_url
@@ -8390,6 +8648,15 @@ app.get('/unsubscribe/:owner_id', async (req, res) => {
     `);
   }
 
+  // Link-revocation access check (Phase 3) -- token (query string) or a
+  // matching owner-session cookie, either is sufficient. resolvedToken is
+  // carried into the confirmation form's action URL below so the POST
+  // that actually unsubscribes can be checked the same way.
+  const resolvedToken = await authorizeOwnerScope(req, owner_id, req.query.token || null);
+  if (!resolvedToken) {
+    return res.status(403).send(renderLinkInvalidPage());
+  }
+
   // Already unsubscribed (e.g. this same link visited a second time) --
   // show the same end-state page directly rather than a confirmation form
   // for an action there's nothing left to confirm.
@@ -8416,7 +8683,7 @@ app.get('/unsubscribe/:owner_id', async (req, res) => {
         <p style="color: #666; line-height: 1.6;">
           You'll still receive SMS reminders unless you also reply STOP to those.
         </p>
-        <form method="POST" action="/unsubscribe/${owner_id}" style="margin-top: 20px;">
+        <form method="POST" action="${withToken('/unsubscribe/' + owner_id, resolvedToken)}" style="margin-top: 20px;">
           <button type="submit">Yes, unsubscribe me</button>
         </form>
         <p style="color: #999; font-size: 13px; margin-top: 24px;">
@@ -8459,6 +8726,14 @@ app.post('/unsubscribe/:owner_id', async (req, res) => {
       </body>
       </html>
     `);
+  }
+
+  // Link-revocation access check (Phase 3) -- the confirmation form above
+  // submits with the token still in the query string (form GET params
+  // survive on a POST action URL), so this reads the same place a GET
+  // route would.
+  if (!(await authorizeOwnerScope(req, owner_id, req.query.token || null))) {
+    return res.status(403).send(renderLinkInvalidPage());
   }
 
   const { error: updateError } = await supabase
@@ -8583,8 +8858,8 @@ app.post('/api/resend-dashboard-link', async (req, res) => {
     }
 
     const ownerLookup = cleanPhone
-      ? supabase.from('owners').select('id, email, phone, preferred_contact_method').eq('phone', cleanPhone).maybeSingle()
-      : supabase.from('owners').select('id, email, phone, preferred_contact_method').eq('email', cleanEmail).maybeSingle();
+      ? supabase.from('owners').select('id, email, phone, preferred_contact_method, access_token').eq('phone', cleanPhone).maybeSingle()
+      : supabase.from('owners').select('id, email, phone, preferred_contact_method, access_token').eq('email', cleanEmail).maybeSingle();
     const { data: owner, error: ownerError } = await ownerLookup;
 
     if (ownerError) {
@@ -8603,8 +8878,9 @@ app.post('/api/resend-dashboard-link', async (req, res) => {
 
     // Reuses the existing /checkins/:owner_id page as-is — it already
     // lists every one of the owner's dogs with status and a dashboard link
-    // each, so there's nothing new to build here.
-    const checkinsLink = `${BASE_URL}/checkins/${owner.id}`;
+    // each, so there's nothing new to build here. Embeds the owner's real
+    // access_token (Phase 3) so this resent link actually works.
+    const checkinsLink = withToken(`${BASE_URL}/checkins/${owner.id}`, owner.access_token);
     const wantsSms = owner.preferred_contact_method === 'sms' || owner.preferred_contact_method === 'both';
     const wantsEmail = owner.preferred_contact_method === 'email' || owner.preferred_contact_method === 'both';
 
@@ -8633,6 +8909,261 @@ app.post('/api/resend-dashboard-link', async (req, res) => {
     // other to the client. Safe no-op if already responded (see `respond`).
     console.error('Error in resend-dashboard-link endpoint:', error);
     respond();
+  }
+});
+
+// ============================================
+// ACCOUNT RECOVERY (Phase 3, link-revocation project)
+// POST /api/recover-account + GET /recover
+//
+// Distinct from /api/resend-dashboard-link above, which just re-sends the
+// owner's EXISTING /checkins/:owner_id link (with its already-embedded
+// access_token) via whichever channel(s) preferred_contact_method names.
+// This flow exists for the case that link itself no longer works -- most
+// realistically, after using the dashboard's "Regenerate My Link" button
+// (POST /api/regenerate-access-token) invalidated it on purpose. Recovery
+// authenticates the visitor via a short-lived, single-use token (NOT
+// owners.access_token itself, which this flow never rotates or returns
+// directly -- see migration_add_owner_recovery_tokens.sql's own header
+// comment for the full reasoning) and then hands them their real, current
+// link once that's confirmed.
+//
+// Phone-only lookup, per the Phase 1 decision (docs/Link_Revocation_Build.md
+// Finding 4): owners.email has no UNIQUE constraint, so an email-keyed
+// lookup could match more than one real account. Delivery is still
+// dual-channel -- the same token goes to both phone and email once an
+// owner is found, unconditionally (not gated by preferred_contact_method,
+// since maximizing deliverability matters more here than a stored
+// preference) -- either channel can consume it first.
+// ============================================
+
+async function sendRecoveryEmail(ownerEmail, recoverLink) {
+  if (!SENDGRID_API_KEY) {
+    console.warn('⚠️ SendGrid not configured. Email not sent.');
+    return;
+  }
+  try {
+    const msg = {
+      to: ownerEmail,
+      from: SENDGRID_FROM_EMAIL,
+      subject: `Recover your Companion Commons account`,
+      html: `
+        <div style="font-family: -apple-system, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px;">
+          <div style="background: #f5f5f5; border-radius: 12px; padding: 30px;">
+            <h2 style="color: #333; margin-bottom: 20px; text-align: center;">Recover your account 👋</h2>
+            <p style="color: #666; font-size: 16px; margin: 15px 0; line-height: 1.6;">
+              You (or someone with your phone number) asked to recover your Companion Commons account. Tap below within the next 15 minutes to get back in.
+            </p>
+            <div style="text-align: center; margin-top: 25px;">
+              <a href="${recoverLink}" style="display: inline-block; background: #d96f56; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+                Recover My Account
+              </a>
+            </div>
+            <p style="color: #999; font-size: 12px; margin-top: 30px; text-align: center;">
+              This link expires in 15 minutes and works once. Didn't request this? You can safely ignore this email.
+            </p>
+          </div>
+        </div>
+      `
+    };
+    await sgMail.send(msg);
+    console.log(`✅ Recovery email sent to ${ownerEmail}`);
+    return { success: true };
+  } catch (error) {
+    console.error(`❌ Error sending recovery email to ${ownerEmail}:`, error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+app.post('/api/recover-account', async (req, res) => {
+  const GENERIC_RESPONSE = { success: true, message: "If that phone number has an account, we've sent a recovery link to your phone and email." };
+  let responded = false;
+  const respond = () => {
+    if (!responded) {
+      responded = true;
+      res.json(GENERIC_RESPONSE);
+    }
+  };
+
+  try {
+    // Same anti-enumeration IP limiter as /api/resend-dashboard-link,
+    // reused rather than duplicated -- this is the same shape of "does
+    // this phone number exist" lookup.
+    const ip = req.ip || req.connection.remoteAddress;
+    const ipLimitResult = resendLookupIpRateLimit(ip);
+    if (!ipLimitResult.allowed) {
+      console.log(`⏭️ recover-account: IP rate limited for ${ip}`);
+      return respond();
+    }
+
+    const { phone } = req.body;
+    const cleanPhone = sanitizePhone(phone);
+    if (!cleanPhone) {
+      console.log('ℹ️ recover-account: invalid/unparseable phone submitted');
+      return respond();
+    }
+
+    const rateLimitResult = perContactRateLimit(cleanPhone);
+    if (!rateLimitResult.allowed) {
+      console.log(`⏭️ recover-account: rate limited for ${cleanPhone}`);
+      return respond();
+    }
+
+    const { data: owner, error: ownerError } = await supabase
+      .from('owners')
+      .select('id, email, phone')
+      .eq('phone', cleanPhone)
+      .maybeSingle();
+
+    if (ownerError) {
+      console.error('Error looking up owner for recover-account:', ownerError);
+      return respond();
+    }
+    if (!owner) {
+      console.log(`ℹ️ recover-account: no owner found for ${cleanPhone}`);
+      return respond();
+    }
+
+    // Respond now — everything below runs fire-and-forget and must never
+    // touch `res` again (same posture as /api/resend-dashboard-link).
+    respond();
+
+    const recoveryToken = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+    const { error: insertError } = await supabase
+      .from('owner_recovery_tokens')
+      .insert({ owner_id: owner.id, token: recoveryToken, expires_at: expiresAt.toISOString() });
+
+    if (insertError) {
+      console.error(`❌ Error creating recovery token for owner ${owner.id}:`, insertError.message);
+      return;
+    }
+
+    const recoverLink = `${BASE_URL}/recover?token=${recoveryToken}`;
+
+    if (owner.phone) {
+      try {
+        const smsMessage = await twilioClient.messages.create({
+          body: `Your Companion Commons account recovery link (expires in 15 min): ${recoverLink}`,
+          from: TWILIO_PHONE_NUMBER,
+          to: owner.phone
+        });
+        console.log(`✅ recover-account SMS sent to ${owner.phone} (SID: ${smsMessage.sid})`);
+      } catch (smsError) {
+        console.error(`❌ recover-account SMS failed for ${owner.phone}:`, smsError.message);
+      }
+    }
+
+    if (owner.email) {
+      const emailResult = await sendRecoveryEmail(owner.email, recoverLink);
+      if (!emailResult || !emailResult.success) {
+        console.error(`❌ recover-account email failed for ${owner.email}`);
+      }
+    }
+  } catch (error) {
+    console.error('Error in recover-account endpoint:', error);
+    respond();
+  }
+});
+
+// Consumes a recovery token (single-use, 15-min expiry) and, on success,
+// grants the same owner-session cookie every other real proof-of-ownership
+// moment does (/verify, /api/add-dog), then redirects to the owner's real
+// /checkins/:owner_id page with their real, current access_token embedded
+// -- handing back a working link, not a rotated one (see this block's own
+// header comment above for why recovery never touches access_token itself).
+app.get('/recover', async (req, res) => {
+  try {
+    const { token } = req.query;
+    if (!token) {
+      return res.status(400).send(renderLinkInvalidPage());
+    }
+
+    const { data: recoveryRow, error } = await supabase
+      .from('owner_recovery_tokens')
+      .select('id, owner_id, expires_at, used_at')
+      .eq('token', token)
+      .maybeSingle();
+
+    if (error || !recoveryRow) {
+      return res.status(404).send(renderLinkInvalidPage());
+    }
+    if (recoveryRow.used_at || new Date(recoveryRow.expires_at) < new Date()) {
+      return res.status(410).send(renderLinkInvalidPage());
+    }
+
+    // Consume -- `is('used_at', null)` guards against a same-instant
+    // double click/double fetch (e.g. an email client prefetch racing a
+    // real click) both succeeding; only the first actually wins.
+    const { data: consumed, error: consumeError } = await supabase
+      .from('owner_recovery_tokens')
+      .update({ used_at: new Date().toISOString() })
+      .eq('id', recoveryRow.id)
+      .is('used_at', null)
+      .select('id');
+
+    if (consumeError || !consumed || consumed.length === 0) {
+      return res.status(410).send(renderLinkInvalidPage());
+    }
+
+    setOwnerSessionCookie(res, recoveryRow.owner_id);
+    const accessToken = await getOwnerAccessToken(recoveryRow.owner_id);
+    res.redirect(withToken(`/checkins/${recoveryRow.owner_id}`, accessToken));
+  } catch (error) {
+    console.error('Error in /recover:', error);
+    res.status(500).send(renderLinkInvalidPage());
+  }
+});
+
+// Rotates owners.access_token -- the actual revocation mechanism this
+// whole project exists for. Every link built with the OLD token (mailed,
+// shared, bookmarked -- anywhere) stops working the instant this runs.
+// Deliberately session-cookie-only, NOT the usual token-or-session check
+// every other route in this file uses: rotating your own token has to be
+// a real, intentional owner action, proven the same way this app has
+// always proven real ownership (completing signup, or a real recovery
+// click), not something anyone merely holding a copy of a link -- which
+// is exactly the scenario this button exists to defend against -- could
+// trigger on the real owner's behalf.
+app.post('/api/regenerate-access-token', async (req, res) => {
+  try {
+    const { dog_id } = req.body;
+    if (!dog_id) {
+      return res.status(400).json({ success: false, error: 'Missing required field: dog_id' });
+    }
+
+    const { data: dog, error: dogError } = await supabase
+      .from('senior_dogs')
+      .select('id, owner_id')
+      .eq('id', dog_id)
+      .maybeSingle();
+    if (dogError || !dog) {
+      return res.status(404).json({ success: false, error: 'Dog not found' });
+    }
+
+    if (!ownerSessionMatches(req, dog.owner_id)) {
+      return res.status(403).json({ success: false, error: 'Please open your dashboard from a link you received directly (a text or email) before regenerating.' });
+    }
+
+    // Generated the same shape as the DB-side gen_random_uuid() default
+    // (see migration_add_owner_access_token.sql) so an application-level
+    // rotation looks no different from the original value.
+    const newToken = crypto.randomUUID();
+    const { error: updateError } = await supabase
+      .from('owners')
+      .update({ access_token: newToken })
+      .eq('id', dog.owner_id);
+
+    if (updateError) {
+      console.error(`❌ Error regenerating access_token for owner ${dog.owner_id}:`, updateError.message);
+      return res.status(500).json({ success: false, error: 'Failed to regenerate link' });
+    }
+
+    console.log(`✅ access_token regenerated for owner ${dog.owner_id}`);
+    res.json({ success: true, new_dashboard_url: withToken(`/dashboard/${dog_id}`, newToken) });
+  } catch (error) {
+    console.error('Error in /api/regenerate-access-token:', error);
+    res.status(500).json({ success: false, error: 'Server error' });
   }
 });
 
@@ -8847,7 +9378,7 @@ app.post('/api/upload-dog-photo', upload.single('photo'), async (req, res) => {
     }
 
     // Extract dog_id from request
-    const { dog_id } = req.body;
+    const { dog_id, access_token } = req.body;
     if (!dog_id) {
       return res.status(400).json({
         success: false,
@@ -8861,7 +9392,7 @@ app.post('/api/upload-dog-photo', upload.single('photo'), async (req, res) => {
     // Verify dog exists
     const { data: dog, error: dogError } = await supabase
       .from('senior_dogs')
-      .select('id')
+      .select('id, owner_id')
       .eq('id', dog_id)
       .single();
 
@@ -8870,6 +9401,11 @@ app.post('/api/upload-dog-photo', upload.single('photo'), async (req, res) => {
         success: false,
         error: 'Dog not found'
       });
+    }
+
+    // Link-revocation access check (Phase 3).
+    if (!(await authorizeOwnerScope(req, dog.owner_id, access_token || null))) {
+      return res.status(403).json({ success: false, error: 'This link is no longer valid. Please request a fresh one.', code: 'invalid_access_token' });
     }
 
     // Generate unique filename: dog_id + timestamp + random + original extension
@@ -8990,12 +9526,15 @@ app.get('/founding.html', (req, res) => {
 // Shared unsubscribe footer for both churn email templates -- one
 // implementation so the two templates can't drift the way headers/writes
 // have drifted apart before in this project. Returns '' when ownerId is
-// unavailable rather than rendering a broken link.
-function buildEmailUnsubscribeFooter(ownerId) {
+// unavailable rather than rendering a broken link. `accessToken` (Phase 3)
+// is the owner's real, live access_token -- the caller resolves it once
+// (it's also needed for the dashboard link(s) in the same email) and
+// passes it in here rather than this function looking it up a second time.
+function buildEmailUnsubscribeFooter(ownerId, accessToken) {
   if (!ownerId) return '';
   return `
             <p style="color: #999; font-size: 11px; margin-top: 12px; text-align: center;">
-              <a href="${BASE_URL}/unsubscribe/${ownerId}" style="color: #999;">Unsubscribe from these email reminders</a>
+              <a href="${withToken(`${BASE_URL}/unsubscribe/${ownerId}`, accessToken)}" style="color: #999;">Unsubscribe from these email reminders</a>
             </p>`;
 }
 
@@ -9021,6 +9560,10 @@ async function sendChurnAlertEmail(ownerEmail, dogName, lastScore, lastCheckInDa
       ? `We noticed we haven't heard from you since <strong>${new Date(lastCheckInDate).toLocaleDateString()}</strong>. No pressure — we know life gets busy.`
       : `We noticed you haven't logged a check-in yet. No pressure — we know life gets busy.`;
 
+    // Link-revocation (Phase 3): resolved once, used for both the dashboard
+    // link below and the unsubscribe footer.
+    const accessToken = await getOwnerAccessToken(ownerId);
+
     const msg = {
       to: ownerEmail,
       from: SENDGRID_FROM_EMAIL,
@@ -9039,13 +9582,13 @@ async function sendChurnAlertEmail(ownerEmail, dogName, lastScore, lastCheckInDa
               <strong>Bonus:</strong> Every check-in helps us build a clearer picture of pet health for the whole community. 🐾
             </p>
             <div style="text-align: center; margin-top: 25px;">
-              <a href="${BASE_URL}/dashboard/${dogId}" style="display: inline-block; background: #d96f56; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+              <a href="${withToken(`${BASE_URL}/dashboard/${dogId}`, accessToken)}" style="display: inline-block; background: #d96f56; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: 600;">
                 View ${dogNameSafe}'s Progress and Update
               </a>
             </div>
             <p style="color: #999; font-size: 12px; margin-top: 30px; text-align: center;">
               Companion Commons — Together we can change the future of pet health understanding
-            </p>${buildEmailUnsubscribeFooter(ownerId)}
+            </p>${buildEmailUnsubscribeFooter(ownerId, accessToken)}
           </div>
         </div>
       `
@@ -9089,6 +9632,14 @@ async function sendCombinedChurnAlertEmail(ownerEmail, alerts) {
     // same reasoning as sendChurnAlertEmail's dogNameSafe.
     const nameListSafe = escapeHtml(nameList);
 
+    // Every alert in this group shares the same owner (see the grouping
+    // in sendChurnAlertsForOwnerGroup's callers) -- derived here rather
+    // than added as a new parameter, since alerts already carries it.
+    // Resolved before dogBlocks below, since every dog's link in this
+    // shared email needs the same owner's token (Phase 3).
+    const ownerId = alerts[0]?.dog?.owner_id || null;
+    const accessToken = await getOwnerAccessToken(ownerId);
+
     const dogBlocks = alerts.map(({ dog, lastScore, lastCheckInDate }) => {
       const dogNameSafe = escapeHtml(dog.dog_name);
       const sinceLine = lastCheckInDate
@@ -9098,18 +9649,13 @@ async function sendCombinedChurnAlertEmail(ownerEmail, alerts) {
         <div style="border-top: 1px solid #eee; margin-top: 20px; padding-top: 20px;">
           <p style="color: #666; font-size: 15px; margin: 0 0 12px 0; line-height: 1.6;">${sinceLine}</p>
           <div style="text-align: center;">
-            <a href="${BASE_URL}/dashboard/${dog.id}" style="display: inline-block; background: #d96f56; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">
+            <a href="${withToken(`${BASE_URL}/dashboard/${dog.id}`, accessToken)}" style="display: inline-block; background: #d96f56; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">
               View ${dogNameSafe}'s Progress and Update
             </a>
           </div>
         </div>
       `;
     }).join('');
-
-    // Every alert in this group shares the same owner (see the grouping
-    // in sendChurnAlertsForOwnerGroup's callers) -- derived here rather
-    // than added as a new parameter, since alerts already carries it.
-    const ownerId = alerts[0]?.dog?.owner_id || null;
 
     const msg = {
       to: ownerEmail,
@@ -9125,7 +9671,7 @@ async function sendCombinedChurnAlertEmail(ownerEmail, alerts) {
             ${dogBlocks}
             <p style="color: #999; font-size: 12px; margin-top: 30px; text-align: center;">
               Companion Commons — Together we can change the future of pet health understanding
-            </p>${buildEmailUnsubscribeFooter(ownerId)}
+            </p>${buildEmailUnsubscribeFooter(ownerId, accessToken)}
           </div>
         </div>
       `
@@ -9258,7 +9804,10 @@ async function evaluateDogForChurn(dog, options = {}) {
       console.log(`  ⏰ ${dog.dog_name}: Reminder #1 fires at ${reminderDay1.toLocaleString()}, Reminder #2 at ${reminderDay2At7pm.toLocaleString()}, Reminder #3 at ${reminderDay3.toLocaleString()}`);
     }
 
-    const reminderCheckinLink = `${BASE_URL}/check-in/${dog.id}`;
+    // Link-revocation (Phase 3): resolved once, shared by all 3 reminder
+    // tiers below.
+    const reminderAccessToken = await getOwnerAccessToken(dog.owner_id);
+    const reminderCheckinLink = withToken(`${BASE_URL}/check-in/${dog.id}`, reminderAccessToken);
     const canTextThisDog = !!(dog.phone && dog.sms_consent);
 
     if (!dog.phone) {
@@ -9620,7 +10169,10 @@ async function buildCombinedSmsBody(group) {
         .map(id => dogs?.find(d => d.id === id)?.dog_name)
         .filter(Boolean);
 
-    const link = `${BASE_URL}/checkins/${group[0].owner_id}`;
+    // Link-revocation (Phase 3): every message in `group` shares one owner
+    // (that's the whole point of the grouping), so one lookup covers the link.
+    const combinedAccessToken = await getOwnerAccessToken(group[0].owner_id);
+    const link = withToken(`${BASE_URL}/checkins/${group[0].owner_id}`, combinedAccessToken);
     const whoLine = names.length === 2
         ? `${names[0]} & ${names[1]}`
         : `${names.length || group.length} of your dogs`;

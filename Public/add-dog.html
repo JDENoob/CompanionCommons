@@ -505,6 +505,7 @@
     <script>
       const params = new URLSearchParams(window.location.search);
       const ownerId = params.get('owner_id');
+      const ownerAccessToken = params.get('token'); // link-revocation (Phase 3)
       if (!ownerId) {
         document.getElementById('ownerMissingNotice').style.display = 'block';
         document.getElementById('addDogForm').style.display = 'none';
@@ -640,6 +641,7 @@
         data.treatment_category = treatmentCategories;
         data.medications = medResult.medications;
         data.owner_id = ownerId;
+        data.access_token = ownerAccessToken;
 
         try {
           const response = await fetch('/api/add-dog', {
