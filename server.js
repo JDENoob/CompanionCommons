@@ -1790,7 +1790,7 @@ app.get('/admin', (req, res) => {
 
         loadPage();
     </script>
-    <script src="https://unpkg.com/lucide@1.33.0"></script>
+    <script src="https://unpkg.com/lucide@1.33.0" referrerpolicy="no-referrer"></script>
     <script>lucide.createIcons({ attrs: { width: '1em', height: '1em' } });</script>
 </body>
 </html>`);
@@ -2201,7 +2201,7 @@ app.get('/check-in/:dog_id', async (req, res) => {
             <p style="color: #666;">${dog.dog_name}'s first weekly update becomes available 7 days after signing up. You'll get a text when it's time.</p>
             <a href="${withToken('/dashboard/' + dog_id, resolvedToken)}" class="cta">View Dashboard</a>
           </div>
-          <script src="https://unpkg.com/lucide@1.33.0"></script>
+          <script src="https://unpkg.com/lucide@1.33.0" referrerpolicy="no-referrer"></script>
           <script>lucide.createIcons({ attrs: { width: '1em', height: '1em' } });</script>
         </body>
         </html>
@@ -2281,7 +2281,7 @@ app.get('/check-in/:dog_id', async (req, res) => {
             <p style="color: #666;">${dog.dog_name}'s update for week ${weekNumber} is already recorded. Come back next week for the next one.</p>
             <a href="${withToken('/dashboard/' + dog_id, resolvedToken)}" class="cta">View Dashboard</a>
           </div>
-          <script src="https://unpkg.com/lucide@1.33.0"></script>
+          <script src="https://unpkg.com/lucide@1.33.0" referrerpolicy="no-referrer"></script>
           <script>lucide.createIcons({ attrs: { width: '1em', height: '1em' } });</script>
         </body>
         </html>
@@ -2536,7 +2536,7 @@ app.get('/check-in/:dog_id', async (req, res) => {
             }
           });
         </script>
-        <script src="https://unpkg.com/lucide@1.33.0"></script>
+        <script src="https://unpkg.com/lucide@1.33.0" referrerpolicy="no-referrer"></script>
         <script>lucide.createIcons({ attrs: { width: '1em', height: '1em' } });</script>
       </body>
       </html>
@@ -4929,7 +4929,7 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
             <p style="color: #666;">${escapeHtml(dog.dog_name)}'s breed guide unlocks after your Week 2 check-in. Keep logging!</p>
             <a href="${withToken('/dashboard/' + dog_id, resolvedToken)}" style="display: inline-block; margin-top: 20px; background: #007AFF; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none;">Back to Dashboard</a>
           </div>
-          <script src="https://unpkg.com/lucide@1.33.0"></script>
+          <script src="https://unpkg.com/lucide@1.33.0" referrerpolicy="no-referrer"></script>
           <script>lucide.createIcons({ attrs: { width: '1em', height: '1em' } });</script>
         </body>
         </html>
@@ -5114,7 +5114,7 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
 
           <a href="${withToken('/dashboard/' + dog_id, resolvedToken)}" class="back-link">← Back to Dashboard</a>
         </div>
-        <script src="https://unpkg.com/lucide@1.33.0"></script>
+        <script src="https://unpkg.com/lucide@1.33.0" referrerpolicy="no-referrer"></script>
         <script>lucide.createIcons({ attrs: { width: '1em', height: '1em' } });</script>
       </body>
       </html>
@@ -5922,7 +5922,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>${escapeHtml(dog.dog_name)}'s Dashboard</title>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js" referrerpolicy="no-referrer"></script>
         <style>
           * { margin: 0; padding: 0; box-sizing: border-box; }
           body {
@@ -7150,7 +7150,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
           });
           ` : ''}
         </script>
-        <script src="https://unpkg.com/lucide@1.33.0"></script>
+        <script src="https://unpkg.com/lucide@1.33.0" referrerpolicy="no-referrer"></script>
         <script>lucide.createIcons({ attrs: { width: '1em', height: '1em' } });</script>
       </body>
       </html>
@@ -7939,7 +7939,7 @@ app.get('/verify', async (req, res) => {
               <p>This verification link expired after 15 minutes. Complete the Baseline Health Journey again to get a new link.</p>
               <a href="/baseline-health-journey.html">Start Over</a>
             </div>
-            <script src="https://unpkg.com/lucide@1.33.0"></script>
+            <script src="https://unpkg.com/lucide@1.33.0" referrerpolicy="no-referrer"></script>
             <script>lucide.createIcons({ attrs: { width: '1em', height: '1em' } });</script>
           </body>
         </html>
