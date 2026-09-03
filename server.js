@@ -809,7 +809,12 @@ const requiredEnvVars = [
   'SUPABASE_SERVICE_ROLE_KEY',
   'TWILIO_ACCOUNT_SID',
   'TWILIO_AUTH_TOKEN',
-  'TWILIO_PHONE_NUMBER'
+  'TWILIO_PHONE_NUMBER',
+  // Link-revocation project, Phase 3 follow-up (see
+  // docs/Link_Revocation_Build.md): signs the owner-session cookie so a
+  // regenerated access_token invalidates it too, not just token-based
+  // links. Never sent to a client in any form -- server-only.
+  'SESSION_SIGNING_SECRET'
 ];
 
 const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
@@ -867,7 +872,8 @@ function parseCookies(req) {
 
 // ============================================
 // OWNER SESSION (STAGE 5 — multi-dog owner project; updated Phase 3 of the
-// link-revocation project, see docs/Link_Revocation_Build.md)
+// link-revocation project, see docs/Link_Revocation_Build.md; signing
+// added in a same-project follow-up, same doc)
 // Originally an additive-only convenience cookie with zero access-control
 // role -- as of Phase 3 it's also one of the two valid ways to pass the
 // access_token check every dog/owner-scoped route now performs (see
@@ -882,12 +888,49 @@ function parseCookies(req) {
 // See Multi_Dog_Signup_Build.md, Stage 5, for the original design and the
 // cross-owner edge case it's deliberately guarded against (still fully
 // intact under the new access-check logic).
+//
+// SIGNING (real fix for a real gap found in review): the cookie's value
+// used to be the bare, plaintext ownerId -- unsigned, and ownerId is not
+// a secret in this app (it's visible in plain sight in every
+// /checkins/:owner_id / /unsubscribe/:owner_id link this app has ever
+// sent). That meant anyone who had ever seen ANY link for a given owner
+// could forge a valid session cookie themselves (curl/devtools, no
+// access_token needed) once the cookie became an access-control path in
+// Phase 3 -- and separately, regenerating access_token (the "Regenerate
+// My Link" button) did nothing to a session cookie already sitting in
+// another browser, so a lost/stolen-device scenario kept full access
+// after the owner tried to cut it off. Both are fixed the same way: the
+// cookie's value is now `${ownerId}.${signature}`, where signature is an
+// HMAC-SHA256 of `${ownerId}:${accessToken}` keyed by
+// SESSION_SIGNING_SECRET -- a real secret that never leaves the server
+// (never embedded in a link, email, or SMS). Forging a valid signature
+// needs that secret, which a mere link-holder never has, and rotating
+// access_token changes the HMAC input, so every previously-issued
+// cookie's stored signature stops matching the instant a regeneration
+// happens -- the same revocation "Regenerate" already gives token-based
+// links now genuinely reaches cookie-based sessions too.
 // ============================================
 const OWNER_SESSION_COOKIE = 'cc_owner_session';
 const OWNER_SESSION_MAX_AGE = 90 * 24 * 60 * 60 * 1000; // 90 days, sliding
+const SESSION_SIGNING_SECRET = process.env.SESSION_SIGNING_SECRET;
 
-function setOwnerSessionCookie(res, ownerId) {
-  res.cookie(OWNER_SESSION_COOKIE, ownerId, {
+// Keyed by (ownerId, accessToken) so a signature is only ever valid for
+// as long as that exact access_token is the live one -- see the header
+// comment above for why this is the actual revocation fix.
+function computeSessionSignature(ownerId, accessToken) {
+  return crypto.createHmac('sha256', SESSION_SIGNING_SECRET)
+    .update(`${ownerId}:${accessToken}`)
+    .digest('hex');
+}
+
+// Async now -- needs the owner's current access_token to sign against.
+// Silently sets no cookie if that lookup fails (no ownerId, no owner row,
+// no token) rather than minting a cookie that could never verify anyway.
+async function setOwnerSessionCookie(res, ownerId) {
+  const accessToken = await getOwnerAccessToken(ownerId);
+  if (!accessToken) return;
+  const signature = computeSessionSignature(ownerId, accessToken);
+  res.cookie(OWNER_SESSION_COOKIE, `${ownerId}.${signature}`, {
     httpOnly: true,
     maxAge: OWNER_SESSION_MAX_AGE,
     sameSite: 'lax'
@@ -933,8 +976,9 @@ function buildDogSwitcherHtml(ownersDogs, currentDogId) {
 // Denied only when neither is true. This is the actual revocation
 // mechanism: rotating owners.access_token (POST
 // /api/regenerate-access-token) invalidates every outstanding
-// token-based link at once, while the owner's own current browser
-// session keeps working right through the rotation.
+// token-based link AND every previously-issued session cookie at once
+// (see the signing note on OWNER_SESSION_COOKIE, above) -- a lost/stolen
+// device's lingering session dies the same moment a mailed link does.
 // ============================================
 
 // Fetches the owner's live access_token once. Used both to validate a
@@ -948,11 +992,43 @@ async function getOwnerAccessToken(ownerId) {
   return data.access_token;
 }
 
-// True if this request's owner-session cookie belongs to ownerId.
-function ownerSessionMatches(req, ownerId) {
+// True if this request's owner-session cookie belongs to ownerId AND its
+// signature is valid against the owner's CURRENT access_token -- both
+// conditions matter equally (see the signing note on OWNER_SESSION_COOKIE
+// above for why an unsigned version of this check was a real forgeable
+// gap). Async now, since verifying requires a live access_token lookup.
+// Constant-time signature comparison is required, not optional -- this
+// project has a documented prior timing side-channel finding (Aug 29
+// audit, the find-my-dashboard lookup), and a naive === or byte-loop
+// compare here would be the same class of bug again.
+async function ownerSessionMatches(req, ownerId) {
   if (!ownerId) return false;
   const cookies = parseCookies(req);
-  return !!cookies[OWNER_SESSION_COOKIE] && cookies[OWNER_SESSION_COOKIE] === ownerId;
+  const raw = cookies[OWNER_SESSION_COOKIE];
+  if (!raw) return false;
+
+  const dotIndex = raw.indexOf('.');
+  if (dotIndex === -1) return false; // malformed, or a pre-signing-era cookie -- never valid now
+  const cookieOwnerId = raw.slice(0, dotIndex);
+  const providedSignature = raw.slice(dotIndex + 1);
+  // ownerId itself isn't secret (it's in plain sight in every mailed
+  // link already), so comparing it directly is fine -- only the
+  // signature comparison below needs to be constant-time.
+  if (cookieOwnerId !== ownerId) return false;
+
+  const accessToken = await getOwnerAccessToken(ownerId);
+  if (!accessToken) return false;
+  const expectedSignature = computeSessionSignature(ownerId, accessToken);
+
+  const providedBuf = Buffer.from(providedSignature, 'utf8');
+  const expectedBuf = Buffer.from(expectedSignature, 'utf8');
+  // timingSafeEqual throws on a length mismatch rather than returning
+  // false -- a forged signature of the wrong length is guarded here
+  // before ever reaching it. Comparing lengths first leaks only "was the
+  // length right," never anything about the signature's actual content,
+  // which is the part that has to stay constant-time.
+  if (providedBuf.length !== expectedBuf.length) return false;
+  return crypto.timingSafeEqual(providedBuf, expectedBuf);
 }
 
 // The real access check every route below calls. Returns the owner's
@@ -964,7 +1040,7 @@ function ownerSessionMatches(req, ownerId) {
 // row to hold a token or a session against.
 async function authorizeOwnerScope(req, ownerId, providedToken) {
   if (!ownerId) return null;
-  if (ownerSessionMatches(req, ownerId)) {
+  if (await ownerSessionMatches(req, ownerId)) {
     return await getOwnerAccessToken(ownerId);
   }
   const realToken = await getOwnerAccessToken(ownerId);
@@ -5372,7 +5448,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
       // time. An owner who keeps visiting effectively never sees the
       // switcher disappear; one who doesn't simply stops getting the
       // convenience — never a functional loss either way.
-      setOwnerSessionCookie(res, sessionOwnerId);
+      await setOwnerSessionCookie(res, sessionOwnerId);
 
       const { data: ownersDogs } = await supabase
         .from('senior_dogs')
@@ -8112,7 +8188,7 @@ app.get('/verify', async (req, res) => {
     // ownerId is resolved either way by this point. See the OWNER SESSION
     // block near the top of this file for what this cookie does and does
     // not do.
-    setOwnerSessionCookie(res, ownerId);
+    await setOwnerSessionCookie(res, ownerId);
 
     // Redirect to dashboard with the new dog ID
     res.redirect(`/dashboard/${dogId}`);
@@ -8412,7 +8488,7 @@ app.post('/api/add-dog', async (req, res) => {
     // holds (dashboard's "+ Add Another Dog"), so grant/refresh the same
     // additive session cookie here too — belt-and-suspenders alongside the
     // /verify grant point, not a second distinct mechanism.
-    setOwnerSessionCookie(res, owner.id);
+    await setOwnerSessionCookie(res, owner.id);
 
     res.json({ success: true, dogId });
   } catch (error) {
@@ -9106,7 +9182,7 @@ app.get('/recover', async (req, res) => {
       return res.status(410).send(renderLinkInvalidPage());
     }
 
-    setOwnerSessionCookie(res, recoveryRow.owner_id);
+    await setOwnerSessionCookie(res, recoveryRow.owner_id);
     const accessToken = await getOwnerAccessToken(recoveryRow.owner_id);
     res.redirect(withToken(`/checkins/${recoveryRow.owner_id}`, accessToken));
   } catch (error) {
@@ -9141,7 +9217,7 @@ app.post('/api/regenerate-access-token', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Dog not found' });
     }
 
-    if (!ownerSessionMatches(req, dog.owner_id)) {
+    if (!(await ownerSessionMatches(req, dog.owner_id))) {
       return res.status(403).json({ success: false, error: 'Please open your dashboard from a link you received directly (a text or email) before regenerating.' });
     }
 
