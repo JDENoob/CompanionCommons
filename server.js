@@ -8352,7 +8352,85 @@ async function sendDashboardLinkEmail(ownerEmail, checkinsLink) {
 // Idempotent -- clicking an already-processed link just re-shows the same
 // confirmation, no error.
 // ============================================
+// GET shows a confirmation page only -- it must never itself change state.
+// A bare GET is exactly what a link-prefetching email client or a security
+// scanner will fire automatically before a real person ever clicks
+// anything; the old version unsubscribed the real owner on that fetch
+// alone, with zero confirmation. The actual unsubscribe now only happens
+// on the POST below, which nothing but an explicit form submission
+// triggers. (Sep 3 2026 fix, found during the link-revocation Phase 1 audit.)
 app.get('/unsubscribe/:owner_id', async (req, res) => {
+  const { owner_id } = req.params;
+
+  const { data: owner, error } = await supabase
+    .from('owners')
+    .select('id, email_opt_out')
+    .eq('id', owner_id)
+    .single();
+
+  if (error || !owner) {
+    return res.status(404).send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Not Found | Companion Commons</title>
+        <style>
+          body { font-family: -apple-system, sans-serif; max-width: 500px; margin: 60px auto; padding: 20px; text-align: center; background: #f5f5f5; }
+          .card { background: white; border-radius: 12px; padding: 40px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <h2 style="margin: 0 0 10px 0;">We couldn't find that account</h2>
+          <p style="color: #666;">Please check the link from your email, or use our <a href="/contact.html">contact form</a> if you need help.</p>
+        </div>
+      </body>
+      </html>
+    `);
+  }
+
+  // Already unsubscribed (e.g. this same link visited a second time) --
+  // show the same end-state page directly rather than a confirmation form
+  // for an action there's nothing left to confirm.
+  if (owner.email_opt_out) {
+    return res.send(renderUnsubscribeDonePage());
+  }
+
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>Unsubscribe | Companion Commons</title>
+      <style>
+        body { font-family: -apple-system, sans-serif; max-width: 500px; margin: 60px auto; padding: 20px; text-align: center; background: #f5f5f5; }
+        .card { background: white; border-radius: 12px; padding: 40px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        a { color: #d96f56; }
+        button { background: #d96f56; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; }
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <h2 style="margin: 0 0 10px 0;">Unsubscribe from email reminders?</h2>
+        <p style="color: #666; line-height: 1.6;">
+          You'll still receive SMS reminders unless you also reply STOP to those.
+        </p>
+        <form method="POST" action="/unsubscribe/${owner_id}" style="margin-top: 20px;">
+          <button type="submit">Yes, unsubscribe me</button>
+        </form>
+        <p style="color: #999; font-size: 13px; margin-top: 24px;">
+          Didn't mean to click this, or have a question? <a href="/contact.html">Contact us</a>.
+        </p>
+      </div>
+    </body>
+    </html>
+  `);
+});
+
+// The real state change -- only reachable via the confirmation form's
+// explicit POST above, never a bare link visit or prefetch.
+app.post('/unsubscribe/:owner_id', async (req, res) => {
   const { owner_id } = req.params;
 
   const { data: owner, error } = await supabase
@@ -8395,7 +8473,11 @@ app.get('/unsubscribe/:owner_id', async (req, res) => {
 
   console.log(`✅ Owner ${owner_id} unsubscribed from email reminders`);
 
-  res.send(`
+  res.send(renderUnsubscribeDonePage());
+});
+
+function renderUnsubscribeDonePage() {
+  return `
     <!DOCTYPE html>
     <html>
     <head>
@@ -8419,8 +8501,8 @@ app.get('/unsubscribe/:owner_id', async (req, res) => {
       </div>
     </body>
     </html>
-  `);
-});
+  `;
+}
 
 // ============================================
 // SELF-SERVICE "RESEND MY DASHBOARD LINK"
