@@ -4294,6 +4294,34 @@ function isSeniorForBreed(age, breedName) {
   return age >= SENIOR_AGE_BY_TIER[tier];
 }
 
+// A dog's age is stored as whole years (senior_dogs.age) plus a 0-11
+// remainder (senior_dogs.age_months), so a dog under a year old is
+// representable at all (age=0, age_months=8, not a forced whole year or an
+// imprecise decimal). isSeniorForBreed's thresholds are expressed in whole
+// years, so anything comparing age needs the combined decimal value, not
+// the raw `age` column alone -- this is that single conversion point.
+// `age_months` defaults to 0 (both in the DB and here) so a dog row from
+// before this column existed, or a still-pending-migration environment,
+// degrades to "whole years only," not NaN/undefined.
+function getDogAgeInYears(dog) {
+  return (Number(dog.age) || 0) + (Number(dog.age_months) || 0) / 12;
+}
+
+// Human-readable age for display (dashboard header, Journey Summary,
+// breed guide). Returns the same "Age unknown" fallback the three call
+// sites already used for a missing/zero age, so this is a drop-in
+// replacement for the old "dog.age || 'Age unknown', years old" pattern,
+// not a new UX decision.
+function formatDogAge(years, months) {
+  const y = Number(years) || 0;
+  const m = Number(months) || 0;
+  if (!y && !m) return 'Age unknown';
+  const parts = [];
+  if (y > 0) parts.push(`${y} year${y === 1 ? '' : 's'}`);
+  if (m > 0) parts.push(`${m} month${m === 1 ? '' : 's'}`);
+  return `${parts.join(', ')} old`;
+}
+
 // Direct parallel to isSeniorForBreed above: pure, nothing stored, computed
 // fresh on every page load from the breed's existing typicalWeight string.
 // No added margin — true only when currentWeight exceeds the parsed range's
@@ -4630,7 +4658,7 @@ function buildPetProofingHtml(dog) {
       ${section.items.map(item => `<li>${item}</li>`).join('')}
     </ul>`).join('');
 
-  const isSenior = isSeniorForBreed(dog.age, dog.breed);
+  const isSenior = isSeniorForBreed(getDogAgeInYears(dog), dog.breed);
   const seniorIntro = isSenior
     ? `${dogName} is currently considered a senior for their breed, based on age and breed size. Here are some extra things many senior dog owners consider:`
     : `As dogs age, many owners find a few extra home adjustments helpful. Worth keeping in mind as ${dogName} gets older:`;
@@ -4972,7 +5000,7 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
     const currentMobility = latestCheckins?.[0]?.mobility_score ?? dog.baseline_mobility_score;
 
     // Senior-by-breed-size flag — live, nothing stored (see helpers above getBreedGuide).
-    const isSenior = isSeniorForBreed(dog.age, dog.breed);
+    const isSenior = isSeniorForBreed(getDogAgeInYears(dog), dog.breed);
     const seniorSectionHeading = isSenior ? 'Senior Health Patterns' : 'Looking Ahead';
     const seniorSectionCopy = isSenior ? guide.seniorPatterns : getNotYetSeniorCopy(dog.breed);
     const seniorSectionBlock = currentWeek >= 4
@@ -5728,7 +5756,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
 
     // Senior-by-breed-size flag — live, nothing stored (see helpers defined
     // near getBreedGuide/BREED_GUIDES above).
-    const isSenior = isSeniorForBreed(dog.age, dog.breed);
+    const isSenior = isSeniorForBreed(getDogAgeInYears(dog), dog.breed);
 
     // Overweight-by-breed flag, same live/nothing-stored pattern. Reuses
     // currentWeightValue (already resolved above: latest weight-bearing
@@ -6245,7 +6273,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
           <div class="header">
             <div style="margin: 0 0 14px 0;">${buildBrandLockup({ iconPx: 30, fontPx: 18 })}</div>
             <h1><i data-lucide="bar-chart-3"></i> ${escapeHtml(dog.dog_name)}'s Mobility Dashboard</h1>
-            <p>${escapeHtml(dog.breed) || ''} • ${dog.age || 'Age unknown'} years old • ${dog.gender || 'Gender unknown'}</p>
+            <p>${escapeHtml(dog.breed) || ''} • ${formatDogAge(dog.age, dog.age_months)} • ${dog.gender || 'Gender unknown'}</p>
             <div class="week-progress">
               <span>Baseline ✓</span>
               <span>·</span>
@@ -6322,7 +6350,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
                   <div style="flex: 1;">
                     <h2 style="margin: 0 0 8px 0; font-size: 22px; font-weight: 500; color: #2C2C2C;">${escapeHtml(dog.dog_name)}'s Health Journey</h2>
                     <p style="margin: 0 0 4px 0; font-size: 13px; color: #999; font-weight: 400;">
-                      ${escapeHtml(dog.breed) || 'Breed unknown'} • ${dog.age || 'Age unknown'} years old • ${dog.gender || 'Gender unknown'}
+                      ${escapeHtml(dog.breed) || 'Breed unknown'} • ${formatDogAge(dog.age, dog.age_months)} • ${dog.gender || 'Gender unknown'}
                       ${dog.spayed_neutered ? ` • ${dog.spayed_neutered === 'yes' ? 'Fixed' : 'Not Fixed'}` : ''}
                       ${dog.diet_type ? ` • ${DIET_TYPE_LABELS[dog.diet_type] || dog.diet_type}` : ''}
                       ${dog.pet_insurance ? ` • ${dog.pet_insurance === 'yes' ? 'Insured' : dog.pet_insurance === 'no' ? 'No Insurance' : 'Insurance Unknown'}` : ''}
@@ -6602,7 +6630,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
               </div>
             </div>
             <p style="margin: 0 0 4px 0; font-size: 13px; color: #666;">
-              ${escapeHtml(dog.breed) || 'Breed unknown'} • ${dog.age || 'Age unknown'} years old • ${dog.gender || 'Gender unknown'}
+              ${escapeHtml(dog.breed) || 'Breed unknown'} • ${formatDogAge(dog.age, dog.age_months)} • ${dog.gender || 'Gender unknown'}
               ${dog.spayed_neutered ? ` • ${dog.spayed_neutered === 'yes' ? 'Fixed' : 'Not Fixed'}` : ''}
               ${dog.diet_type ? ` • ${DIET_TYPE_LABELS[dog.diet_type] || dog.diet_type}` : ''}
               ${dog.pet_insurance ? ` • ${dog.pet_insurance === 'yes' ? 'Insured' : dog.pet_insurance === 'no' ? 'No Insurance' : 'Insurance Unknown'}` : ''}
@@ -7355,7 +7383,8 @@ app.post('/api/send-magic-link', async (req, res) => {
     const {
       dog_name,
       breed,
-      age,
+      age_years,
+      age_months,
       gender,
       baseline_mobility_getting_up,
       baseline_mobility_stairs,
@@ -7382,11 +7411,40 @@ app.post('/api/send-magic-link', async (req, res) => {
       medications
     } = req.body;
 
-    // Validate required fields
-    if (!dog_name || !breed || !age || !gender || !email || !phone || !consent) {
+    // Validate required fields. Age is checked separately below, not with
+    // a bare `!age` truthy check here -- a dog under 1 year old can now
+    // have a genuinely valid age_years of 0, which `!age_years` would
+    // wrongly reject.
+    if (!dog_name || !breed || !gender || !email || !phone || !consent) {
       return res.status(400).json({
         success: false,
         error: 'Missing required fields'
+      });
+    }
+
+    // Age now supports dogs under 1 year old (years + months, not a forced
+    // whole-year minimum) -- see migration_add_dog_age_months.sql. Parsed
+    // and range-checked here, before sanitization, so a bad value fails
+    // fast with a specific message rather than falling through to the
+    // generic "Invalid input values" check further down.
+    const cleanAgeYears = parseInt(age_years);
+    const cleanAgeMonths = parseInt(age_months);
+    if (isNaN(cleanAgeYears) || cleanAgeYears < 0 || cleanAgeYears > 30) {
+      return res.status(400).json({
+        success: false,
+        error: 'Age (years) must be a number between 0 and 30'
+      });
+    }
+    if (isNaN(cleanAgeMonths) || cleanAgeMonths < 0 || cleanAgeMonths > 11) {
+      return res.status(400).json({
+        success: false,
+        error: 'Age (months) must be a number between 0 and 11'
+      });
+    }
+    if (cleanAgeYears === 0 && cleanAgeMonths === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Please enter a valid age for your dog'
       });
     }
 
@@ -7424,7 +7482,6 @@ app.post('/api/send-magic-link', async (req, res) => {
     // human name. Empty string when omitted, not null, matching how the
     // rest of this route already handles optional fields (e.g. observations).
     const cleanOwnerName = owner_name ? sanitizeName(owner_name, 100) : '';
-    const cleanAge = parseInt(age);
     const cleanGender = sanitizeSelect(gender, ['male', 'female', 'unknown']);
     const cleanEmail = sanitizeEmail(email);
     const cleanPhone = sanitizePhone(phone);
@@ -7486,19 +7543,12 @@ app.post('/api/send-magic-link', async (req, res) => {
 
     console.log(`📝 Baseline received for ${cleanName}: mobility=${cleanMobilityComposite}, energy=${cleanEnergy}, appetite=${cleanAppetite}, cognitive=${cleanCognitiveComposite}`);
 
-    // Validate parsed values
-    if (!cleanName || !cleanBreed || isNaN(cleanAge)) {
+    // Validate parsed values. Age was already validated above, before
+    // sanitization -- not repeated here.
+    if (!cleanName || !cleanBreed) {
       return res.status(400).json({
         success: false,
         error: 'Invalid input values'
-      });
-    }
-
-    // Validate age range
-    if (cleanAge < 1 || cleanAge > 30) {
-      return res.status(400).json({
-        success: false,
-        error: 'Age must be between 1 and 30'
       });
     }
 
@@ -7633,7 +7683,8 @@ app.post('/api/send-magic-link', async (req, res) => {
         phone: cleanPhone,
         dog_name: cleanName,
         breed: cleanBreed,
-        age: cleanAge,
+        age: cleanAgeYears,
+        age_months: cleanAgeMonths,
         gender: cleanGender,
         baseline_mobility_getting_up: cleanMobilityItems[0],
         baseline_mobility_stairs: cleanMobilityItems[1],
@@ -8045,6 +8096,7 @@ app.get('/verify', async (req, res) => {
         dog_name: tokenData.dog_name,
         breed: tokenData.breed,
         age: tokenData.age,
+        age_months: tokenData.age_months,
         gender: tokenData.gender,
         baseline_mobility_getting_up: tokenData.baseline_mobility_getting_up,
         baseline_mobility_stairs: tokenData.baseline_mobility_stairs,
@@ -8244,7 +8296,8 @@ app.post('/api/add-dog', async (req, res) => {
       owner_id,
       dog_name,
       breed,
-      age,
+      age_years,
+      age_months,
       gender,
       baseline_mobility_getting_up,
       baseline_mobility_stairs,
@@ -8267,10 +8320,35 @@ app.post('/api/add-dog', async (req, res) => {
       access_token
     } = req.body;
 
-    if (!owner_id || !dog_name || !breed || !age || !gender || !consent) {
+    // Age is checked separately below, not with a bare `!age` truthy check
+    // here -- see the matching comment in /api/send-magic-link.
+    if (!owner_id || !dog_name || !breed || !gender || !consent) {
       return res.status(400).json({
         success: false,
         error: 'Missing required fields'
+      });
+    }
+
+    // Same age validation as /api/send-magic-link -- see that route's
+    // comment for the full reasoning.
+    const cleanAgeYears = parseInt(age_years);
+    const cleanAgeMonths = parseInt(age_months);
+    if (isNaN(cleanAgeYears) || cleanAgeYears < 0 || cleanAgeYears > 30) {
+      return res.status(400).json({
+        success: false,
+        error: 'Age (years) must be a number between 0 and 30'
+      });
+    }
+    if (isNaN(cleanAgeMonths) || cleanAgeMonths < 0 || cleanAgeMonths > 11) {
+      return res.status(400).json({
+        success: false,
+        error: 'Age (months) must be a number between 0 and 11'
+      });
+    }
+    if (cleanAgeYears === 0 && cleanAgeMonths === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Please enter a valid age for your dog'
       });
     }
 
@@ -8316,7 +8394,6 @@ app.post('/api/add-dog', async (req, res) => {
     // segment length across every template that interpolates dog_name).
     const cleanName = sanitizeName(dog_name, 40);
     const cleanBreed = sanitizeName(breed);
-    const cleanAge = parseInt(age);
     const cleanGender = sanitizeSelect(gender, ['male', 'female', 'unknown']);
     const cleanObservations = sanitizeString(observations, 500);
 
@@ -8357,12 +8434,9 @@ app.post('/api/add-dog', async (req, res) => {
     const cleanMobilityComposite = computeCompositeScore(cleanMobilityItems) ?? null;
     const cleanCognitiveComposite = computeCompositeScore(cleanCognitiveItems) ?? null;
 
-    if (!cleanName || !cleanBreed || isNaN(cleanAge)) {
+    // Age was already validated above, before sanitization.
+    if (!cleanName || !cleanBreed) {
       return res.status(400).json({ success: false, error: 'Invalid input values' });
-    }
-
-    if (cleanAge < 1 || cleanAge > 30) {
-      return res.status(400).json({ success: false, error: 'Age must be between 1 and 30' });
     }
 
     const cleanWeight = parseInt(weight_lbs);
@@ -8405,7 +8479,8 @@ app.post('/api/add-dog', async (req, res) => {
       .insert({
         dog_name: cleanName,
         breed: cleanBreed,
-        age: cleanAge,
+        age: cleanAgeYears,
+        age_months: cleanAgeMonths,
         gender: cleanGender,
         baseline_mobility_getting_up: cleanMobilityItems[0],
         baseline_mobility_stairs: cleanMobilityItems[1],
@@ -8465,7 +8540,7 @@ app.post('/api/add-dog', async (req, res) => {
       owner.email || '',
       cleanName,
       cleanBreed,
-      cleanAge,
+      cleanAgeYears,
       cleanGender,
       cleanWeight ?? '',
       cleanMobilityComposite ?? '',

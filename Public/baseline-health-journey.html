@@ -175,16 +175,38 @@
               </div>
 
               <div class="form-group">
-                <label for="age">Your dog's age (in years) *</label>
-                <input
-                  type="number"
-                  id="age"
-                  name="age"
-                  required
-                  min="1"
-                  max="30"
-                  placeholder="e.g., 10"
-                />
+                <label>Your dog's age *</label>
+                <div style="display: flex; gap: 12px;">
+                  <div style="flex: 1;">
+                    <input
+                      type="number"
+                      id="ageYears"
+                      name="age_years"
+                      required
+                      min="0"
+                      max="30"
+                      placeholder="Years"
+                      aria-label="Age in years"
+                    />
+                  </div>
+                  <div style="flex: 1;">
+                    <select id="ageMonths" name="age_months" aria-label="Age in months (remainder)">
+                      <option value="0">0 months</option>
+                      <option value="1">1 month</option>
+                      <option value="2">2 months</option>
+                      <option value="3">3 months</option>
+                      <option value="4">4 months</option>
+                      <option value="5">5 months</option>
+                      <option value="6">6 months</option>
+                      <option value="7">7 months</option>
+                      <option value="8">8 months</option>
+                      <option value="9">9 months</option>
+                      <option value="10">10 months</option>
+                      <option value="11">11 months</option>
+                    </select>
+                  </div>
+                </div>
+                <small style="color: #999; display: block; margin-top: 4px;">If your dog is under a year old, enter 0 for years and pick the closest number of months.</small>
               </div>
 
               <div class="form-group">
