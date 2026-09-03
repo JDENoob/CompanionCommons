@@ -1,6 +1,6 @@
 # CompanionCommons — Legal Pages Publish Build
 **Started:** September 3, 2026
-**Status:** Phase 2 (implementation) complete. `privacy.html` and `terms.html` live content replaced with the reviewed drafts; consent checkbox strengthened on both signup surfaces; two pre-existing same-tab/wrong-destination links fixed. See Phase 2 section below.
+**Status:** Phase 2 (implementation) complete and live on production. Phase 3 (FAQ verbiage pass) is investigation-only — findings below, no content changed on `faqs.html` yet.
 **Purpose:** Standalone tracking document for replacing the live `Public/privacy.html` and `Public/terms.html` content with the reviewed rewrite drafts in `docs/LEGAL-DRAFTS/`. Tracked separately from the main build log given the scope, matching the pattern set by `Multi_Dog_Signup_Build.md`, `Health_Instrument_Redesign_Build.md`, and `Link_Revocation_Build.md`.
 
 ---
@@ -121,3 +121,52 @@ Found while looking for anything else referencing legal-page content that might 
 > "Your notes are stored, but only as a method to populate your dashboard. **We do not use notes for any intelligence at this time.**"
 
 The new `privacy.html` §5 states this as a permanent, architecturally-enforced rule ("never included in any aggregate dataset, licensed dataset, or export of any kind... enforced directly in how our systems are built"), not a "not yet" — the FAQ's "at this time" phrasing now undersells and slightly misrepresents a stronger real commitment. The same FAQ answer also lists a narrower set of collected fields (name, age, breed, gender, baseline/weekly answers) than the new Privacy Policy §2 actually discloses (zip code, phone, email, weight, spay/neuter status, diet type, insurance status, medication category, condition treated). Neither is a compliance-critical gap (the FAQ isn't the legal document, and it doesn't contradict the new pages so much as understate them) but it's a real, findable inconsistency now that the two real legal pages are live and specific. No date/jurisdiction language exists on `faqs.html` to check for drift. Recommend a follow-up pass to align `#f6`'s wording with the new Privacy Policy — not scoped or done as part of this task.
+
+---
+
+## Phase 3 — FAQ verbiage pass (Sept 3, 2026) — investigation only, no content changed
+
+Full current content of `Public/faqs.html` read in full (21 FAQ entries across 6 groups, plus a Communication Promise block and footer). Every entry touching data sharing/licensing, who CompanionCommons shares with, consent, retention, account/link access, opt-out, medical/diagnostic disclaimers, and governing law/jurisdiction was cross-checked line-by-line against the actual live `privacy.html`/`terms.html` content (the same text committed and verified live on production earlier this session, not the drafts). `faqs.html` itself is untouched — findings only.
+
+### Clean — no discrepancy found
+
+- **`#f19` "Is this a veterinary service?"** — matches Terms §2/§4 almost verbatim (same standing vet-disclaimer language already used site-wide in the footer). **PASS.**
+- **`#f16` "What is aggregated and de-identified data?"** — illustrative example, consistent with Privacy §6/§7, not a factual claim requiring precision. **PASS.**
+- **`#f20` "Do you sell pet products?"** — consistent with Privacy §4/§6's no-advertising, no-product-promotion commitment. **PASS.**
+- **Governing law / jurisdiction** — `faqs.html` makes zero jurisdiction, governing-law, or "United States residents only" claims anywhere on the page (confirmed via grep for "governed by", "United States", "resident", "Effective", date strings — no matches). Nothing to contradict Terms §3/§13's US-residency requirement or the Texas governing-law clause. **PASS by absence**, not by an accurate statement — if a jurisdiction claim is ever added to the FAQ, it needs to match Terms §3/§13.
+- **Footer legal-page links** (lines 510, 513, 515) — `trust-and-data.html`, `privacy.html`, `terms.html` — all three point to the correct, currently-live pages. **PASS.**
+
+### Real discrepancies found, none fixed yet
+
+**1. `#f6` "What information do you collect?" — HIGH.** Already flagged above (Sept 3 follow-on note). Restated here as part of the full pass: the "we do not use notes for any intelligence **at this time**" phrasing understates Privacy §5's permanent, architecturally-enforced exclusion, and the listed field set (name, age, breed, gender) omits zip code, phone, email, weight, spay/neuter status, diet type, pet insurance, medication category, and condition treated — all real, disclosed fields per Privacy §2.
+
+**2. `#f5`/`#f7`/`#f18` — the "who do you share with" cluster — HIGH.** None of these three answers discloses that de-identified, aggregated data (and predictive models trained on it) is actively **licensed to named categories of external companies** — pharmaceutical companies, research institutions, supplement companies, pet food and nutrition companies, pet insurance companies, pet product manufacturers, and select retailers (Privacy §6, "What we share") — as CompanionCommons's stated **core business model**, not an incidental use. Instead:
+   - `#f5` ("Will you sell my personal information?") answers with "we may use aggregated, de-identified data to understand broader health trends" — reads as internal analysis, not external licensing to for-profit companies.
+   - `#f7` ("Who can access my information?") says aggregated data is "used to understand patterns and trends" — same gap.
+   - `#f18` ("How does Companion Commons make money?") says "aggregated insights, research, and enterprise licensing" — closer, but doesn't name the licensee categories or mention predictive models (Privacy §6 explicitly: "We license de-identified, aggregated pet health information — **and predictive models trained on that information**").
+
+   None of these is technically false (the FAQ never claims data *isn't* shared externally), but all three are materially vaguer than what the real, now-live policy states plainly and specifically — exactly the "vaguer than the real policy" category flagged in the task.
+
+**3. `#f21` "Am I in a research study?" — MEDIUM.** Says "Your participation is voluntary." Privacy §6 ("Your participation") states participation and licensing consent are **bundled, not separable**: *"If you're unwilling or unable to allow your pet's health information to be licensed, this program can't be offered to you."* A reader could reasonably take "voluntary participation" to mean they can log data without their pet's de-identified information being included in the licensed dataset — the real policy says that's not an option. The FAQ's claim that "your private information is protected with strict confidentiality" is also loose given that de-identified *pet health* information is explicitly licensed out, not kept internal — though this is likely fine if read narrowly as referring to identifying information specifically, which is the FAQ answer's apparent intent.
+
+**4. `#f8` "What happens if I leave?" — MEDIUM.** Correctly describes the *mechanisms* (Reply STOP for SMS, the real unsubscribe link for email, contact us) — all still accurate against Privacy §8 and the real, working email-unsubscribe feature (Sept 1 build). But it never addresses **retention** — Privacy §9 draws a real distinction the FAQ doesn't: identifying information (name/email/phone) can be deleted on request, but *"your pet's already-contributed de-identified information remains part of the aggregate dataset — it simply can no longer be traced back to you."* "Your journey ends when you want it to" could reasonably be read as "everything about my pet goes away," which isn't accurate.
+
+**5. `#f11` "Can I track multiple pets?" — LOW/MEDIUM.** Accurately describes the feature (add-a-dog button, one signup) but says nothing about the **account/link access model** disclosed in Terms §5: CompanionCommons has no passwords — dashboard/check-in links function as the access credential, don't expire, and "anyone who has one can view your account's information or add a pet to it," with an explicit instruction to treat links like a password. Given "account/link access model" was named as one of the categories to check, this is a real omission, not a contradiction.
+
+**6. `#f15` "How is my information used?" — LOW.** References "our Privacy Policy" **by name but not as a link** (`Public/faqs.html:374` — plain text, no `<a href="privacy.html">`), inconsistent with the footer's own linked references to the same page and with `#f8`'s linked "contact us form." Content itself is a fair paraphrase of Privacy §4, not contradicted — this is a missed-link issue (task item 4), not a factual one.
+
+### Item 4 — every `trust-and-data.html`/`privacy.html`/`terms.html` reference on the page
+
+| Line | Text | Target | Correct? |
+|---|---|---|---|
+| 55 | Nav "Trust & Privacy" | `trust-and-data.html` | ✅ |
+| 374 | "our Privacy Policy" (`#f15`) | *plain text, not linked* | ⚠️ should be a real link now that the page is live (see finding 6) |
+| 510 | Footer "Trust, Privacy & Independence" | `trust-and-data.html` | ✅ |
+| 513 | Footer "Privacy Policy" | `privacy.html` | ✅ |
+| 515 | Footer "Terms of Service" | `terms.html` | ✅ |
+
+Every actual `<a>` tag pointing at one of the three pages resolves correctly. The only gap is the one un-linked mention.
+
+### Summary
+
+No `faqs.html` content changed. Six real findings (two HIGH, two MEDIUM, two LOW) — the two HIGH findings (`#f6`'s stale "not at this time" framing plus incomplete field list, and the `#f5`/`#f7`/`#f18` cluster's vague-vs-specific gap on who data is actually licensed to) are the closest analogs to the earlier stale consent-persistence finding: not outright false, but describing a materially softer or less specific reality than what the site now actually, explicitly commits to in writing.
