@@ -503,18 +503,61 @@
             <fieldset>
               <legend>A Few More Details</legend>
 
+              <!-- Merged treatment-category + medication entry system.
+                   Checking a non-"none" checkbox reveals an inline entry
+                   section locked to that category (a hidden .med-category
+                   input, not a visible dropdown -- category is implied by
+                   which checkbox is checked, so there's nothing left for a
+                   dropdown to disambiguate). Supports multiple entries per
+                   category via "+ Add another". Unchecking a box that
+                   already has a filled-in entry confirms before discarding
+                   it. Category values must stay in sync with server.js's
+                   MEDICATION_CATEGORIES / TREATMENT_CATEGORY_LABELS. Same
+                   markup/JS hand-copied verbatim into add-dog.html -- see
+                   the comment there. -->
               <div class="form-group">
                 <label>Current treatments (check all that apply)</label>
                 <div class="checkbox-list">
                   <label class="checkbox-line"><input type="checkbox" name="treatment_category" value="none" id="treatmentNone"> None</label>
-                  <label class="checkbox-line"><input type="checkbox" name="treatment_category" value="joint_supplement"> Joint supplement (e.g., glucosamine)</label>
-                  <label class="checkbox-line"><input type="checkbox" name="treatment_category" value="nsaid"> NSAID / anti-inflammatory</label>
-                  <label class="checkbox-line"><input type="checkbox" name="treatment_category" value="steroid"> Steroid</label>
-                  <label class="checkbox-line"><input type="checkbox" name="treatment_category" value="pain_medication"> Pain medication</label>
-                  <label class="checkbox-line"><input type="checkbox" name="treatment_category" value="other_prescription"> Other prescription medication</label>
-                  <label class="checkbox-line"><input type="checkbox" name="treatment_category" value="other_supplement"> Other supplement</label>
                 </div>
-                <small style="color: #999; display: block; margin-top: 4px;">We just need the general category — no need to tell us the specific drug or dosage.</small>
+                <small style="color: #999; display: block; margin-top: 4px;">We just need the general category — no need to tell us the specific drug or dosage. Checking a box below will ask a couple of quick follow-up questions.</small>
+              </div>
+
+              <div class="treatment-category-block" data-category="joint_supplement">
+                <label class="checkbox-line"><input type="checkbox" name="treatment_category" value="joint_supplement" class="treatment-checkbox"> Joint supplement (e.g., glucosamine)</label>
+                <div class="treatment-category-entries" data-category-entries="joint_supplement" style="margin: 8px 0 16px 24px;" hidden>
+                  <button type="button" class="add-category-entry-btn button-secondary" data-category="joint_supplement" style="margin-top: 8px; font-size: 13px;">+ Add another joint supplement entry</button>
+                </div>
+              </div>
+              <div class="treatment-category-block" data-category="nsaid">
+                <label class="checkbox-line"><input type="checkbox" name="treatment_category" value="nsaid" class="treatment-checkbox"> NSAID / anti-inflammatory</label>
+                <div class="treatment-category-entries" data-category-entries="nsaid" style="margin: 8px 0 16px 24px;" hidden>
+                  <button type="button" class="add-category-entry-btn button-secondary" data-category="nsaid" style="margin-top: 8px; font-size: 13px;">+ Add another NSAID / anti-inflammatory entry</button>
+                </div>
+              </div>
+              <div class="treatment-category-block" data-category="steroid">
+                <label class="checkbox-line"><input type="checkbox" name="treatment_category" value="steroid" class="treatment-checkbox"> Steroid</label>
+                <div class="treatment-category-entries" data-category-entries="steroid" style="margin: 8px 0 16px 24px;" hidden>
+                  <button type="button" class="add-category-entry-btn button-secondary" data-category="steroid" style="margin-top: 8px; font-size: 13px;">+ Add another steroid entry</button>
+                </div>
+              </div>
+              <div class="treatment-category-block" data-category="pain_medication">
+                <label class="checkbox-line"><input type="checkbox" name="treatment_category" value="pain_medication" class="treatment-checkbox"> Pain medication</label>
+                <div class="treatment-category-entries" data-category-entries="pain_medication" style="margin: 8px 0 16px 24px;" hidden>
+                  <button type="button" class="add-category-entry-btn button-secondary" data-category="pain_medication" style="margin-top: 8px; font-size: 13px;">+ Add another pain medication entry</button>
+                </div>
+              </div>
+              <div class="treatment-category-block" data-category="other_prescription">
+                <label class="checkbox-line"><input type="checkbox" name="treatment_category" value="other_prescription" class="treatment-checkbox"> Other prescription medication</label>
+                <div class="treatment-category-entries" data-category-entries="other_prescription" style="margin: 8px 0 16px 24px;" hidden>
+                  <button type="button" class="add-category-entry-btn button-secondary" data-category="other_prescription" style="margin-top: 8px; font-size: 13px;">+ Add another prescription medication entry</button>
+                </div>
+              </div>
+              <div class="treatment-category-block" data-category="other_supplement">
+                <label class="checkbox-line"><input type="checkbox" name="treatment_category" value="other_supplement" class="treatment-checkbox"> Other supplement</label>
+                <div class="treatment-category-entries" data-category-entries="other_supplement" style="margin: 8px 0 16px 24px;" hidden>
+                  <button type="button" class="add-category-entry-btn button-secondary" data-category="other_supplement" style="margin-top: 8px; font-size: 13px;">+ Add another supplement entry</button>
+                </div>
               </div>
 
               <div class="form-group">
@@ -541,72 +584,44 @@
               </div>
             </fieldset>
 
-            <!-- Medications & Supplements (repeating, optional). Same
-                 markup/JS hand-copied verbatim into add-dog.html -- see
-                 the comment there. Category values must stay in sync with
-                 server.js's MEDICATION_CATEGORIES / TREATMENT_CATEGORY_LABELS. -->
-            <fieldset>
-              <legend>Medications &amp; Supplements (Optional)</legend>
-              <p style="color: #666; font-size: 14px; margin: 0 0 16px 0;">
-                Add anything your dog is currently on. We'll ask about changes week to week.
-                No need to tell us the specific drug name or dosage.
-              </p>
-
-              <div id="medicationsContainer"></div>
-
-              <button type="button" id="addMedicationBtn" class="button-secondary" style="margin-top: 8px;">
-                + Add a Medication or Supplement
-              </button>
-
-              <template id="medicationRowTemplate">
-                <div class="medication-row" style="border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-top: 12px; position: relative;">
-                  <button type="button" class="remove-medication-btn" style="position: absolute; top: 10px; right: 10px; background: none; border: none; color: #999; cursor: pointer; font-size: 18px;" aria-label="Remove">✕</button>
-                  <div class="form-group">
-                    <label>Category *</label>
-                    <select class="med-category" required>
-                      <option value="">Select...</option>
-                      <option value="joint_supplement">Joint supplement (e.g., glucosamine)</option>
-                      <option value="nsaid">NSAID / anti-inflammatory</option>
-                      <option value="steroid">Steroid</option>
-                      <option value="pain_medication">Pain medication</option>
-                      <option value="other_prescription">Other prescription medication</option>
-                      <option value="other_supplement">Other supplement</option>
-                    </select>
-                  </div>
-                  <div class="form-group">
-                    <label>What's it for? *</label>
-                    <select class="med-condition" required>
-                      <option value="">Select...</option>
-                      <option value="arthritis_joint_pain">Arthritis / joint pain</option>
-                      <option value="hip_elbow_dysplasia">Hip or elbow dysplasia</option>
-                      <option value="allergies">Allergies</option>
-                      <option value="skin_condition">Skin condition</option>
-                      <option value="digestive_gi">Digestive / GI issue</option>
-                      <option value="anxiety_behavioral">Anxiety / behavioral</option>
-                      <option value="ear_infection">Ear infection</option>
-                      <option value="chronic_pain_other">Chronic pain (other)</option>
-                      <option value="post_surgical_recovery">Post-surgical recovery</option>
-                      <option value="other">Other</option>
-                    </select>
-                    <div class="med-condition-other-wrap" style="display: none; margin-top: 8px;">
-                      <input type="text" class="med-condition-other" maxlength="200" placeholder="Briefly describe the condition">
-                    </div>
-                  </div>
-                  <div class="form-group">
-                    <label>How do you know this? *</label>
-                    <select class="med-source" required>
-                      <option value="">Select...</option>
-                      <option value="owner_observed">I've noticed this myself</option>
-                      <option value="owner_reported_vet_diagnosis">A vet told us this</option>
-                    </select>
-                  </div>
-                  <div class="form-group">
-                    <label>Date started *</label>
-                    <input type="date" class="med-date-started" required>
+            <template id="medicationRowTemplate">
+              <div class="medication-row" style="border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-top: 12px; position: relative;">
+                <button type="button" class="remove-medication-btn" style="position: absolute; top: 10px; right: 10px; background: none; border: none; color: #999; cursor: pointer; font-size: 18px;" aria-label="Remove">✕</button>
+                <input type="hidden" class="med-category">
+                <div class="form-group">
+                  <label>What's it for? *</label>
+                  <select class="med-condition" required>
+                    <option value="">Select...</option>
+                    <option value="arthritis_joint_pain">Arthritis / joint pain</option>
+                    <option value="hip_elbow_dysplasia">Hip or elbow dysplasia</option>
+                    <option value="allergies">Allergies</option>
+                    <option value="skin_condition">Skin condition</option>
+                    <option value="digestive_gi">Digestive / GI issue</option>
+                    <option value="anxiety_behavioral">Anxiety / behavioral</option>
+                    <option value="ear_infection">Ear infection</option>
+                    <option value="chronic_pain_other">Chronic pain (other)</option>
+                    <option value="post_surgical_recovery">Post-surgical recovery</option>
+                    <option value="other">Other</option>
+                  </select>
+                  <div class="med-condition-other-wrap" style="display: none; margin-top: 8px;">
+                    <input type="text" class="med-condition-other" maxlength="200" placeholder="Briefly describe the condition">
+                    <small style="color: #999; display: block; margin-top: 4px;">This isn't reviewed or filtered — avoid including anything you wouldn't want stored as plain text.</small>
                   </div>
                 </div>
-              </template>
-            </fieldset>
+                <div class="form-group">
+                  <label>How do you know this? *</label>
+                  <select class="med-source" required>
+                    <option value="">Select...</option>
+                    <option value="owner_observed">I've noticed this myself</option>
+                    <option value="owner_reported_vet_diagnosis">A vet told us this</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Date started *</label>
+                  <input type="date" class="med-date-started" required>
+                </div>
+              </div>
+            </template>
 
             <!-- Consent (per-dog — Phase B) -->
             <fieldset>
@@ -717,28 +732,35 @@
         }
       }
 
-      // "None" checkbox clears other treatment checkboxes, and vice versa
-      const treatmentBoxes = document.querySelectorAll('input[name="treatment_category"]');
-      const noneBox = document.getElementById('treatmentNone');
-      treatmentBoxes.forEach(box => {
-        box.addEventListener('change', () => {
-          if (box === noneBox && noneBox.checked) {
-            treatmentBoxes.forEach(b => { if (b !== noneBox) b.checked = false; });
-          } else if (box !== noneBox && box.checked) {
-            noneBox.checked = false;
-          }
-        });
-      });
-
-      // Repeating medications section: add/remove rows from the
-      // <template>, and collect them into the array shape the backend
-      // expects on submit. Same markup/JS hand-copied into add-dog.html.
-      const medicationsContainer = document.getElementById('medicationsContainer');
+      // Merged treatment-category + medication entry system. Checking a
+      // non-"none" checkbox reveals an inline entry section locked to that
+      // category (a hidden .med-category input, not a visible dropdown --
+      // category is implied by which checkbox is checked). Multiple
+      // entries per category are supported via "+ Add another". Unchecking
+      // a box that already has a filled-in entry confirms before
+      // discarding it, matching this form's existing "fail loudly, don't
+      // silently drop" instinct (see the score-item validation above).
+      // Same markup/JS hand-copied into add-dog.html.
       const medicationRowTemplate = document.getElementById('medicationRowTemplate');
 
-      function addMedicationRow() {
+      function rowHasAnyData(row) {
+        return !!(
+          row.querySelector('.med-condition').value ||
+          row.querySelector('.med-condition-other').value.trim() ||
+          row.querySelector('.med-source').value ||
+          row.querySelector('.med-date-started').value
+        );
+      }
+
+      function addMedicationRow(category, entriesDiv, addBtn) {
         const row = medicationRowTemplate.content.firstElementChild.cloneNode(true);
-        row.querySelector('.remove-medication-btn').addEventListener('click', () => row.remove());
+        row.querySelector('.med-category').value = category;
+        row.querySelector('.remove-medication-btn').addEventListener('click', () => {
+          if (rowHasAnyData(row) && !confirm("Remove this entry? Any details you've entered will be lost.")) {
+            return;
+          }
+          row.remove();
+        });
         // condition_treated is a closed dropdown now (was free text) --
         // the "Other" option reveals a paired free-text detail field,
         // hidden otherwise. Same pattern hand-copied into add-dog.html.
@@ -747,19 +769,70 @@
         conditionSelect.addEventListener('change', () => {
           conditionOtherWrap.style.display = conditionSelect.value === 'other' ? 'block' : 'none';
         });
-        medicationsContainer.appendChild(row);
+        entriesDiv.insertBefore(row, addBtn);
+        return row;
       }
 
-      document.getElementById('addMedicationBtn').addEventListener('click', addMedicationRow);
+      document.querySelectorAll('.treatment-checkbox').forEach(box => {
+        const category = box.value;
+        const entriesDiv = document.querySelector(`[data-category-entries="${category}"]`);
+        const addBtn = entriesDiv.querySelector('.add-category-entry-btn');
+        addBtn.addEventListener('click', () => addMedicationRow(category, entriesDiv, addBtn));
+
+        box.addEventListener('change', () => {
+          if (box.checked) {
+            entriesDiv.hidden = false;
+            if (!entriesDiv.querySelector('.medication-row')) {
+              addMedicationRow(category, entriesDiv, addBtn);
+            }
+          } else {
+            const rows = entriesDiv.querySelectorAll('.medication-row');
+            const hasData = Array.from(rows).some(rowHasAnyData);
+            if (hasData && !confirm("Uncheck this? Any medication/supplement details you've entered for this category will be lost.")) {
+              box.checked = true;
+              return;
+            }
+            rows.forEach(r => r.remove());
+            entriesDiv.hidden = true;
+          }
+        });
+      });
+
+      // "None" checkbox clears every other treatment checkbox. Each box's
+      // own change handler above runs the same confirm-before-discard
+      // check as an explicit uncheck would -- if the owner cancels on any
+      // one of them, "None" itself is reverted rather than ending up
+      // checked alongside a still-checked category.
+      const allTreatmentBoxes = document.querySelectorAll('input[name="treatment_category"]');
+      const noneBox = document.getElementById('treatmentNone');
+      noneBox.addEventListener('change', () => {
+        if (!noneBox.checked) return;
+        let cancelled = false;
+        allTreatmentBoxes.forEach(b => {
+          if (b === noneBox || !b.checked || cancelled) return;
+          b.checked = false;
+          b.dispatchEvent(new Event('change'));
+          if (b.checked) cancelled = true;
+        });
+        if (cancelled) noneBox.checked = false;
+      });
+      allTreatmentBoxes.forEach(box => {
+        if (box === noneBox) return;
+        box.addEventListener('change', () => {
+          if (box.checked) noneBox.checked = false;
+        });
+      });
 
       // Returns { valid: true, medications: [...] } or { valid: false }.
-      // Every row present must be fully filled in (a half-filled row is a
-      // sign the owner started but didn't mean to submit it half-done) --
-      // matching the same "fail loudly, don't silently drop" instinct as
-      // the score-item validation above. "Other" additionally requires
-      // its paired free-text detail field to be filled in.
+      // Scans every category's own entries, not one shared container --
+      // each treatment checkbox now owns its own entry section. Every row
+      // present must be fully filled in (a half-filled row is a sign the
+      // owner started but didn't mean to submit it half-done), matching
+      // the same "fail loudly, don't silently drop" instinct as the
+      // score-item validation above. "Other" additionally requires its
+      // paired free-text detail field to be filled in.
       function collectMedications() {
-        const rows = medicationsContainer.querySelectorAll('.medication-row');
+        const rows = document.querySelectorAll('.treatment-category-entries .medication-row');
         const medications = [];
         for (const row of rows) {
           const category = row.querySelector('.med-category').value;
@@ -799,9 +872,13 @@
         }
 
         const formData = new FormData(e.target);
-        const treatmentCategories = formData.getAll('treatment_category');
         const data = Object.fromEntries(formData);
-        data.treatment_category = treatmentCategories;
+        // Derived from which categories actually have a filled entry, not
+        // a separate checkbox-driven value -- the checkboxes are now just
+        // the UI trigger for those entries, not their own source of truth.
+        data.treatment_category = medResult.medications.length > 0
+          ? [...new Set(medResult.medications.map(m => m.category))]
+          : ['none'];
         data.medications = medResult.medications;
 
         try {
