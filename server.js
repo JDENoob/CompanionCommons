@@ -8631,6 +8631,16 @@ app.get('/verify', async (req, res) => {
       ownerSmsConsent = tokenData.sms_consent === true || tokenData.sms_consent === 'true';
     }
 
+    // Phase 5 Step 2 (final) -- Data_Model_Separation_Build.md: no longer
+    // writes phone/email/sms_consent/zip_code/owner_id here. All 5 are
+    // written exclusively to owner_pet_links now, via createOwnerPetLink
+    // right after this insert (unchanged, below) -- this is no longer a
+    // dual-write, senior_dogs simply doesn't carry these fields for any
+    // dog created from this point on. Every real consumer (the 4 display
+    // routes, the churn cron, /checkins/:owner_id) was already cut over
+    // to read from owner_pet_links/owners instead (Phase 5 Steps 1-2b), and
+    // a fresh full-codebase grep immediately before this change found no
+    // other reader.
     const { data: newDog, error: dogError } = await supabase
       .from('senior_dogs')
       .insert({
@@ -8652,16 +8662,11 @@ app.get('/verify', async (req, res) => {
         baseline_cognitive_sleep_wake: tokenData.baseline_cognitive_sleep_wake,
         baseline_cognitive_score: tokenData.baseline_cognitive_score,
         baseline_notes: tokenData.observations,
-        phone: ownerPhone,
-        email: ownerEmail,
-        sms_consent: ownerSmsConsent,
         weight_lbs: tokenData.weight_lbs,
         spayed_neutered: tokenData.spayed_neutered,
-        zip_code: ownerZip,
         diet_type: tokenData.diet_type,
         pet_insurance: tokenData.pet_insurance,
         treatment_category: tokenData.treatment_category,
-        owner_id: ownerId,
         consent_given_at: tokenData.consent_given_at,
         consent_policy_version: tokenData.consent_policy_version,
         created_at: now,
@@ -9036,6 +9041,11 @@ app.post('/api/add-dog', async (req, res) => {
     const ownerSmsConsent = owner.preferred_contact_method === 'sms' || owner.preferred_contact_method === 'both';
 
     const { data: newDog, error: dogError } = await supabase
+      // Phase 5 Step 2 (final) -- Data_Model_Separation_Build.md: no
+      // longer writes phone/email/sms_consent/zip_code/owner_id here --
+      // written exclusively to owner_pet_links now, via createOwnerPetLink
+      // right after this insert (unchanged, below). Same reasoning as
+      // /verify's identical change.
       .from('senior_dogs')
       .insert({
         dog_name: cleanName,
@@ -9056,16 +9066,11 @@ app.post('/api/add-dog', async (req, res) => {
         baseline_cognitive_sleep_wake: cleanCognitiveItems[3],
         baseline_cognitive_score: cleanCognitiveComposite,
         baseline_notes: cleanObservations,
-        phone: owner.phone,
-        email: owner.email,
-        sms_consent: ownerSmsConsent,
         weight_lbs: cleanWeight,
         spayed_neutered: cleanSpayedNeutered,
-        zip_code: owner.zip_code,
         diet_type: cleanDietType,
         pet_insurance: cleanPetInsurance,
         treatment_category: cleanTreatmentCategories,
-        owner_id: owner.id,
         consent_given_at: now,
         consent_policy_version: CURRENT_CONSENT_POLICY_VERSION,
         created_at: now,
