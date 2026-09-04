@@ -1055,6 +1055,72 @@ async function authorizeOwnerScope(req, ownerId, providedToken) {
   return null;
 }
 
+// ============================================
+// OWNER_PET_LINKS -- data-model separation, Phase 3
+// (docs/Data_Model_Separation_Build.md -- full audit + design rationale)
+//
+// The ONLY functions in this codebase permitted to query owner_pet_links.
+// Every dog/owner-scoped route resolves identity through one of these
+// four -- never a direct .from('owner_pet_links') call anywhere else.
+// Matches this project's existing free-text-export-ban convention:
+// enforced by this comment + code review, not a database permission (see
+// Data_Model_Separation_Build.md's Finding 8 for why a real database-
+// enforced boundary would need a second, lower-privileged credential --
+// a materially larger, separate undertaking, not what this is).
+//
+// Phase 3 status: this table is dual-written at both dog-creation sites
+// (/verify, /api/add-dog) alongside the existing senior_dogs insert.
+// NOTHING reads from it yet -- getOwnerIdForDog/getOwnerContactForDog/
+// getDogsForOwner exist here, correctly implemented, but are not called
+// by any route in this phase. senior_dogs.owner_id/phone/email/zip_code/
+// sms_consent remain the live, actually-read values everywhere until a
+// later phase migrates each call site over and then drops the columns.
+// ============================================
+
+// 1. Read: resolve a dog's owner_id, for access-control decisions only.
+//    Not yet called by any route -- see the Phase 3 status note above.
+async function getOwnerIdForDog(dogId) {
+  const { data } = await supabase.from('owner_pet_links').select('owner_id').eq('dog_id', dogId).maybeSingle();
+  return data?.owner_id || null;
+}
+
+// 2. Read: resolve a dog's owner's real contact info, for the reminder/
+//    churn system and any future export that legitimately needs to reach
+//    the owner. The one function allowed to join owner_pet_links to
+//    owners for phone/email -- everything else must go through this, not
+//    construct its own join. Not yet called by any route.
+async function getOwnerContactForDog(dogId) {
+  const { data: link } = await supabase.from('owner_pet_links').select('owner_id, sms_consent').eq('dog_id', dogId).maybeSingle();
+  if (!link) return null;
+  const { data: owner } = await supabase.from('owners').select('phone, email').eq('id', link.owner_id).maybeSingle();
+  if (!owner) return null;
+  return { owner_id: link.owner_id, phone: owner.phone, email: owner.email, sms_consent: link.sms_consent };
+}
+
+// 3. Read: list an owner's dogs (display fields only -- id/name/photo,
+//    not full health records), for the dashboard dog-switcher and
+//    /checkins/:owner_id. Not yet called by any route.
+async function getDogsForOwner(ownerId) {
+  const { data: links } = await supabase.from('owner_pet_links').select('dog_id').eq('owner_id', ownerId);
+  if (!links || links.length === 0) return [];
+  const dogIds = links.map(l => l.dog_id);
+  const { data: dogs } = await supabase.from('senior_dogs').select('id, dog_name, photo_url, created_at').in('id', dogIds);
+  return dogs || [];
+}
+
+// 4. Write: the ONLY insert path. Called exactly twice in the whole app
+//    -- /verify (new dog via magic link) and /api/add-dog (additional dog
+//    for an existing owner) -- both already have a real, confirmed owner
+//    row in hand at the moment they call this. Throws on failure rather
+//    than swallowing the error: an unlinked dog is a real, not a
+//    cosmetic, bug, and both call sites are expected to roll back their
+//    own just-created senior_dogs row if this throws (see each route's
+//    own comment at its call site).
+async function createOwnerPetLink(ownerId, dogId, smsConsent) {
+  const { error } = await supabase.from('owner_pet_links').insert({ owner_id: ownerId, dog_id: dogId, sms_consent: !!smsConsent });
+  if (error) throw error;
+}
+
 // Shared "your link stopped working" page for every GET route below --
 // one implementation so the copy/design can't drift per-route. Distinct
 // from the pre-existing "dog/owner not found" 404 -- this is "we found
@@ -8512,6 +8578,26 @@ app.get('/verify', async (req, res) => {
 
     const dogId = newDog[0].id;
 
+    // Data-model separation, Phase 3 (Data_Model_Separation_Build.md) --
+    // dual-write to owner_pet_links immediately after the senior_dogs
+    // insert above, same owner_id/sms_consent values, no behavior change
+    // yet (nothing reads from this table this phase). This codebase has
+    // no real multi-table transaction available (confirmed in Phase 1's
+    // Finding 4: every DB call here is a plain PostgREST call, never an
+    // RPC/stored procedure), so if this second insert fails, the
+    // senior_dogs row just created is deleted (best-effort compensating
+    // rollback) rather than left as an orphaned health record with no
+    // owner link -- then the error is re-thrown so this route's own
+    // catch-all below returns the standard error page, exactly as if the
+    // senior_dogs insert itself had failed.
+    try {
+      await createOwnerPetLink(ownerId, dogId, ownerSmsConsent);
+    } catch (linkError) {
+      console.error(`❌ owner_pet_links insert failed for dog ${dogId}, rolling back senior_dogs row:`, linkError.message || linkError);
+      await supabase.from('senior_dogs').delete().eq('id', dogId);
+      throw linkError;
+    }
+
     // Copy staged baseline medications (see migration_add_medications.sql)
     // into real medications rows now that a real dog_id exists. Re-cleaned
     // here, not just trusted from the token — defense in depth, same
@@ -8865,6 +8951,19 @@ app.post('/api/add-dog', async (req, res) => {
 
     const dogId = newDog[0].id;
     console.log(`✅ Profile created via add-dog for ${cleanName} (ID: ${dogId}, owner: ${owner.id})`);
+
+    // Data-model separation, Phase 3 (Data_Model_Separation_Build.md) --
+    // same dual-write and same compensating-rollback reasoning as
+    // /verify's equivalent step above (see that route's comment for the
+    // full rationale on why a delete-and-rethrow, not a real transaction,
+    // is the correct approach given this codebase's Supabase client).
+    try {
+      await createOwnerPetLink(owner.id, dogId, ownerSmsConsent);
+    } catch (linkError) {
+      console.error(`❌ owner_pet_links insert failed for dog ${dogId}, rolling back senior_dogs row:`, linkError.message || linkError);
+      await supabase.from('senior_dogs').delete().eq('id', dogId);
+      throw linkError;
+    }
 
     // No staging needed on this route (dog already exists) -- insert real
     // medications rows directly. Non-fatal on failure, same reasoning as
