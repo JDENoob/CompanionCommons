@@ -1044,7 +1044,14 @@ async function authorizeOwnerScope(req, ownerId, providedToken) {
     return await getOwnerAccessToken(ownerId);
   }
   const realToken = await getOwnerAccessToken(ownerId);
-  if (realToken && providedToken && realToken === providedToken) return realToken;
+  if (!realToken || !providedToken) return null;
+  const realBuf = Buffer.from(realToken, 'utf8');
+  const providedBuf = Buffer.from(providedToken, 'utf8');
+  // Same guard as the session-signature check above -- timingSafeEqual
+  // throws on a length mismatch rather than returning false, so a
+  // wrong-length token is rejected here before ever reaching it.
+  if (realBuf.length !== providedBuf.length) return null;
+  if (crypto.timingSafeEqual(realBuf, providedBuf)) return realToken;
   return null;
 }
 
