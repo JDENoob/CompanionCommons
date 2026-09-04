@@ -7307,29 +7307,33 @@ app.get('/api/signups', async (req, res) => {
 // ============================================
 app.get('/api/governance/stats', async (req, res) => {
     try {
-        // Signup count from senior_dogs — the real, live table. This used
-        // to read from `users`, which is a fully abandoned parallel schema
-        // (users/pets/survey_*/sms_preferences — confirmed at 0 rows, no FK
-        // to senior_dogs, an earlier owner-entity attempt that was never
-        // wired up) that never received data, so this endpoint always
-        // reported zero regardless of real signups.
+        // Real owner count and real dog count, independently — these
+        // diverge for any owner with more than one dog (Multi_Dog_Signup_
+        // Build.md, shipped Aug 22). Previously conflated into one number
+        // under a stale "one dog per signup" assumption written before
+        // that project existed (senior_dogs — the real, live table; this
+        // used to read from `users`, a fully abandoned parallel schema
+        // that never received data, before that was fixed separately).
+        const { count: ownerCount, error: ownersError } = await supabase
+            .from('owners')
+            .select('id', { count: 'exact', head: true });
         const { count: dogCount, error: dogsError } = await supabase
             .from('senior_dogs')
             .select('id', { count: 'exact', head: true });
 
+        if (ownersError) throw ownersError;
         if (dogsError) throw dogsError;
-        const memberCount = dogCount || 0;
-
-        // Today's model is one dog per signup, so "founding members" and
-        // "pets registered" are the same count for now. These will only
-        // diverge once a real Owner entity exists (see the multi-dog-owner
-        // project) and can distinguish unique owners from unique dogs.
-        const petsRegistered = memberCount;
+        const memberCount = ownerCount || 0;
+        const petsRegistered = dogCount || 0;
 
         // SMS opt-in rate from senior_dogs.sms_consent — the real,
         // actively-used consent field (same one the churn cron and the
         // check-in reminder gate already check) — not the dead
-        // sms_preferences table.
+        // sms_preferences table. Denominator is petsRegistered (real dog
+        // count), not memberCount (now real owner count) — sms_consent is
+        // stored per-dog, not per-owner (see Data_Model_Separation_Build.md's
+        // Phase 2 for the full reasoning), so this must stay dog-scoped now
+        // that the two counts are no longer silently identical.
         const { count: smsOptIns, error: smsError } = await supabase
             .from('senior_dogs')
             .select('id', { count: 'exact', head: true })
@@ -7337,7 +7341,7 @@ app.get('/api/governance/stats', async (req, res) => {
 
         if (smsError) console.warn('SMS consent query issue:', smsError);
         const smsOptInCount = smsOptIns || 0;
-        const smsOptInRate = memberCount > 0 ? Math.round((smsOptInCount / memberCount) * 100) : 0;
+        const smsOptInRate = petsRegistered > 0 ? Math.round((smsOptInCount / petsRegistered) * 100) : 0;
 
         // Weekly check-in count from mobility_checkins — the real
         // check-ins table, not the dead survey_weekly_checkins table.
@@ -7348,12 +7352,14 @@ app.get('/api/governance/stats', async (req, res) => {
         if (checkinsError) console.warn('Check-ins query issue:', checkinsError);
         const weeklyCheckIns = checkInCount || 0;
 
-        // Total data points = baseline assessments (one per dog) + weekly check-ins
-        const totalDataPoints = memberCount + weeklyCheckIns;
+        // Total data points = baseline assessments (one per DOG) + weekly
+        // check-ins — petsRegistered, not memberCount, for the same
+        // per-dog reasoning as smsOptInRate above.
+        const totalDataPoints = petsRegistered + weeklyCheckIns;
 
         res.status(200).json({
-            foundingMembers: memberCount,
-            petsRegistered,
+            foundingMembers: memberCount,   // real owner count
+            petsRegistered,                 // real dog count, may exceed foundingMembers
             totalDataPoints,
             weeklyCheckIns,
             smsOptInRate: `${smsOptInRate}%`,
