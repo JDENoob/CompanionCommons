@@ -2562,10 +2562,15 @@ app.get('/check-in/:dog_id', async (req, res) => {
   try {
     const { dog_id } = req.params;
 
-    // Get dog details from database
+    // Get dog details from database. Phase 5 Step 2 (Data_Model_Separation_
+    // Build.md): narrowed from select('*') -- owner_id/phone/email/
+    // zip_code/sms_consent are no longer read (or written, as of this same
+    // step) here; ownership is resolved via getOwnerIdForDog below. Every
+    // remaining column is confirmed by a fresh grep of this route's real
+    // body, not carried over from an earlier sketch.
     const { data: dog, error } = await supabase
       .from('senior_dogs')
-      .select('*')
+      .select('dog_name, created_at, weight_lbs, baseline_mobility_getting_up, baseline_mobility_stairs, baseline_mobility_stiffness_after_rest, baseline_mobility_walk_distance, baseline_energy_score, baseline_appetite_score, baseline_cognitive_orientation, baseline_cognitive_memory, baseline_cognitive_interest, baseline_cognitive_sleep_wake')
       .eq('id', dog_id)
       .single();
 
@@ -2597,10 +2602,7 @@ app.get('/check-in/:dog_id', async (req, res) => {
     // keep this page's own internal links (View Dashboard, the check-in
     // save request) carrying the same token forward.
     // Phase 4 Batch 2 cutover (Data_Model_Separation_Build.md): owner_id
-    // resolved via getOwnerIdForDog(owner_pet_links), not the dog row --
-    // select('*') above is intentionally left unnarrowed this batch
-    // (dog.owner_id/.phone/.email/.zip_code/.sms_consent stay present but
-    // unused by this route; query narrowing is Phase 5's job).
+    // resolved via getOwnerIdForDog(owner_pet_links), not the dog row.
     const ownerIdForAccessCheck = await getOwnerIdForDog(dog_id);
     const resolvedToken = await authorizeOwnerScope(req, ownerIdForAccessCheck, req.query.token || null);
     if (!resolvedToken) {
@@ -3354,10 +3356,18 @@ app.post('/api/checkin-senior', async (req, res) => {
       }
     }
 
-    // Get the dog info
+    // Get the dog info. Phase 5 Step 2 (Data_Model_Separation_Build.md):
+    // narrowed from select('*') -- owner_id/phone/email/zip_code/
+    // sms_consent are no longer read (or written, as of this same step)
+    // here; the reminder-queueing block further down already resolves
+    // contact info separately via getOwnerContactForDog (Phase 4 Batch 3).
+    // Confirmed via a fresh grep of this route's real body that the 4
+    // mobility item fields ARE still needed here (health-alert item-level
+    // threshold comparison, prevRow/baseline fallback) even though the
+    // composite alone was originally assumed sufficient -- included below.
     const { data: dog } = await supabase
       .from('senior_dogs')
-      .select('*')
+      .select('dog_name, created_at, longest_streak, baseline_mobility_score, baseline_mobility_getting_up, baseline_mobility_stairs, baseline_mobility_stiffness_after_rest, baseline_mobility_walk_distance, baseline_energy_score, baseline_appetite_score, baseline_cognitive_score, baseline_cognitive_orientation, baseline_cognitive_memory, baseline_cognitive_interest, baseline_cognitive_sleep_wake')
       .eq('id', dog_id)
       .single();
 
@@ -3374,11 +3384,6 @@ app.post('/api/checkin-senior', async (req, res) => {
     // link no longer works" apart from a real server error.
     // Phase 4 Batch 2 cutover (Data_Model_Separation_Build.md): owner_id
     // resolved via getOwnerIdForDog(owner_pet_links) for THIS check only.
-    // dog.owner_id/.phone/.sms_consent further down (the proactive
-    // next-check-in reminder queueing) are deliberately left reading from
-    // the still-full select('*') result -- that's a separate cutover
-    // (getOwnerContactForDog, not the bare getOwnerIdForDog) out of scope
-    // for this batch, see Data_Model_Separation_Build.md's Batch 2 note.
     const ownerIdForAccessCheck = await getOwnerIdForDog(dog_id);
     if (!(await authorizeOwnerScope(req, ownerIdForAccessCheck, req.body.access_token || null))) {
       return res.status(403).json({
@@ -5352,9 +5357,15 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
   try {
     const { dog_id } = req.params;
 
+    // Phase 5 Step 2 (Data_Model_Separation_Build.md): narrowed from
+    // select('*') -- owner_id/phone/email/zip_code/sms_consent are no
+    // longer read (or written, as of this same step) here. age/age_months
+    // are needed even though neither is accessed as dog.age directly in
+    // this route's own body -- getDogAgeInYears(dog) reads them internally
+    // (confirmed by checking that helper, not assumed from its name).
     const { data: dog, error: dogError } = await supabase
       .from('senior_dogs')
-      .select('*')
+      .select('dog_name, created_at, breed, photo_url, weight_lbs, age, age_months, baseline_mobility_score, baseline_energy_score, baseline_appetite_score, baseline_cognitive_score')
       .eq('id', dog_id)
       .single();
 
@@ -5856,10 +5867,18 @@ app.get('/dashboard/:dog_id', async (req, res) => {
     const { dog_id } = req.params;
     console.log(`📊 Dashboard request for dog: ${dog_id}`);
 
-    // Fetch dog info
+    // Fetch dog info. Phase 5 Step 2 (Data_Model_Separation_Build.md):
+    // narrowed from select('*') -- owner_id/phone/email/zip_code/
+    // sms_consent are no longer read (or written, as of this same step)
+    // here; ownership is resolved separately via getOwnerIdForDog below.
+    // This is the largest route in the app -- the column list was
+    // rebuilt from a fresh grep of every dog.<field> reference AND every
+    // whole-object passthrough to a helper (getDogAgeInYears(dog),
+    // buildHealthSummary(dog, ...)) in this route's real body, not
+    // carried over from an earlier sketch.
     const { data: dog, error: dogError } = await supabase
       .from('senior_dogs')
-      .select('*')
+      .select('dog_name, breed, age, age_months, gender, weight_lbs, photo_url, diet_type, spayed_neutered, pet_insurance, treatment_category, baseline_notes, longest_streak, created_at, baseline_mobility_getting_up, baseline_mobility_stairs, baseline_mobility_stiffness_after_rest, baseline_mobility_walk_distance, baseline_mobility_score, baseline_energy_score, baseline_appetite_score, baseline_cognitive_orientation, baseline_cognitive_memory, baseline_cognitive_interest, baseline_cognitive_sleep_wake, baseline_cognitive_score')
       .eq('id', dog_id)
       .single();
 
@@ -5897,11 +5916,11 @@ app.get('/dashboard/:dog_id', async (req, res) => {
     // the same token forward for a visitor who arrived via a mailed link
     // rather than an existing session.
     // Phase 4 Batch 2 cutover (Data_Model_Separation_Build.md): owner_id
-    // resolved via getOwnerIdForDog(owner_pet_links) for THIS check only.
-    // The dog-switcher's own ownership-match comparison and the two
-    // rendered link hrefs further down still read dog.owner_id directly
-    // from the still-full select('*') result -- deliberately untouched
-    // this batch, see Data_Model_Separation_Build.md's Batch 2 note.
+    // resolved via getOwnerIdForDog(owner_pet_links). As of Phase 5 Step 2,
+    // this is the ONLY place owner_id gets resolved in this route -- the
+    // dog-switcher's own match check and the two rendered link hrefs
+    // further down were updated to reuse this same value rather than
+    // reading dog.owner_id (which the select() above no longer fetches).
     const ownerIdForAccessCheck = await getOwnerIdForDog(dog_id);
     const resolvedToken = await authorizeOwnerScope(req, ownerIdForAccessCheck, req.query.token || null);
     if (!resolvedToken) {
@@ -5939,14 +5958,18 @@ app.get('/dashboard/:dog_id', async (req, res) => {
     // uses above; reusing it here (instead of hand-rolling a second,
     // unsigned comparison) is what actually closes the gap, not just
     // patches around it.
-    const isSessionOwnerMatch = !!(dog.owner_id && (await ownerSessionMatches(req, dog.owner_id)));
+    // Phase 5 Step 2 (Data_Model_Separation_Build.md): reuses
+    // ownerIdForAccessCheck (already resolved above for the primary auth
+    // check) instead of dog.owner_id -- this route's select() no longer
+    // fetches owner_id at all as of this step.
+    const isSessionOwnerMatch = !!(ownerIdForAccessCheck && (await ownerSessionMatches(req, ownerIdForAccessCheck)));
     if (isSessionOwnerMatch) {
       // Sliding renewal: any valid, matching use extends the session
       // another 90 days, rather than counting down from a fixed grant
       // time. An owner who keeps visiting effectively never sees the
       // switcher disappear; one who doesn't simply stops getting the
       // convenience — never a functional loss either way.
-      await setOwnerSessionCookie(res, dog.owner_id);
+      await setOwnerSessionCookie(res, ownerIdForAccessCheck);
 
       // Phase 4 Batch 3 cutover (Data_Model_Separation_Build.md): the
       // sibling-dog list now comes from getDogsForOwner(owner_pet_links),
@@ -5956,7 +5979,7 @@ app.get('/dashboard/:dog_id', async (req, res) => {
       // build itself -- confirmed to match before wiring this in, not
       // assumed (the ordering was added to the shared function for
       // exactly this reason, see its own comment).
-      const ownersDogs = await getDogsForOwner(dog.owner_id);
+      const ownersDogs = await getDogsForOwner(ownerIdForAccessCheck);
 
       if (ownersDogs && ownersDogs.length > 1) {
         dogSwitcherHtml = buildDogSwitcherHtml(ownersDogs, dog_id);
@@ -6739,8 +6762,8 @@ app.get('/dashboard/:dog_id', async (req, res) => {
       <body>
         <div class="container">
           <a href="${withToken('/check-in/' + dog_id, resolvedToken)}" class="back-link">← Back to Check-In</a>
-          ${dog.owner_id ? `<a href="/add-dog.html?owner_id=${dog.owner_id}&token=${encodeURIComponent(resolvedToken)}" class="back-link" style="margin-left: 16px;">+ Add Another Dog</a>` : ''}
-          ${dog.owner_id ? `<a href="${withToken('/checkins/' + dog.owner_id, resolvedToken)}" class="back-link" style="margin-left: 16px;">View All My Dogs</a>` : ''}
+          ${ownerIdForAccessCheck ? `<a href="/add-dog.html?owner_id=${ownerIdForAccessCheck}&token=${encodeURIComponent(resolvedToken)}" class="back-link" style="margin-left: 16px;">+ Add Another Dog</a>` : ''}
+          ${ownerIdForAccessCheck ? `<a href="${withToken('/checkins/' + ownerIdForAccessCheck, resolvedToken)}" class="back-link" style="margin-left: 16px;">View All My Dogs</a>` : ''}
           ${regenerateLinkHtml}
           ${dogSwitcherHtml}
 
