@@ -1061,24 +1061,24 @@ async function authorizeOwnerScope(req, ownerId, providedToken) {
 //
 // The ONLY functions in this codebase permitted to query owner_pet_links.
 // Every dog/owner-scoped route resolves identity through one of these
-// four -- never a direct .from('owner_pet_links') call anywhere else.
+// five -- never a direct .from('owner_pet_links') call anywhere else.
 // Matches this project's existing free-text-export-ban convention:
 // enforced by this comment + code review, not a database permission (see
 // Data_Model_Separation_Build.md's Finding 8 for why a real database-
 // enforced boundary would need a second, lower-privileged credential --
 // a materially larger, separate undertaking, not what this is).
 //
-// Phase 3 status: this table is dual-written at both dog-creation sites
-// (/verify, /api/add-dog) alongside the existing senior_dogs insert.
-// NOTHING reads from it yet -- getOwnerIdForDog/getOwnerContactForDog/
-// getDogsForOwner exist here, correctly implemented, but are not called
-// by any route in this phase. senior_dogs.owner_id/phone/email/zip_code/
-// sms_consent remain the live, actually-read values everywhere until a
-// later phase migrates each call site over and then drops the columns.
+// Phase 4 status (Batches 1-3): dual-written at both dog-creation sites
+// since Phase 3. Batches 1-2 cut most access-control checkpoints over to
+// getOwnerIdForDog/getOwnerContactForDog. Batch 3 adds the dashboard
+// dog-switcher (getDogsForOwner), /api/checkin-senior's reminder-queueing
+// logic (getOwnerContactForDog), and the ops/governance SMS opt-in stat
+// (countOwnerPetLinksSmsOptIns, #5 below). senior_dogs.owner_id/phone/
+// email/zip_code/sms_consent remain live columns, still read by whatever
+// hasn't been cut over yet -- dropping them is Phase 5's job.
 // ============================================
 
 // 1. Read: resolve a dog's owner_id, for access-control decisions only.
-//    Not yet called by any route -- see the Phase 3 status note above.
 async function getOwnerIdForDog(dogId) {
   const { data } = await supabase.from('owner_pet_links').select('owner_id').eq('dog_id', dogId).maybeSingle();
   return data?.owner_id || null;
@@ -1088,7 +1088,7 @@ async function getOwnerIdForDog(dogId) {
 //    churn system and any future export that legitimately needs to reach
 //    the owner. The one function allowed to join owner_pet_links to
 //    owners for phone/email -- everything else must go through this, not
-//    construct its own join. Not yet called by any route.
+//    construct its own join.
 async function getOwnerContactForDog(dogId) {
   const { data: link } = await supabase.from('owner_pet_links').select('owner_id, sms_consent').eq('dog_id', dogId).maybeSingle();
   if (!link) return null;
@@ -1099,12 +1099,17 @@ async function getOwnerContactForDog(dogId) {
 
 // 3. Read: list an owner's dogs (display fields only -- id/name/photo,
 //    not full health records), for the dashboard dog-switcher and
-//    /checkins/:owner_id. Not yet called by any route.
+//    /checkins/:owner_id. Ordered oldest-signed-up-first (.order below) --
+//    both real call sites already relied on that exact order from their
+//    own pre-cutover inline queries; adding it here once, rather than
+//    leaving each caller to re-sort, is what keeps this "one
+//    implementation everywhere" rather than two that could quietly drift
+//    apart on ordering (Phase 4 Batch 3).
 async function getDogsForOwner(ownerId) {
   const { data: links } = await supabase.from('owner_pet_links').select('dog_id').eq('owner_id', ownerId);
   if (!links || links.length === 0) return [];
   const dogIds = links.map(l => l.dog_id);
-  const { data: dogs } = await supabase.from('senior_dogs').select('id, dog_name, photo_url, created_at').in('id', dogIds);
+  const { data: dogs } = await supabase.from('senior_dogs').select('id, dog_name, photo_url, created_at').in('id', dogIds).order('created_at', { ascending: true });
   return dogs || [];
 }
 
@@ -1119,6 +1124,17 @@ async function getDogsForOwner(ownerId) {
 async function createOwnerPetLink(ownerId, dogId, smsConsent) {
   const { error } = await supabase.from('owner_pet_links').insert({ owner_id: ownerId, dog_id: dogId, sms_consent: !!smsConsent });
   if (error) throw error;
+}
+
+// 5. Read: aggregate count of links with sms_consent = true, for opt-in-
+//    rate reporting only (the ops dashboard's headline metrics and
+//    /api/governance/stats). Not a per-dog resolution like 1-3 above --
+//    a genuine aggregate, added as its own named function because both
+//    call sites need the exact same number and shouldn't each
+//    independently query this table (Phase 4 Batch 3).
+async function countOwnerPetLinksSmsOptIns() {
+  const { count } = await supabase.from('owner_pet_links').select('dog_id', { count: 'exact', head: true }).eq('sms_consent', true);
+  return count || 0;
 }
 
 // Shared "your link stopped working" page for every GET route below --
@@ -1900,14 +1916,18 @@ async function getOpsHeadlineMetrics() {
   const [
     { count: ownerCount },
     { count: dogCount },
-    { count: smsOptIns },
+    smsOptIns,
     { count: checkinCount },
     { count: churnFlagCount },
     { data: streakRows },
   ] = await Promise.all([
     supabase.from('owners').select('id', { count: 'exact', head: true }),
     supabase.from('senior_dogs').select('id', { count: 'exact', head: true }),
-    supabase.from('senior_dogs').select('id', { count: 'exact', head: true }).eq('sms_consent', true),
+    // Phase 4 Batch 3 cutover (Data_Model_Separation_Build.md): sms_consent
+    // now counted from owner_pet_links via the shared aggregate helper,
+    // not senior_dogs.sms_consent directly -- denominator (dogCount) is
+    // unchanged, still the real dog count.
+    countOwnerPetLinksSmsOptIns(),
     supabase.from('mobility_checkins').select('id', { count: 'exact', head: true }),
     supabase.from('churn_flags').select('id', { count: 'exact', head: true }),
     supabase.from('senior_dogs').select('longest_streak').order('longest_streak', { ascending: false }).limit(1),
@@ -3586,17 +3606,24 @@ app.post('/api/checkin-senior', async (req, res) => {
     // Link-revocation (Phase 3): embeds the owner's current access_token so
     // this queued reminder keeps working even if the visitor has no active
     // session by the time it fires next week.
-    const nextCheckinAccessToken = await getOwnerAccessToken(dog.owner_id);
+    // Phase 4 Batch 3 cutover (Data_Model_Separation_Build.md): owner_id/
+    // phone/sms_consent resolved via getOwnerContactForDog(owner_pet_links)
+    // -- this is the one route that legitimately needs contact info, not
+    // just a bare owner_id, which is exactly why Phase 2 named this site
+    // for getOwnerContactForDog specifically rather than the bare
+    // getOwnerIdForDog used at every other checkpoint.
+    const ownerContact = await getOwnerContactForDog(dog_id);
+    const nextCheckinAccessToken = await getOwnerAccessToken(ownerContact?.owner_id);
     const nextCheckinLink = withToken(`${BASE_URL}/check-in/${dog_id}`, nextCheckinAccessToken);
 
     // Only queue a reminder text if this owner actually opted in to SMS reminders.
-    if (dog.sms_consent && dog.phone) {
+    if (ownerContact?.sms_consent && ownerContact?.phone) {
       const { error: queueError } = await supabase
         .from('sms_queue')
         .insert([{
           pet_id: dog_id,
-          owner_id: dog.owner_id || null,
-          phone: dog.phone,
+          owner_id: ownerContact?.owner_id || null,
+          phone: ownerContact.phone,
           message_type: `week_${weekNumber + 1}_checkin`,
           scheduled_for: nextReminderDate.toISOString(),
           message_body: `${dog.dog_name}'s week #${weekNumber + 1} check-in: ${nextCheckinLink}`,
@@ -5921,11 +5948,15 @@ app.get('/dashboard/:dog_id', async (req, res) => {
       // convenience — never a functional loss either way.
       await setOwnerSessionCookie(res, dog.owner_id);
 
-      const { data: ownersDogs } = await supabase
-        .from('senior_dogs')
-        .select('id, dog_name, photo_url')
-        .eq('owner_id', dog.owner_id)
-        .order('created_at', { ascending: true });
+      // Phase 4 Batch 3 cutover (Data_Model_Separation_Build.md): the
+      // sibling-dog list now comes from getDogsForOwner(owner_pet_links),
+      // not this route's own inline senior_dogs.eq('owner_id', ...) query.
+      // getDogsForOwner returns {id, dog_name, photo_url, created_at} in
+      // the same created_at-ascending order this inline query used to
+      // build itself -- confirmed to match before wiring this in, not
+      // assumed (the ordering was added to the shared function for
+      // exactly this reason, see its own comment).
+      const ownersDogs = await getDogsForOwner(dog.owner_id);
 
       if (ownersDogs && ownersDogs.length > 1) {
         dogSwitcherHtml = buildDogSwitcherHtml(ownersDogs, dog_id);
@@ -7762,21 +7793,17 @@ app.get('/api/governance/stats', async (req, res) => {
         const memberCount = ownerCount || 0;
         const petsRegistered = dogCount || 0;
 
-        // SMS opt-in rate from senior_dogs.sms_consent — the real,
-        // actively-used consent field (same one the churn cron and the
-        // check-in reminder gate already check) — not the dead
-        // sms_preferences table. Denominator is petsRegistered (real dog
-        // count), not memberCount (now real owner count) — sms_consent is
-        // stored per-dog, not per-owner (see Data_Model_Separation_Build.md's
-        // Phase 2 for the full reasoning), so this must stay dog-scoped now
-        // that the two counts are no longer silently identical.
-        const { count: smsOptIns, error: smsError } = await supabase
-            .from('senior_dogs')
-            .select('id', { count: 'exact', head: true })
-            .eq('sms_consent', true);
-
-        if (smsError) console.warn('SMS consent query issue:', smsError);
-        const smsOptInCount = smsOptIns || 0;
+        // SMS opt-in rate — the real, actively-used consent field (same
+        // one the churn cron and the check-in reminder gate already
+        // check). Phase 4 Batch 3 cutover (Data_Model_Separation_Build.md):
+        // counted from owner_pet_links.sms_consent via the shared
+        // countOwnerPetLinksSmsOptIns() helper, not senior_dogs.sms_consent
+        // directly -- same helper the ops dashboard's headline metrics use,
+        // so the two can't independently drift. Denominator stays
+        // petsRegistered (real dog count, from senior_dogs) — sms_consent
+        // is stored per-dog, not per-owner (see Data_Model_Separation_Build.md's
+        // Phase 2 for the full reasoning), unchanged by this cutover.
+        const smsOptInCount = await countOwnerPetLinksSmsOptIns();
         const smsOptInRate = petsRegistered > 0 ? Math.round((smsOptInCount / petsRegistered) * 100) : 0;
 
         // Weekly check-in count from mobility_checkins — the real
