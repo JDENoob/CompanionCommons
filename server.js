@@ -1804,6 +1804,338 @@ app.get('/admin', (req, res) => {
 });
 
 // ============================================
+// INTERNAL OPS DASHBOARD (Internal_Ops_Dashboard_Build.md)
+// ============================================
+// Reuses the exact admin-panel auth mechanism above (ADMIN_PASSWORD,
+// isAdminUnlocked, cc_admin_access, /api/admin-unlock, /api/admin-logout)
+// -- no separate OPS_PASSWORD/cookie. This is a deliberate resolution of
+// the "reuse vs. separate credential" question the planning doc left
+// open: one fewer secret to manage, and /admin's own login form already
+// posts to /api/admin-unlock, so /ops's login form does too -- no new
+// unlock/logout endpoints exist for this feature at all.
+
+// Monday-anchored week bucket, matching this app's own established
+// week-number convention (reminders/streaks already treat a "week" as
+// starting wherever a dog's own created_at fell, but for a cross-dog
+// report a fixed calendar anchor is what actually makes buckets
+// comparable across different dogs).
+function getISOWeekStart(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const day = d.getUTCDay(); // 0=Sun..6=Sat
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  d.setUTCDate(d.getUTCDate() + diffToMonday);
+  return d;
+}
+
+// The 5 headline metrics. Six independent count-only queries in parallel
+// -- every one is head:true (no rows transferred) except the one-row
+// longest_streak fetch, so this stays cheap regardless of table size.
+async function getOpsHeadlineMetrics() {
+  const [
+    { count: ownerCount },
+    { count: dogCount },
+    { count: smsOptIns },
+    { count: checkinCount },
+    { count: churnFlagCount },
+    { data: streakRows },
+  ] = await Promise.all([
+    supabase.from('owners').select('id', { count: 'exact', head: true }),
+    supabase.from('senior_dogs').select('id', { count: 'exact', head: true }),
+    supabase.from('senior_dogs').select('id', { count: 'exact', head: true }).eq('sms_consent', true),
+    supabase.from('mobility_checkins').select('id', { count: 'exact', head: true }),
+    supabase.from('churn_flags').select('id', { count: 'exact', head: true }),
+    supabase.from('senior_dogs').select('longest_streak').order('longest_streak', { ascending: false }).limit(1),
+  ]);
+
+  return {
+    foundingMembers: ownerCount || 0,
+    petsRegistered: dogCount || 0,
+    smsOptInRate: dogCount ? Math.round(((smsOptIns || 0) / dogCount) * 100) : 0,
+    totalCheckIns: checkinCount || 0,
+    churnFlagCount: churnFlagCount || 0,
+    longestStreak: streakRows?.[0]?.longest_streak || 0,
+  };
+}
+
+// ---- Report library ----
+// Each report is a small, independent, fetch-then-compute-in-Node
+// function (this app has never used a Postgres view or rpc() call --
+// see Internal_Ops_Dashboard_Build.md Finding 4 for why that's the
+// deliberate choice here too, not an oversight). The breed-breakdown
+// report named in the original plan is intentionally NOT included yet
+// -- breed is free text, and a real implementation should route it
+// through the existing getBreedGuide() matching chain first rather than
+// duplicate a second matcher; confirmed that chain (getBreedGuide,
+// findFuzzyBreedMatch, levenshteinDistance) is still live and unchanged
+// before deferring this again.
+
+async function reportSignupsByWeek() {
+  const { data: dogs } = await supabase.from('senior_dogs').select('created_at').order('created_at');
+  const buckets = {};
+  for (const { created_at } of dogs || []) {
+    const key = getISOWeekStart(new Date(created_at)).toISOString().slice(0, 10);
+    buckets[key] = (buckets[key] || 0) + 1;
+  }
+  return Object.entries(buckets).sort().map(([week, count]) => ({ week, signups: count }));
+}
+
+async function reportCompletionRateByWeek() {
+  const { data: dogs } = await supabase.from('senior_dogs').select('id, created_at');
+  const { data: checkins } = await supabase.from('mobility_checkins').select('dog_id, week_number');
+  const checkinSet = new Set((checkins || []).map(c => `${c.dog_id}:${c.week_number}`));
+  const dogCurrentWeek = new Map(
+    (dogs || []).map(d => [d.id, Math.max(1, Math.floor((Date.now() - new Date(d.created_at)) / (7 * 24 * 60 * 60 * 1000)) + 1)])
+  );
+  const maxWeek = Math.max(2, ...dogCurrentWeek.values());
+  const rows = [];
+  for (let w = 2; w <= maxWeek; w++) {
+    const eligibleDogIds = [...dogCurrentWeek.entries()].filter(([, cw]) => cw >= w).map(([id]) => id);
+    const completedCount = eligibleDogIds.filter(id => checkinSet.has(`${id}:${w}`)).length;
+    rows.push({
+      week: w,
+      eligible: eligibleDogIds.length,
+      completed: completedCount,
+      rate: eligibleDogIds.length ? Math.round((completedCount / eligibleDogIds.length) * 100) : null,
+    });
+  }
+  return rows;
+}
+
+async function reportCompletionRateByAgeBracket() {
+  const { data: dogs } = await supabase.from('senior_dogs').select('id, age, age_months');
+  const { data: checkinCounts } = await supabase.from('mobility_checkins').select('dog_id');
+  const checkinCountByDog = {};
+  for (const { dog_id } of checkinCounts || []) checkinCountByDog[dog_id] = (checkinCountByDog[dog_id] || 0) + 1;
+  const bracketOf = (years) => years < 1 ? 'under 1' : years < 3 ? '1-3' : years < 7 ? '3-7' : years < 10 ? '7-10' : '10+';
+  const buckets = {};
+  for (const dog of dogs || []) {
+    const years = (dog.age || 0) + (dog.age_months || 0) / 12;
+    const bracket = bracketOf(years);
+    buckets[bracket] ??= { dogCount: 0, totalCheckins: 0 };
+    buckets[bracket].dogCount++;
+    buckets[bracket].totalCheckins += checkinCountByDog[dog.id] || 0;
+  }
+  return Object.entries(buckets).map(([bracket, v]) => ({
+    bracket,
+    dogCount: v.dogCount,
+    avgCheckinsPerDog: v.dogCount ? +(v.totalCheckins / v.dogCount).toFixed(1) : 0,
+  }));
+}
+
+async function reportMedicationCategoryBreakdown() {
+  const { data: meds } = await supabase.from('medications').select('category');
+  const buckets = {};
+  for (const { category } of meds || []) buckets[category] = (buckets[category] || 0) + 1;
+  return Object.entries(buckets).map(([category, count]) => ({ category, count }));
+}
+
+const OPS_REPORTS = {
+  signups_by_week: { description: 'New dog signups, bucketed by calendar week', run: reportSignupsByWeek },
+  checkin_completion_by_week: { description: 'Check-in completion rate per calendar week', run: reportCompletionRateByWeek },
+  completion_by_age_bracket: { description: 'Average check-ins per dog, by age bracket', run: reportCompletionRateByAgeBracket },
+  medication_category_breakdown: { description: 'Medication/supplement entries by category', run: reportMedicationCategoryBreakdown },
+};
+
+app.get('/ops', (req, res) => {
+  if (!isAdminUnlocked(req)) {
+    return res.send(`<!DOCTYPE html>
+<html>
+<head>
+    <title>CompanionCommons Ops — Login</title>
+    <style>
+        body { font-family: Arial; background: #f0f0f0; padding: 20px; margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; box-sizing: border-box; }
+        .container { max-width: 340px; width: 100%; background: white; padding: 40px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #333; margin: 0 0 20px 0; font-size: 20px; }
+        input { width: 100%; padding: 10px; margin-bottom: 14px; border: 1px solid #ddd; font-family: Arial; font-size: 14px; box-sizing: border-box; }
+        button { width: 100%; background: #4CAF50; color: white; padding: 12px 24px; border: none; cursor: pointer; font-size: 16px; font-weight: bold; border-radius: 4px; }
+        button:hover { background: #45a049; }
+        .error { color: #c33; font-size: 14px; margin-top: 10px; min-height: 18px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>CompanionCommons Ops</h1>
+        <form id="loginForm">
+            <input type="password" id="password" placeholder="Admin password" autofocus required>
+            <button type="submit">Login</button>
+            <div class="error" id="err"></div>
+        </form>
+    </div>
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const password = document.getElementById('password').value;
+            const errEl = document.getElementById('err');
+            errEl.textContent = '';
+            try {
+                const res = await fetch('/api/admin-unlock', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password })
+                });
+                if (res.ok) {
+                    window.location.reload();
+                } else {
+                    errEl.textContent = 'Incorrect password.';
+                }
+            } catch (error) {
+                errEl.textContent = 'Something went wrong, try again.';
+            }
+        });
+    </script>
+</body>
+</html>`);
+  }
+
+  res.send(`<!DOCTYPE html>
+<html>
+<head>
+    <title>CompanionCommons Ops</title>
+    <style>
+        body { font-family: Arial; background: #f0f0f0; padding: 20px; }
+        .container { max-width: 900px; margin: 0 auto; background: white; padding: 40px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #333; margin-bottom: 10px; }
+        .metrics-row { display: flex; flex-wrap: wrap; gap: 16px; margin: 24px 0; }
+        .stat { flex: 1 1 140px; background: #f7f7f7; border: 1px solid #eee; border-radius: 8px; padding: 16px; text-align: center; }
+        .stat .value { font-size: 26px; font-weight: bold; color: #333; }
+        .stat .label { font-size: 12px; color: #777; margin-top: 4px; }
+        .form-group { margin: 24px 0 12px 0; }
+        label { display: block; font-weight: bold; margin-bottom: 8px; color: #333; }
+        select { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ddd; font-family: Arial; font-size: 14px; }
+        button { background: #4CAF50; color: white; padding: 10px 20px; border: none; cursor: pointer; font-size: 14px; font-weight: bold; border-radius: 4px; }
+        button:hover { background: #45a049; }
+        table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+        th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #eee; font-size: 14px; }
+        th { background: #f7f7f7; }
+        .empty { color: #999; font-size: 14px; margin-top: 12px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>CompanionCommons Ops</h1>
+        <button onclick="logout()" style="float:right; margin-top:-46px;">Logout</button>
+        <div style="clear:both;"></div>
+
+        <div class="metrics-row" id="metrics">
+            <div class="stat"><div class="value" id="m-founding">—</div><div class="label">Founding Members</div></div>
+            <div class="stat"><div class="value" id="m-pets">—</div><div class="label">Pets Registered</div></div>
+            <div class="stat"><div class="value" id="m-checkins">—</div><div class="label">Total Check-Ins</div></div>
+            <div class="stat"><div class="value" id="m-churn">—</div><div class="label">Churn Flags</div></div>
+            <div class="stat"><div class="value" id="m-streak">—</div><div class="label">Longest Streak</div></div>
+        </div>
+
+        <div class="form-group">
+            <label>Report:</label>
+            <select id="report" onchange="describeReport()"></select>
+            <p id="report-desc" style="color:#666; font-size:13px;"></p>
+            <button onclick="runReport()">Run Report</button>
+        </div>
+        <div id="report-results"></div>
+    </div>
+
+    <script>
+        let reportList = [];
+
+        function logout() {
+            fetch('/api/admin-logout', { method: 'POST' }).then(() => window.location.reload());
+        }
+
+        async function loadMetrics() {
+            try {
+                const res = await fetch('/api/ops/metrics');
+                if (res.status === 401) return window.location.reload();
+                const m = await res.json();
+                document.getElementById('m-founding').textContent = m.foundingMembers;
+                document.getElementById('m-pets').textContent = m.petsRegistered;
+                document.getElementById('m-checkins').textContent = m.totalCheckIns;
+                document.getElementById('m-churn').textContent = m.churnFlagCount;
+                document.getElementById('m-streak').textContent = m.longestStreak;
+            } catch (error) {
+                console.error('Error loading metrics:', error);
+            }
+        }
+
+        async function loadReportList() {
+            try {
+                const res = await fetch('/api/ops/reports');
+                if (res.status === 401) return window.location.reload();
+                reportList = await res.json();
+                const sel = document.getElementById('report');
+                sel.innerHTML = reportList.map(r => \`<option value="\${r.name}">\${r.name}</option>\`).join('');
+                describeReport();
+            } catch (error) {
+                console.error('Error loading report list:', error);
+            }
+        }
+
+        function describeReport() {
+            const name = document.getElementById('report').value;
+            const found = reportList.find(r => r.name === name);
+            document.getElementById('report-desc').textContent = found ? found.description : '';
+        }
+
+        async function runReport() {
+            const name = document.getElementById('report').value;
+            const container = document.getElementById('report-results');
+            container.innerHTML = 'Running…';
+            try {
+                const res = await fetch('/api/ops/reports/' + encodeURIComponent(name) + '/run', { method: 'POST' });
+                if (res.status === 401) return window.location.reload();
+                const data = await res.json();
+                if (!data.rows || data.rows.length === 0) {
+                    container.innerHTML = '<p class="empty">No rows.</p>';
+                    return;
+                }
+                const cols = data.columns;
+                let html = '<table><thead><tr>' + cols.map(c => \`<th>\${c}</th>\`).join('') + '</tr></thead><tbody>';
+                for (const row of data.rows) {
+                    html += '<tr>' + cols.map(c => \`<td>\${row[c] ?? ''}</td>\`).join('') + '</tr>';
+                }
+                html += '</tbody></table>';
+                container.innerHTML = html;
+            } catch (error) {
+                container.innerHTML = '<p class="empty">Error running report.</p>';
+            }
+        }
+
+        loadMetrics();
+        loadReportList();
+    </script>
+</body>
+</html>`);
+});
+
+app.get('/api/ops/metrics', async (req, res) => {
+  if (!isAdminUnlocked(req)) return res.status(401).json({ error: 'Not authorized' });
+  try {
+    const metrics = await getOpsHeadlineMetrics();
+    res.json(metrics);
+  } catch (error) {
+    console.error('Error computing ops metrics:', error);
+    res.status(500).json({ error: 'Failed to compute metrics' });
+  }
+});
+
+app.get('/api/ops/reports', (req, res) => {
+  if (!isAdminUnlocked(req)) return res.status(401).json({ error: 'Not authorized' });
+  res.json(Object.entries(OPS_REPORTS).map(([name, r]) => ({ name, description: r.description })));
+});
+
+app.post('/api/ops/reports/:name/run', async (req, res) => {
+  if (!isAdminUnlocked(req)) return res.status(401).json({ error: 'Not authorized' });
+  const report = OPS_REPORTS[req.params.name];
+  if (!report) return res.status(404).json({ error: 'Unknown report' });
+  try {
+    const rows = await report.run();
+    const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
+    res.json({ columns, rows });
+  } catch (error) {
+    console.error(`Error running ops report ${req.params.name}:`, error);
+    res.status(500).json({ error: 'Failed to run report' });
+  }
+});
+
+// ============================================
 // PAGE CONTENT API (admin-only — guarded by the /api/page auth middleware above)
 // ============================================
 app.get('/api/page/:slug', async (req, res) => {
