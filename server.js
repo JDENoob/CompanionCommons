@@ -1061,21 +1061,23 @@ async function authorizeOwnerScope(req, ownerId, providedToken) {
 //
 // The ONLY functions in this codebase permitted to query owner_pet_links.
 // Every dog/owner-scoped route resolves identity through one of these
-// five -- never a direct .from('owner_pet_links') call anywhere else.
+// six -- never a direct .from('owner_pet_links') call anywhere else.
 // Matches this project's existing free-text-export-ban convention:
 // enforced by this comment + code review, not a database permission (see
 // Data_Model_Separation_Build.md's Finding 8 for why a real database-
 // enforced boundary would need a second, lower-privileged credential --
 // a materially larger, separate undertaking, not what this is).
 //
-// Phase 4 status (Batches 1-3): dual-written at both dog-creation sites
-// since Phase 3. Batches 1-2 cut most access-control checkpoints over to
-// getOwnerIdForDog/getOwnerContactForDog. Batch 3 adds the dashboard
-// dog-switcher (getDogsForOwner), /api/checkin-senior's reminder-queueing
-// logic (getOwnerContactForDog), and the ops/governance SMS opt-in stat
-// (countOwnerPetLinksSmsOptIns, #5 below). senior_dogs.owner_id/phone/
-// email/zip_code/sms_consent remain live columns, still read by whatever
-// hasn't been cut over yet -- dropping them is Phase 5's job.
+// Phase 5 status (Step 2b): Step 1 narrowed the 4 select('*') display
+// routes to explicit columns. Step 2b cuts over the last two real
+// consumers still reading owner_id/phone/email/sms_consent directly off
+// senior_dogs -- GET /checkins/:owner_id (getDogsForOwner, same as the
+// dashboard switcher) and the churn-detection cron's bulk query
+// (bulkResolveOwnerContactForDogs, #6 below -- 3 queries total for the
+// whole batch, not one getOwnerContactForDog call per dog). Once both are
+// verified, senior_dogs.owner_id/phone/email/zip_code/sms_consent have no
+// remaining real readers and the write sites (/verify, /api/add-dog) can
+// stop populating them.
 // ============================================
 
 // 1. Read: resolve a dog's owner_id, for access-control decisions only.
@@ -1135,6 +1137,46 @@ async function createOwnerPetLink(ownerId, dogId, smsConsent) {
 async function countOwnerPetLinksSmsOptIns() {
   const { count } = await supabase.from('owner_pet_links').select('dog_id', { count: 'exact', head: true }).eq('sms_consent', true);
   return count || 0;
+}
+
+// 6. Read: bulk-resolve owner_id/phone/email/sms_consent for a whole
+//    batch of dogs at once -- the churn-detection cron's own bulk pattern
+//    (Phase 5 Step 2b). 3 queries total regardless of batch size (this
+//    table, then owners, both via .in()), never one getOwnerContactForDog
+//    call per dog -- matches this project's existing "fetch raw rows,
+//    aggregate in Node" convention for bulk operations (getDogsForOwner,
+//    every ops-dashboard report) rather than N+1 queries or a first-ever
+//    PostgREST embedded join (see Finding 7's reasoning against that).
+//    Returns a Map<dogId, {owner_id, phone, email, sms_consent}> -- a dog
+//    with no link row at all (shouldn't exist, per the Step 1 parity
+//    audit, but handled defensively) resolves to
+//    {owner_id: null, phone: null, email: null, sms_consent: false},
+//    matching how the old direct-read code already treated a dog with no
+//    contact info on file.
+async function bulkResolveOwnerContactForDogs(dogIds) {
+  const result = new Map();
+  if (!dogIds || dogIds.length === 0) return result;
+
+  const { data: links } = await supabase.from('owner_pet_links').select('dog_id, owner_id, sms_consent').in('dog_id', dogIds);
+  const linkByDogId = new Map((links || []).map(l => [l.dog_id, l]));
+
+  const ownerIds = [...new Set((links || []).map(l => l.owner_id))];
+  const { data: owners } = ownerIds.length > 0
+    ? await supabase.from('owners').select('id, phone, email').in('id', ownerIds)
+    : { data: [] };
+  const ownerById = new Map((owners || []).map(o => [o.id, o]));
+
+  for (const dogId of dogIds) {
+    const link = linkByDogId.get(dogId);
+    const owner = link ? ownerById.get(link.owner_id) : null;
+    result.set(dogId, {
+      owner_id: link?.owner_id || null,
+      sms_consent: link?.sms_consent || false,
+      phone: owner?.phone || null,
+      email: owner?.email || null,
+    });
+  }
+  return result;
 }
 
 // Shared "your link stopped working" page for every GET route below --
@@ -9122,13 +9164,15 @@ app.get('/checkins/:owner_id', async (req, res) => {
   try {
     const { owner_id } = req.params;
 
-    const { data: dogs, error } = await supabase
-      .from('senior_dogs')
-      .select('id, dog_name, photo_url, created_at')
-      .eq('owner_id', owner_id)
-      .order('created_at', { ascending: true });
+    // Phase 5 Step 2b (Data_Model_Separation_Build.md): the sibling-dog
+    // list now comes from getDogsForOwner(owner_pet_links) -- the same
+    // shared function (with the same created_at-ascending order) Phase 4
+    // Batch 3 already gave the dashboard's own switcher, so this route and
+    // the dashboard can't drift apart on how "list this owner's dogs"
+    // works.
+    const dogs = await getDogsForOwner(owner_id);
 
-    if (error || !dogs || dogs.length === 0) {
+    if (!dogs || dogs.length === 0) {
       return res.status(404).send(`
         <!DOCTYPE html>
         <html>
@@ -10788,10 +10832,12 @@ setInterval(async () => {
   try {
     console.log('🔍 Churn detection running...');
 
-    // Get all senior dogs
+    // Get all senior dogs. Phase 5 Step 2b (Data_Model_Separation_Build.md):
+    // narrowed -- owner_id/phone/email/sms_consent no longer read directly
+    // from senior_dogs here.
     const { data: allDogs, error: dogsError } = await supabase
       .from('senior_dogs')
-      .select('id, dog_name, phone, email, sms_consent, owner_id, baseline_mobility_score, created_at');
+      .select('id, dog_name, baseline_mobility_score, created_at');
 
     if (dogsError) {
       console.error('❌ Error fetching senior dogs:', dogsError.message);
@@ -10804,6 +10850,23 @@ setInterval(async () => {
     }
 
     console.log(`📊 Checking ${allDogs.length} dogs for missing check-ins...`);
+
+    // Bulk-resolve owner_id/phone/email/sms_consent for the whole batch
+    // (3 queries total, not one per dog -- see bulkResolveOwnerContactForDogs's
+    // own comment) and merge onto each dog object in the same shape the
+    // old direct-read code produced. evaluateDogForChurn and
+    // sendChurnAlertsForOwnerGroup below are completely unchanged -- every
+    // dog.owner_id/.phone/.sms_consent/.email read inside them still works
+    // exactly as before, because this merge happens before either is ever
+    // called.
+    const contactByDogId = await bulkResolveOwnerContactForDogs(allDogs.map(d => d.id));
+    for (const dog of allDogs) {
+      const contact = contactByDogId.get(dog.id) || {};
+      dog.owner_id = contact.owner_id ?? null;
+      dog.phone = contact.phone ?? null;
+      dog.email = contact.email ?? null;
+      dog.sms_consent = contact.sms_consent ?? false;
+    }
 
     // Pass 1: evaluate each dog independently (baseline-period fix,
     // this-week-checkin check, SMS reminder queueing, per-dog dedup) — see
