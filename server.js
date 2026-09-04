@@ -5901,20 +5901,30 @@ app.get('/dashboard/:dog_id', async (req, res) => {
     // the session cookie alone, not a token (see that route's own
     // comment). No point rendering a button that would just 403.
     let regenerateLinkHtml = '';
-    const dashboardCookies = parseCookies(req);
-    const sessionOwnerId = dashboardCookies[OWNER_SESSION_COOKIE];
-    if (sessionOwnerId && dog.owner_id && sessionOwnerId === dog.owner_id) {
+    // Regression fix (found during Phase 4 Batch 2 testing): this used to
+    // compare the RAW cookie value directly against dog.owner_id
+    // (`sessionOwnerId === dog.owner_id`). That stopped working the moment
+    // the Sep 3 session-signing commit (8a74f74) changed the cookie's
+    // value from a bare ownerId to `${ownerId}.${signature}` -- a signed
+    // string can never equal a bare UUID, so this branch silently never
+    // fired again for anyone, real session or not. ownerSessionMatches()
+    // is the same signature-verified check authorizeOwnerScope already
+    // uses above; reusing it here (instead of hand-rolling a second,
+    // unsigned comparison) is what actually closes the gap, not just
+    // patches around it.
+    const isSessionOwnerMatch = !!(dog.owner_id && (await ownerSessionMatches(req, dog.owner_id)));
+    if (isSessionOwnerMatch) {
       // Sliding renewal: any valid, matching use extends the session
       // another 90 days, rather than counting down from a fixed grant
       // time. An owner who keeps visiting effectively never sees the
       // switcher disappear; one who doesn't simply stops getting the
       // convenience — never a functional loss either way.
-      await setOwnerSessionCookie(res, sessionOwnerId);
+      await setOwnerSessionCookie(res, dog.owner_id);
 
       const { data: ownersDogs } = await supabase
         .from('senior_dogs')
         .select('id, dog_name, photo_url')
-        .eq('owner_id', sessionOwnerId)
+        .eq('owner_id', dog.owner_id)
         .order('created_at', { ascending: true });
 
       if (ownersDogs && ownersDogs.length > 1) {
