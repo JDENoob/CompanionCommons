@@ -2576,7 +2576,13 @@ app.get('/check-in/:dog_id', async (req, res) => {
     // is the owner's real current access_token on success, reused below to
     // keep this page's own internal links (View Dashboard, the check-in
     // save request) carrying the same token forward.
-    const resolvedToken = await authorizeOwnerScope(req, dog.owner_id, req.query.token || null);
+    // Phase 4 Batch 2 cutover (Data_Model_Separation_Build.md): owner_id
+    // resolved via getOwnerIdForDog(owner_pet_links), not the dog row --
+    // select('*') above is intentionally left unnarrowed this batch
+    // (dog.owner_id/.phone/.email/.zip_code/.sms_consent stay present but
+    // unused by this route; query narrowing is Phase 5's job).
+    const ownerIdForAccessCheck = await getOwnerIdForDog(dog_id);
+    const resolvedToken = await authorizeOwnerScope(req, ownerIdForAccessCheck, req.query.token || null);
     if (!resolvedToken) {
       return res.status(403).send(renderLinkInvalidPage());
     }
@@ -3346,7 +3352,15 @@ app.post('/api/checkin-senior', async (req, res) => {
     // matching owner-session cookie, either is sufficient. A distinct 403
     // (not the generic 500 catch-all below) so the client can tell "your
     // link no longer works" apart from a real server error.
-    if (!(await authorizeOwnerScope(req, dog.owner_id, req.body.access_token || null))) {
+    // Phase 4 Batch 2 cutover (Data_Model_Separation_Build.md): owner_id
+    // resolved via getOwnerIdForDog(owner_pet_links) for THIS check only.
+    // dog.owner_id/.phone/.sms_consent further down (the proactive
+    // next-check-in reminder queueing) are deliberately left reading from
+    // the still-full select('*') result -- that's a separate cutover
+    // (getOwnerContactForDog, not the bare getOwnerIdForDog) out of scope
+    // for this batch, see Data_Model_Separation_Build.md's Batch 2 note.
+    const ownerIdForAccessCheck = await getOwnerIdForDog(dog_id);
+    if (!(await authorizeOwnerScope(req, ownerIdForAccessCheck, req.body.access_token || null))) {
       return res.status(403).json({
         success: false,
         error: 'This link is no longer valid. Please request a fresh one.',
@@ -5332,7 +5346,11 @@ app.get('/breed-guide/:dog_id', async (req, res) => {
 
     // Link-revocation access check (Phase 3) -- token (query string) or a
     // matching owner-session cookie, either is sufficient.
-    const resolvedToken = await authorizeOwnerScope(req, dog.owner_id, req.query.token || null);
+    // Phase 4 Batch 2 cutover (Data_Model_Separation_Build.md): owner_id
+    // resolved via getOwnerIdForDog(owner_pet_links), not the dog row --
+    // select('*') above is intentionally left unnarrowed this batch.
+    const ownerIdForAccessCheck = await getOwnerIdForDog(dog_id);
+    const resolvedToken = await authorizeOwnerScope(req, ownerIdForAccessCheck, req.query.token || null);
     if (!resolvedToken) {
       return res.status(403).send(renderLinkInvalidPage());
     }
@@ -5851,7 +5869,14 @@ app.get('/dashboard/:dog_id', async (req, res) => {
     // All My Dogs", the fetch() calls in its embedded scripts) carrying
     // the same token forward for a visitor who arrived via a mailed link
     // rather than an existing session.
-    const resolvedToken = await authorizeOwnerScope(req, dog.owner_id, req.query.token || null);
+    // Phase 4 Batch 2 cutover (Data_Model_Separation_Build.md): owner_id
+    // resolved via getOwnerIdForDog(owner_pet_links) for THIS check only.
+    // The dog-switcher's own ownership-match comparison and the two
+    // rendered link hrefs further down still read dog.owner_id directly
+    // from the still-full select('*') result -- deliberately untouched
+    // this batch, see Data_Model_Separation_Build.md's Batch 2 note.
+    const ownerIdForAccessCheck = await getOwnerIdForDog(dog_id);
+    const resolvedToken = await authorizeOwnerScope(req, ownerIdForAccessCheck, req.query.token || null);
     if (!resolvedToken) {
       return res.status(403).send(renderLinkInvalidPage());
     }
