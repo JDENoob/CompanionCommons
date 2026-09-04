@@ -5577,15 +5577,20 @@ app.post('/api/notes/:dog_id', async (req, res) => {
     // Link-revocation access check (Phase 3). This also closes a
     // pre-existing, separate gap: the dog's existence was never confirmed
     // here before inserting -- this lookup now does both jobs.
+    // Phase 4 cutover (Data_Model_Separation_Build.md): owner_id resolved
+    // via getOwnerIdForDog(owner_pet_links), not the senior_dogs row --
+    // this route never displays anything about the dog, so 'id' alone is
+    // all the existence check needs.
     const { data: dog, error: dogLookupError } = await supabase
       .from('senior_dogs')
-      .select('id, owner_id')
+      .select('id')
       .eq('id', dog_id)
       .maybeSingle();
     if (dogLookupError || !dog) {
       return res.status(404).json({ error: 'Dog not found' });
     }
-    if (!(await authorizeOwnerScope(req, dog.owner_id, access_token || null))) {
+    const ownerId = await getOwnerIdForDog(dog_id);
+    if (!(await authorizeOwnerScope(req, ownerId, access_token || null))) {
       return res.status(403).json({ error: 'This link is no longer valid. Please request a fresh one.', code: 'invalid_access_token' });
     }
 
@@ -5629,19 +5634,21 @@ app.post('/api/medications', async (req, res) => {
     // Confirm the dog is real before creating anything against it, same
     // pattern as /api/add-dog's owner check. Also pulls dog_name/created_at
     // now -- needed below for the medication-event opt-in prompt (dog_name
-    // in the message copy, created_at to determine "started after baseline") --
-    // and owner_id for the link-revocation access check right after.
+    // in the message copy, created_at to determine "started after baseline").
     const { data: dog, error: dogLookupError } = await supabase
       .from('senior_dogs')
-      .select('id, dog_name, created_at, owner_id')
+      .select('id, dog_name, created_at')
       .eq('id', dog_id)
       .maybeSingle();
     if (dogLookupError || !dog) {
       return res.status(404).json({ success: false, error: 'Dog not found' });
     }
 
-    // Link-revocation access check (Phase 3).
-    if (!(await authorizeOwnerScope(req, dog.owner_id, access_token || null))) {
+    // Link-revocation access check (Phase 3). Phase 4 cutover: owner_id
+    // resolved via getOwnerIdForDog(owner_pet_links), not the senior_dogs
+    // row above -- that row is kept for its health/display fields only.
+    const ownerId = await getOwnerIdForDog(dog_id);
+    if (!(await authorizeOwnerScope(req, ownerId, access_token || null))) {
       return res.status(403).json({ success: false, error: 'This link is no longer valid. Please request a fresh one.', code: 'invalid_access_token' });
     }
 
@@ -5703,13 +5710,11 @@ app.post('/api/medications/:id/stop', async (req, res) => {
     // medication's own dog_id before anything is mutated below (including
     // the idempotent "already stopped" branch, which is still a real
     // answer about this medication and shouldn't be handed out to
-    // anyone with just the medication's id).
-    const { data: dogForAccessCheck } = await supabase
-      .from('senior_dogs')
-      .select('owner_id')
-      .eq('id', medication.dog_id)
-      .maybeSingle();
-    if (!(await authorizeOwnerScope(req, dogForAccessCheck && dogForAccessCheck.owner_id, req.body.access_token || null))) {
+    // anyone with just the medication's id). Phase 4 cutover: a single
+    // getOwnerIdForDog(owner_pet_links) call replaces the old two-hop
+    // senior_dogs.select('owner_id') lookup.
+    const ownerIdForAccessCheck = await getOwnerIdForDog(medication.dog_id);
+    if (!(await authorizeOwnerScope(req, ownerIdForAccessCheck, req.body.access_token || null))) {
       return res.status(403).json({ success: false, error: 'This link is no longer valid. Please request a fresh one.', code: 'invalid_access_token' });
     }
 
@@ -5772,13 +5777,11 @@ app.post('/api/medication-response-windows/:id/respond', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Not found' });
     }
 
-    // Link-revocation access check (Phase 3).
-    const { data: dogForAccessCheck } = await supabase
-      .from('senior_dogs')
-      .select('owner_id')
-      .eq('id', windowRow.dog_id)
-      .maybeSingle();
-    if (!(await authorizeOwnerScope(req, dogForAccessCheck && dogForAccessCheck.owner_id, req.body.access_token || null))) {
+    // Link-revocation access check (Phase 3). Phase 4 cutover: a single
+    // getOwnerIdForDog(owner_pet_links) call replaces the old two-hop
+    // senior_dogs.select('owner_id') lookup.
+    const ownerIdForAccessCheck = await getOwnerIdForDog(windowRow.dog_id);
+    if (!(await authorizeOwnerScope(req, ownerIdForAccessCheck, req.body.access_token || null))) {
       return res.status(403).json({ success: false, error: 'This link is no longer valid. Please request a fresh one.', code: 'invalid_access_token' });
     }
 
@@ -9727,16 +9730,21 @@ app.post('/api/regenerate-access-token', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Missing required field: dog_id' });
     }
 
+    // Phase 4 cutover (Data_Model_Separation_Build.md): owner_id resolved
+    // via getOwnerIdForDog(owner_pet_links) below, reused for both the
+    // session check and the update target -- 'id' alone is all this
+    // existence check needs from senior_dogs now.
     const { data: dog, error: dogError } = await supabase
       .from('senior_dogs')
-      .select('id, owner_id')
+      .select('id')
       .eq('id', dog_id)
       .maybeSingle();
     if (dogError || !dog) {
       return res.status(404).json({ success: false, error: 'Dog not found' });
     }
 
-    if (!(await ownerSessionMatches(req, dog.owner_id))) {
+    const ownerId = await getOwnerIdForDog(dog_id);
+    if (!(await ownerSessionMatches(req, ownerId))) {
       return res.status(403).json({ success: false, error: 'Please open your dashboard from a link you received directly (a text or email) before regenerating.' });
     }
 
@@ -9747,14 +9755,14 @@ app.post('/api/regenerate-access-token', async (req, res) => {
     const { error: updateError } = await supabase
       .from('owners')
       .update({ access_token: newToken })
-      .eq('id', dog.owner_id);
+      .eq('id', ownerId);
 
     if (updateError) {
-      console.error(`❌ Error regenerating access_token for owner ${dog.owner_id}:`, updateError.message);
+      console.error(`❌ Error regenerating access_token for owner ${ownerId}:`, updateError.message);
       return res.status(500).json({ success: false, error: 'Failed to regenerate link' });
     }
 
-    console.log(`✅ access_token regenerated for owner ${dog.owner_id}`);
+    console.log(`✅ access_token regenerated for owner ${ownerId}`);
     res.json({ success: true, new_dashboard_url: withToken(`/dashboard/${dog_id}`, newToken) });
   } catch (error) {
     console.error('Error in /api/regenerate-access-token:', error);
@@ -9984,10 +9992,12 @@ app.post('/api/upload-dog-photo', upload.single('photo'), async (req, res) => {
     console.log(`📸 Uploading photo for dog: ${dog_id}`);
     console.log(`📦 File: ${req.file.originalname} (${req.file.size} bytes)`);
 
-    // Verify dog exists
+    // Verify dog exists. Phase 4 cutover (Data_Model_Separation_Build.md):
+    // owner_id resolved via getOwnerIdForDog(owner_pet_links) below, not
+    // this row -- 'id' alone is all the existence check needs here.
     const { data: dog, error: dogError } = await supabase
       .from('senior_dogs')
-      .select('id, owner_id')
+      .select('id')
       .eq('id', dog_id)
       .single();
 
@@ -9999,7 +10009,8 @@ app.post('/api/upload-dog-photo', upload.single('photo'), async (req, res) => {
     }
 
     // Link-revocation access check (Phase 3).
-    if (!(await authorizeOwnerScope(req, dog.owner_id, access_token || null))) {
+    const ownerId = await getOwnerIdForDog(dog_id);
+    if (!(await authorizeOwnerScope(req, ownerId, access_token || null))) {
       return res.status(403).json({ success: false, error: 'This link is no longer valid. Please request a fresh one.', code: 'invalid_access_token' });
     }
 
